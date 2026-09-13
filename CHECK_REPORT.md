@@ -1,22 +1,7 @@
-# v11 Enhanced 检查说明
+# v11.4 image-debug check
 
-重点检查项：
-
-- 12课时配置完整；
-- S00 / S01-S30规则保留；
-- 教师后台 `/admin.html` 明确可进入；
-- 后台可查看当前课次全班进度和单个学生12课时完整数据；
-- 正式导出自动排除S00；
-- AI从任务开始即可使用；
-- 记录首次打开AI与首次发送消息时延；
-- AI聊天支持 JPG/PNG/WEBP 图片 + 文字；
-- 聊天图片和对应消息、课次、时间戳一起记录；
-- W4-W9按condition路由双智能体；
-- W10-W11自动恢复自由AI；
-- W12无AI；
-- 候选任务说明只在教师后台显示；
-- ZIP不包含Coze系统提示词文件。
-
-运行 `npm run check` 和 `npm test` 做静态与逻辑检查。
-
-- v11.2：新增按学生/课次重置与整课批量重置，均先归档再清空；学生首页教师入口仅保留按钮。
+- Multimodal message now matches Coze documented shape more strictly: `type=question`, image object first, text object second.
+- S00 receives Coze stage/chat_id/file_id/logid/error details when available.
+- Formal students still receive a generic error; debugging internals are not exposed to them.
+- Failed S00 local image is retained for diagnosis; formal failed uploads are cleaned.
+- Existing 12-session routing, admin dashboard, reset/archive, exports, and A/B/transfer routing retained.

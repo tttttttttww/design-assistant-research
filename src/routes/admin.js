@@ -77,11 +77,11 @@ router.get('/export/chat-attachments.csv',requireAdmin,async(req,res)=>{
     const id=`S${String(i).padStart(2,'0')}`;
     for(const s of SESSIONS){
       for(const m of await researchService.getMessages(id,s.id)){
-        for(const a of (m.attachments||[])) rows.push({participant_id:id,course_session_id:s.id,message_index:m.message_index,created_at:m.created_at,type:a.type||'',file_name:a.file_name||'',mime:a.mime||'',uploaded_at:a.uploaded_at||'',file_path:a.file_path||''});
+        for(const a of (m.attachments||[])) rows.push({participant_id:id,course_session_id:s.id,message_index:m.message_index,created_at:m.created_at,type:a.type||'',file_name:a.file_name||'',mime:a.mime||'',uploaded_at:a.uploaded_at||'',file_path:a.file_path||'',coze_file_id:a.coze_file_id||''});
       }
     }
   }
-  sendCsv(res,'chat_attachments.csv',['participant_id','course_session_id','message_index','created_at','type','file_name','mime','uploaded_at','file_path'],rows);
+  sendCsv(res,'chat_attachments.csv',['participant_id','course_session_id','message_index','created_at','type','file_name','mime','uploaded_at','file_path','coze_file_id'],rows);
 });
 
 router.get('/export/events.csv',requireAdmin,async(req,res)=>{const rows=[];for(let i=1;i<=30;i++){const id=`S${String(i).padStart(2,'0')}`;for(const s of SESSIONS){for(const e of await researchService.getEvents(id,s.id))rows.push(e);}}sendCsv(res,'events.csv',['participant_id','session_id','event_index','type','at','data'],rows);});

@@ -65,7 +65,7 @@ S00测试历史单独导出：
 1. 两只Coze智能体必须使用**支持图片理解/视觉输入**的同一底层模型；
 2. 支持 JPG、PNG、WEBP，每次最多1张，≤10MB；
 3. 图片消息必须同时配一段文字，便于判断学生的真实求助意图；
-4. 如果部署环境反向代理导致Coze读取不到图片，可在环境变量设置 `PUBLIC_BASE_URL=https://你的公开域名`。
+4. v11.3 起，聊天图片会先通过 Coze `/v1/files/upload` 上传并取得 `file_id`，再交给智能体识图，不再依赖 Coze 回访本站图片 URL。请确保 `COZE_ACCESS_TOKEN` 已授权“文件-uploadFile”权限。`PUBLIC_BASE_URL` 仅保留为兼容备用。
 
 ## 部署
 

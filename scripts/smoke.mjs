@@ -18,7 +18,7 @@ await researchService.setParticipantMeta('S01',{condition:'A'});
 if(aiVariantFor({session:getSessionConfig('W4'),condition:'A',isTest:false})!=='supported') throw new Error('A routing failed');
 if(aiVariantFor({session:getSessionConfig('W4'),condition:'B',isTest:false})!=='free') throw new Error('B routing failed');
 if(aiVariantFor({session:getSessionConfig('W10'),condition:'A',isTest:false})!=='free') throw new Error('transfer routing failed');
-const mm=cozeService.buildAdditionalMessage('看看这张图','https://example.com/a.jpg');
+const mm=cozeService.buildAdditionalMessage('看看这张图',{fileId:'112233'});
 if(mm.content_type!=='object_string'||!mm.content.includes('image')) throw new Error('multimodal Coze message failed');
 const reset=await researchService.archiveAndResetSession('S01','W1',{reason:'smoke_reset'});
 if(!reset.archived_previous) throw new Error('reset archive missing');

@@ -102,9 +102,12 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
       courseSessionId: sid,
       conversationId: s.conversation_id,
       message: hidden,
+      image: req.file ? { buffer: req.file.buffer, fileName: attachment?.file_name, mime: req.file.mimetype } : null,
       imageUrl: publicImageUrl,
       variant: state.ai_variant,
     });
+
+    if (attachment && ai.coze_file_id) attachment.coze_file_id = ai.coze_file_id;
 
     await researchService.appendMessage(id, sid, {
       role: 'user', content: message, content_type: attachment ? 'text+image' : 'text',
@@ -131,10 +134,18 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
     });
     res.json({ message: ai.assistant_message, session: s, attachment });
   } catch (e) {
-    if (uploadedPath && !committed) await storageService.deleteObject(uploadedPath).catch(() => {});
-    console.error('chat send', e);
+    const attemptedId = normalizeParticipantId(req.body?.participantId);
+    // Keep failed S00 image locally for teacher debugging; formal-student failed uploads are cleaned as before.
+    if (uploadedPath && !committed && attemptedId !== 'S00') await storageService.deleteObject(uploadedPath).catch(() => {});
+    console.error('chat send', { message: e?.message, stage: e?.stage, chat_id: e?.chat_id, coze_file_id: e?.coze_file_id, raw: e?.raw || null, stack: e?.stack });
     if (e.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: '聊天图片不能超过10MB' });
-    res.status(e.status || 500).json({ error: e.message || 'AI暂时没有回复，请再试一次。' });
+    if (attemptedId === 'S00') {
+      return res.status(e.status || 500).json({
+        error: e.message || 'AI暂时没有回复，请再试一次。',
+        debug: { stage: e?.stage || '', chat_id: e?.chat_id || '', coze_file_id: e?.coze_file_id || '' },
+      });
+    }
+    res.status(e.status || 500).json({ error: 'AI暂时没有回复，请稍后再试。' });
   }
 });
 

@@ -8,7 +8,8 @@
    - `ADMIN_PASSWORD`
    - `BLOB_STORE_NAME`
    - `EXPERIMENT_RUN_ID=design-thinking-course-202609-v11-enhanced`
-   - `PUBLIC_BASE_URL` 可先留空；只有图片给AI读取失败时再填公开域名。
+   - `COZE_ACCESS_TOKEN` 除聊天/会话权限外，还要授权“文件-uploadFile”权限，聊天图片才能先上传到Coze并取得 file_id。
+   - `PUBLIC_BASE_URL` 可以留空；v11.3 默认不再依赖公网图片 URL。
 3. 两只Coze智能体使用同一个**支持图片理解**的豆包模型，并保持模型参数、知识库/联网设置一致。
 4. 打开 `/health`，应显示 `course-v11-enhanced`。
 5. 打开首页，应能明显看到“进入教师后台”；也可直接访问 `/admin.html`。
