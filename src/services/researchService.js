@@ -315,17 +315,19 @@ class ResearchService {
 
   async getCompleteParticipantData(id) {
     const participant = await this.getParticipant(id);
-    const sessions = {};
-    for (const config of SESSIONS) {
-      sessions[config.id] = {
-        config,
-        record: await this.getSessionRecord(id, config.id),
-        chat_session: await this.getChatSession(id, config.id),
-        chat_messages: await this.getMessages(id, config.id),
-        events: await this.getEvents(id, config.id),
-      };
-    }
-    return { participant, sessions };
+    // 管理员查看学生完整记录时，一次会读取 12 个课次。旧版逐项串行读取，
+    // 在云端 Blob 上容易等待很久，前端又没有加载状态，看起来就像“点了没反应”。
+    // 这里改为按课次并行读取，并在每个课次内并行拉取记录 / 聊天 / 事件。
+    const entries = await Promise.all(SESSIONS.map(async config => {
+      const [record, chat_session, chat_messages, events] = await Promise.all([
+        this.getSessionRecord(id, config.id),
+        this.getChatSession(id, config.id),
+        this.getMessages(id, config.id),
+        this.getEvents(id, config.id),
+      ]);
+      return [config.id, { config, record, chat_session, chat_messages, events }];
+    }));
+    return { participant, sessions: Object.fromEntries(entries) };
   }
 
   async archiveAndResetSession(id, sid, { reason = 'manual_admin_reset' } = {}) {

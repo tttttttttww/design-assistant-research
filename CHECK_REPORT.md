@@ -1,9 +1,22 @@
-# v11.5 image-debug check
+# v11.6 检查说明
 
-- Multimodal message now matches Coze documented shape more strictly: `type=question`, image object first, text object second.
-- S00 receives Coze stage/chat_id/file_id/logid/error details when available.
-- Formal students still receive a generic error; debugging internals are not exposed to them.
-- Failed S00 local image is retained for diagnosis; formal failed uploads are cleaned.
-- Existing 12-session routing, admin dashboard, reset/archive, exports, and A/B/transfer routing retained.
+本版针对教师后台“学生完整记录不明显/点了像没反应”和导出文件过多进行修复。
 
-- v11.5: verified task draft autosave and pre-action persistence hooks in task.js.
+- 学生编号改为明确可点击，并新增“查看记录”按钮。
+- 读取学生12课时完整数据时增加加载、错误重试和刷新状态；有数据的课次自动展开。
+- 后端完整记录读取改为并行拉取，减少云端 Blob 串行等待。
+- 所有前端静态资源版本号统一为 `v=11.6`，避免浏览器继续缓存旧版 admin.js。
+- 正式导出主入口精简为：
+  1. `AI_chat_and_images.zip`：聊天 CSV + 聊天原图。
+  2. `task_records_and_works.zip`：任务记录 CSV + 作品/证据原图。
+  3. `course_research_all.json`：完整结构备份。
+- 旧版细分 CSV 接口仍保留以兼容旧链接，但不再占据后台主界面。
+- S00 测试历史与管理员重置历史仍单独保留，不进入正式数据。
+- 数据命名空间未改变，升级 v11.6 后仍读取 v11.5 已保存的 S01–S30 数据。
+- v11.5 的任务文字自动保存、打开AI/发送消息/上传图片前强制保存、聊天图片能力、A/B路由和安全重置全部保留。
+
+已执行：
+- `npm run check` 通过；
+- `npm test` 通过；
+- `node --check public/js/admin.js` 通过；
+- `node --check src/routes/admin.js` 通过。
