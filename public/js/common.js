@@ -1,6 +1,6 @@
 window.App={
   apiBase:'/express/api',
-  loginVersion:'11.9',
+  loginVersion:'11.11',
   participantId(){return sessionStorage.getItem('participant_id')||'';},
   setParticipantId(id){sessionStorage.setItem('participant_id',id);sessionStorage.setItem('participant_login_verified',this.loginVersion);},
   clearParticipant(){sessionStorage.removeItem('participant_id');sessionStorage.removeItem('participant_login_verified');},

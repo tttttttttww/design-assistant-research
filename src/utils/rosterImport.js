@@ -12,9 +12,14 @@ const HEADER_ALIASES = {
 };
 
 export function normalizeGrade(value) {
-  const raw = clean(value).replace(/年级$/,'');
+  const raw = clean(value).replace(/\s+/g, '').replace(/年级$/, '');
+  if (!raw) return '';
   const map = { '6':'6','7':'7','8':'8','六':'6','七':'7','八':'8' };
-  return map[raw] || '';
+  if (map[raw]) return map[raw];
+  // 兼容常见班级写法：八4、八年级4班、8班、七（1）等，只取前面的年级信息。
+  const m = raw.match(/^(6|7|8|六|七|八)/);
+  if (m) return map[m[1]] || '';
+  return '';
 }
 
 export function normalizeCondition(value) {
@@ -159,6 +164,11 @@ function detectHeader(row = []) {
   return map;
 }
 
+function isHeaderLikeRow(row = []) {
+  const map = detectHeader(row);
+  return map.participant_id != null && map.login_name != null;
+}
+
 function looksLikeId(value) {
   const id = normalizeParticipantId(value);
   return validateParticipantId(id) && id !== 'S00';
@@ -192,12 +202,14 @@ export function parseRosterBuffer(buffer, filename = '') {
   }
   const trimmed = matrix.map(r => (Array.isArray(r) ? r.map(clean) : [])).filter(r => r.some(Boolean));
   if (!trimmed.length) throw Object.assign(new Error('名单文件是空的'), { status: 400 });
-  const headerMap = detectHeader(trimmed[0]);
-  const hasHeader = headerMap.participant_id != null && headerMap.login_name != null;
-  const dataRows = hasHeader ? trimmed.slice(1) : trimmed;
+  const headerIndex = trimmed.findIndex((row, index) => index < 8 && isHeaderLikeRow(row));
+  const hasHeader = headerIndex >= 0;
+  const headerMap = hasHeader ? detectHeader(trimmed[headerIndex]) : {};
+  const dataRows = hasHeader ? trimmed.slice(headerIndex + 1) : trimmed;
   const rows = [], seen = new Set(), duplicates = [], errors = [];
   dataRows.forEach((rawRow, index) => {
-    const line = index + (hasHeader ? 2 : 1);
+    const line = index + (hasHeader ? (headerIndex + 2) : 1);
+    if (isHeaderLikeRow(rawRow)) return; // 忽略中途重复出现的表头行
     const obj = rowToObject(rawRow, hasHeader ? headerMap : null);
     const participant_id = normalizeParticipantId(obj.participant_id);
     const login_name = clean(obj.login_name), gradeRaw = clean(obj.grade), conditionRaw = clean(obj.condition);
@@ -207,7 +219,7 @@ export function parseRosterBuffer(buffer, filename = '') {
     if (seen.has(participant_id)) { duplicates.push(participant_id); errors.push({ line, participant_id, reason: '编号重复' }); return; }
     seen.add(participant_id);
     let grade = '';
-    if (gradeRaw) { grade = normalizeGrade(gradeRaw); if (!grade) { errors.push({ line, participant_id, reason: `年级“${gradeRaw}”无法识别（只接受6/7/8或六/七/八年级）` }); return; } }
+    if (gradeRaw) { grade = normalizeGrade(gradeRaw); if (!grade) { errors.push({ line, participant_id, reason: `年级“${gradeRaw}”无法识别（可填写 6/7/8、六/七/八、八4、七1、八年级4班 等）` }); return; } }
     let condition = '';
     if (conditionRaw) { condition = normalizeCondition(conditionRaw); if (condition === '__invalid__') { errors.push({ line, participant_id, reason: `组别“${conditionRaw}”无法识别（只接受A/B/unassigned）` }); return; } }
     rows.push({ line, participant_id, login_name, grade, condition });

@@ -203,9 +203,11 @@ router.post('/participants/bulk-meta', requireAdmin, async (req, res) => {
     const result = [];
     const validConditions = new Set(['unassigned', 'A', 'B']);
     const normalizeGrade = value => {
-      const raw = String(value || '').trim().replace(/年级$/, '');
+      const raw = String(value || '').trim().replace(/\s+/g, '').replace(/年级$/, '');
       const map = { '6': '6', '7': '7', '8': '8', '六': '6', '七': '7', '八': '8' };
-      return map[raw] || '';
+      if (map[raw]) return map[raw];
+      const m = raw.match(/^(6|7|8|六|七|八)/);
+      return m ? (map[m[1]] || '') : '';
     };
     const looksLikeGrade = value => Boolean(normalizeGrade(value));
 

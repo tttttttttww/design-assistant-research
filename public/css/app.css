@@ -150,7 +150,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#f6f4ef;border-radius:
 .archive-tools summary{cursor:pointer}
 @media(max-width:780px){.export-grid{grid-template-columns:1fr}.compact-export{grid-column:auto}.action-row{flex-wrap:wrap}}
 
-/* v11.9: 编号 + 姓名双重核对与登录页细节 */
+/* v11.11: 编号 + 姓名双重核对与登录页细节 */
 .teacher-entry-simple{display:block;justify-content:initial}
 .teacher-entry-simple .teacher-btn{width:100%;min-height:50px;display:flex;align-items:center;justify-content:center;text-align:center}
 .test-login-note{text-align:center;margin:10px 0 0;font-size:12px}
@@ -160,7 +160,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#f6f4ef;border-radius:
 .cover-card .form>.btn{min-height:50px}
 .topbar #switchStudent{background:#fff;color:var(--green);border-color:#c9d5d1}
 
-/* v11.9: Excel / CSV 名单上传与导入预览 */
+/* v11.11: Excel / CSV 名单上传与导入预览 */
 .roster-import-box{margin-top:16px;padding:18px;border:1px solid var(--line);border-radius:16px;background:#fbfcfa}
 .roster-import-box h3{margin:5px 0 6px}
 .roster-upload-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px}
