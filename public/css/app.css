@@ -94,3 +94,22 @@ pre{white-space:pre-wrap;word-break:break-word;background:#f6f4ef;border-radius:
 .course-page{width:min(1320px,calc(100% - 34px))}.course-header{margin-bottom:22px}.course-header h1{font-size:clamp(32px,4vw,52px);margin:4px 0 2px}.course-header p{margin:0;color:var(--muted)}
 .course-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(330px,.75fr);gap:22px;align-items:start}.course-main{display:grid;gap:18px}.course-side{min-width:0}.sticky-card{position:sticky;top:88px}.lead{color:var(--muted);font-size:17px}.brief-list{border-left:4px solid var(--orange);padding-left:16px;margin:16px 0}.brief-list p{margin:7px 0}.compact{padding:18px 22px}.compact summary{cursor:pointer}.artifact-list{display:grid;gap:14px}.req{color:#b94c2e;font-size:12px;margin-left:6px}.optional{color:var(--muted);font-size:12px;margin-left:6px}.between{justify-content:space-between}.badge.big{font-size:14px;padding:7px 11px}.chat-embed{margin-top:16px;border-top:1px solid var(--line);padding-top:14px}.chat-meta{margin-bottom:10px}.compact-messages{height:380px;background:#fbfaf6;border:1px solid var(--line);border-radius:14px;padding:14px}.session-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.session-card{border:1px solid var(--line);border-radius:16px;padding:16px;background:#fff}.session-card.current{outline:3px solid rgba(23,79,73,.14);border-color:#7da79d}.session-card h3{margin:8px 0}.session-card p{margin:6px 0}.photo-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 @media(max-width:980px){.course-grid{grid-template-columns:1fr}.sticky-card{position:static}.session-cards{grid-template-columns:1fr}.compact-messages{height:330px}}
+
+/* v11 enhanced: multimodal chat + clearer admin entry */
+.message-image{display:block;margin-top:10px;width:min(100%,360px);max-height:300px;object-fit:contain;border-radius:12px;border:1px solid var(--line);background:#fff}
+.composer-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0 8px}
+.attach-btn{display:inline-flex;align-items:center;gap:8px;border:1px solid #bfcfc8;background:#fff;color:var(--green);padding:9px 12px;border-radius:12px;font-weight:800;cursor:pointer}
+.attach-btn input{display:none}.attach-btn.disabled{opacity:.45;pointer-events:none}
+.chat-image-preview{display:grid;grid-template-columns:92px 1fr;gap:12px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:14px;background:#faf8f2;margin:10px 0}
+.chat-image-preview img{width:92px;height:76px;object-fit:cover;border-radius:10px;border:1px solid var(--line)}
+.chat-image-preview p{margin:3px 0 6px}.btn.mini{padding:6px 10px;font-size:12px;border-radius:10px}
+.teacher-entry{margin-top:16px;padding-top:14px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:12px;align-items:center}
+.admin-help{background:#edf4f1;border:1px solid #c9d9d3;border-radius:16px;padding:14px 16px;margin-bottom:18px}
+.data-chip{display:inline-flex;padding:4px 8px;border-radius:999px;background:#f1eee7;color:#53615f;font-size:12px;margin-right:5px}
+.admin-table .muted-cell{color:var(--muted)}
+@media(max-width:620px){.chat-image-preview{grid-template-columns:72px 1fr}.chat-image-preview img{width:72px;height:64px}}
+.summary-grid{grid-template-columns:repeat(6,minmax(0,1fr))}
+.chat-photos{grid-template-columns:repeat(3,minmax(0,120px));margin-top:10px}
+.chat-photos img{aspect-ratio:1/1;object-fit:cover}
+@media(max-width:1200px){.summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:700px){.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}

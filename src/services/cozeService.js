@@ -19,40 +19,73 @@ class CozeService {
     const { default: axios } = await import('axios');
     const response = await axios.post('https://api.coze.cn/v1/conversation/create', {
       bot_id: this.botId(variant),
-      meta_data: { participant_id: participantId, session_id: sessionId, course_session_id: courseSessionId, ai_variant: variant, experiment_run_id: process.env.EXPERIMENT_RUN_ID || 'default' },
+      meta_data: {
+        participant_id: participantId,
+        session_id: sessionId,
+        course_session_id: courseSessionId,
+        ai_variant: variant,
+        experiment_run_id: process.env.EXPERIMENT_RUN_ID || 'default',
+      },
     }, { headers: this.headers(), timeout: 20000 });
     const id = response.data?.data?.id;
     if (!id) throw new Error('Coze conversation creation returned no id');
     return id;
   }
 
-  async sendMessage({ participantId, sessionId, courseSessionId, conversationId, message, variant }) {
+  buildAdditionalMessage(message, imageUrl = '') {
+    if (!imageUrl) return { role: 'user', content: message, content_type: 'text' };
+    const objects = [
+      { type: 'text', text: message },
+      { type: 'image', file_url: imageUrl },
+    ];
+    return { role: 'user', content: JSON.stringify(objects), content_type: 'object_string' };
+  }
+
+  async sendMessage({ participantId, sessionId, courseSessionId, conversationId, message, imageUrl = '', variant }) {
     if (process.env.COZE_MOCK === '1') return {
-      bot_id: this.botId(variant), conversation_id: conversationId || `mock_conv_${participantId}_${courseSessionId}_${sessionId}`,
-      chat_id: `mock_chat_${Date.now()}`, message_id: `mock_msg_${Date.now()}`,
-      assistant_message: `模拟${variant === 'supported' ? '支持型' : '自由'}AI回复：我收到了“${String(message).slice(-80)}”。`, model: this.modelName(),
+      bot_id: this.botId(variant),
+      conversation_id: conversationId || `mock_conv_${participantId}_${courseSessionId}_${sessionId}`,
+      chat_id: `mock_chat_${Date.now()}`,
+      message_id: `mock_msg_${Date.now()}`,
+      assistant_message: `模拟${variant === 'supported' ? '支持型' : '自由'}AI回复：我收到了“${String(message).slice(-80)}”${imageUrl ? '，并收到了1张图片。' : '。'}`,
+      model: this.modelName(),
     };
     const { default: axios } = await import('axios');
     const active = conversationId || await this.createConversation(participantId, sessionId, courseSessionId, variant);
     const botId = this.botId(variant);
     const start = await axios.post(`https://api.coze.cn/v3/chat?conversation_id=${encodeURIComponent(active)}`, {
-      bot_id: botId, user_id: participantId, stream: false, auto_save_history: true,
-      additional_messages: [{ role: 'user', content: message, content_type: 'text' }],
+      bot_id: botId,
+      user_id: participantId,
+      stream: false,
+      auto_save_history: true,
+      additional_messages: [this.buildAdditionalMessage(message, imageUrl)],
     }, { headers: this.headers(), timeout: 30000 });
     const chatId = start.data?.data?.id;
     if (!chatId) throw new Error('Coze chat initiation failed');
-    let status = start.data?.data?.status || 'in_progress'; const started = Date.now();
+    let status = start.data?.data?.status || 'in_progress';
+    const started = Date.now();
     while (['created','in_progress'].includes(status)) {
       if (Date.now() - started > 80000) throw new Error('Coze response timeout');
       await new Promise(r => setTimeout(r, 900));
-      const q = await axios.get('https://api.coze.cn/v3/chat/retrieve', { params: { conversation_id: active, chat_id: chatId }, headers: { Authorization: `Bearer ${this.token()}` }, timeout: 15000 });
+      const q = await axios.get('https://api.coze.cn/v3/chat/retrieve', {
+        params: { conversation_id: active, chat_id: chatId },
+        headers: { Authorization: `Bearer ${this.token()}` },
+        timeout: 15000,
+      });
       status = q.data?.data?.status;
       if (['failed','canceled','required_action','requires_action'].includes(status)) throw new Error(`Coze chat ${status}`);
     }
-    const list = await axios.get('https://api.coze.cn/v3/chat/message/list', { params: { conversation_id: active, chat_id: chatId }, headers: { Authorization: `Bearer ${this.token()}` }, timeout: 15000 });
+    const list = await axios.get('https://api.coze.cn/v3/chat/message/list', {
+      params: { conversation_id: active, chat_id: chatId },
+      headers: { Authorization: `Bearer ${this.token()}` },
+      timeout: 15000,
+    });
     const answers = (list.data?.data || []).filter(m => m.role === 'assistant' && (m.type === 'answer' || !m.type));
     return {
-      bot_id: botId, conversation_id: active, chat_id: chatId, message_id: answers.at(-1)?.id || '',
+      bot_id: botId,
+      conversation_id: active,
+      chat_id: chatId,
+      message_id: answers.at(-1)?.id || '',
       assistant_message: answers.map(m => m.content).filter(Boolean).join('\n') || '抱歉，这一轮没有生成可显示的回复。',
       model: start.data?.data?.model || this.modelName(),
     };

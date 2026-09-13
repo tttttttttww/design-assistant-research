@@ -4,7 +4,7 @@ import path from 'node:path';
 class StorageService {
   constructor() {
     this.runId = process.env.EXPERIMENT_RUN_ID || 'default';
-    this.rootPrefix = `runs/${this.runId}/course-v11`;
+    this.rootPrefix = `runs/${this.runId}/course-v11-enhanced`;
     this.localRoot = process.env.LOCAL_STORAGE_DIR || path.resolve(process.cwd(), 'data');
     this.forceLocal = process.env.USE_LOCAL_STORAGE === '1' || process.env.NODE_ENV === 'test';
     this._store = null;

@@ -50,4 +50,21 @@ router.get('/image/:participantId/:sessionId/:artifactKey/:fileName', async (req
   } catch { res.status(500).end(); }
 });
 
+
+router.get('/chat-image/:participantId/:sessionId/:fileName', async (req, res) => {
+  try {
+    const id = normalizeParticipantId(req.params.participantId);
+    const sid = String(req.params.sessionId || '').toUpperCase();
+    const fileName = String(req.params.fileName || '');
+    if (!isAllowedParticipant(id) || !getSessionConfig(sid)) return res.status(403).end();
+    if (!/^chat_[a-f0-9-]+\.(?:jpg|png|webp)$/i.test(fileName)) return res.status(400).end();
+    const data = await storageService.getObjectBuffer(`uploads/${id}/${sid}/chat/${fileName}`);
+    if (!data) return res.status(404).end();
+    const mime = fileName.endsWith('.png') ? 'image/png' : fileName.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Cache-Control', 'public,max-age=300');
+    res.send(data);
+  } catch { res.status(500).end(); }
+});
+
 export default router;

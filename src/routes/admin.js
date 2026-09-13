@@ -31,7 +31,10 @@ async function allIds(includeTest=true){await ensureDefaultStudents(); const ids
 async function summary(id){
   const p=await researchService.getParticipant(id); const settings=await researchService.getSettings();
   const r=await researchService.getSessionRecord(id,settings.active_session_id); const c=await researchService.getChatSession(id,settings.active_session_id);
-  return {participant_id:id,condition:p.condition,grade:p.grade,is_test:p.is_test,active_session_id:settings.active_session_id,started:Boolean(r.started_at),ai_used:Boolean(r.ai_used),first_ai_open_latency_seconds:r.first_ai_open_latency_seconds,first_user_message_latency_seconds:r.first_user_message_latency_seconds,user_turn_count:c?.user_turn_count||0,submitted:Boolean(r.submitted_at),last_active_at:p.last_active_at};
+  const messages=await researchService.getMessages(id,settings.active_session_id);
+  const chatImageCount=messages.filter(m=>m.role==='user'&&m.message_has_image).length;
+  const artifactCount=Object.keys(r.artifacts||{}).length;
+  return {participant_id:id,condition:p.condition,grade:p.grade,is_test:p.is_test,active_session_id:settings.active_session_id,started:Boolean(r.started_at),ai_used:Boolean(r.ai_used),first_ai_open_latency_seconds:r.first_ai_open_latency_seconds,first_user_message_latency_seconds:r.first_user_message_latency_seconds,user_turn_count:c?.user_turn_count||0,chat_image_count:chatImageCount,artifact_count:artifactCount,submitted:Boolean(r.submitted_at),last_active_at:p.last_active_at};
 }
 router.get('/participants',requireAdmin,async(req,res)=>{try{const rows=[];for(const id of await allIds(true)) rows.push(await summary(id));res.json(rows);}catch(e){console.error(e);res.status(500).json({error:'读取学生列表失败'});}});
 router.post('/participants/create-default',requireAdmin,async(req,res)=>{await ensureDefaultStudents();res.json({created_or_checked:30});});
@@ -43,7 +46,21 @@ async function formalData(){const out=[];for(let i=1;i<=30;i++)out.push(await re
 router.get('/export/all.json',requireAdmin,async(req,res)=>sendJson(res,'course_research_all.json',await formalData()));
 router.get('/export/participants.csv',requireAdmin,async(req,res)=>{const rows=[];for(let i=1;i<=30;i++){const p=await researchService.getParticipant(`S${String(i).padStart(2,'0')}`);rows.push({participant_id:p.participant_id,grade:p.grade,condition:p.condition,created_at:p.created_at,last_active_at:p.last_active_at});}sendCsv(res,'participants.csv',['participant_id','grade','condition','created_at','last_active_at'],rows);});
 router.get('/export/sessions.csv',requireAdmin,async(req,res)=>{const rows=[];for(let i=1;i<=30;i++){const id=`S${String(i).padStart(2,'0')}`;for(const s of SESSIONS){const r=await researchService.getSessionRecord(id,s.id);rows.push({participant_id:id,session_id:s.id,date:s.date,research_role:s.research_role,condition_at_time:r.condition_at_time,ai_variant:r.ai_variant,started_at:r.started_at,first_ai_open_at:r.first_ai_open_at,first_ai_open_latency_seconds:r.first_ai_open_latency_seconds,first_user_message_at:r.first_user_message_at,first_user_message_latency_seconds:r.first_user_message_latency_seconds,ai_open_count:r.ai_open_count,ai_used:r.ai_used,text_fields:r.text_fields,artifacts:r.artifacts,submitted_at:r.submitted_at});}}sendCsv(res,'session_records.csv',['participant_id','session_id','date','research_role','condition_at_time','ai_variant','started_at','first_ai_open_at','first_ai_open_latency_seconds','first_user_message_at','first_user_message_latency_seconds','ai_open_count','ai_used','text_fields','artifacts','submitted_at'],rows);});
-router.get('/export/chat.csv',requireAdmin,async(req,res)=>{const rows=[];for(let i=1;i<=30;i++){const id=`S${String(i).padStart(2,'0')}`;for(const s of SESSIONS){for(const m of await researchService.getMessages(id,s.id))rows.push(m);}}sendCsv(res,'chat_messages.csv',['participant_id','course_session_id','message_index','role','content','created_at','conversation_id','chat_id','bot_id','model','ai_variant','prompt_version'],rows);});
+router.get('/export/chat.csv',requireAdmin,async(req,res)=>{const rows=[];for(let i=1;i<=30;i++){const id=`S${String(i).padStart(2,'0')}`;for(const s of SESSIONS){for(const m of await researchService.getMessages(id,s.id))rows.push(m);}}sendCsv(res,'chat_messages.csv',['participant_id','course_session_id','message_index','role','content','content_type','message_has_image','attachments','created_at','conversation_id','chat_id','bot_id','model','ai_variant','prompt_version'],rows);});
+
+router.get('/export/chat-attachments.csv',requireAdmin,async(req,res)=>{
+  const rows=[];
+  for(let i=1;i<=30;i++){
+    const id=`S${String(i).padStart(2,'0')}`;
+    for(const s of SESSIONS){
+      for(const m of await researchService.getMessages(id,s.id)){
+        for(const a of (m.attachments||[])) rows.push({participant_id:id,course_session_id:s.id,message_index:m.message_index,created_at:m.created_at,type:a.type||'',file_name:a.file_name||'',mime:a.mime||'',uploaded_at:a.uploaded_at||'',file_path:a.file_path||''});
+      }
+    }
+  }
+  sendCsv(res,'chat_attachments.csv',['participant_id','course_session_id','message_index','created_at','type','file_name','mime','uploaded_at','file_path'],rows);
+});
+
 router.get('/export/events.csv',requireAdmin,async(req,res)=>{const rows=[];for(let i=1;i<=30;i++){const id=`S${String(i).padStart(2,'0')}`;for(const s of SESSIONS){for(const e of await researchService.getEvents(id,s.id))rows.push(e);}}sendCsv(res,'events.csv',['participant_id','session_id','event_index','type','at','data'],rows);});
 router.get('/export/test-archives.json',requireAdmin,async(req,res)=>sendJson(res,'S00_test_archives.json',await researchService.listTestArchives()));
 export default router;

@@ -17,7 +17,7 @@ app.use(express.json({ limit: '12mb' }));
 app.use(express.urlencoded({ extended: true, limit: '12mb' }));
 app.use(cookieParser());
 app.use(express.static(join(__dirname, '../../../public')));
-app.get('/health', (req, res) => res.json({ ok: true, version: 'course-v11' }));
+app.get('/health', (req, res) => res.json({ ok: true, version: 'course-v11-enhanced' }));
 app.use('/api', authRoutes);
 app.use('/api', courseRoutes);
 app.use('/api', chatRoutes);

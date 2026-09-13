@@ -1,59 +1,72 @@
-# Design Thinking + GenAI Help-Seeking Research Platform v11
+# Design Thinking + GenAI Help-Seeking Research Platform v11 Enhanced
 
 用于12课时设计思维课程与生成式AI学业求助研究的数据采集平台。
 
-## 本版核心变化
+## 这一版新增
 
-- 固定学生编号：S01-S30；S00为教师测试号。
-- 编号后续分组不改变，只更新 `condition`：A=支持型AI，B=自由AI。
-- 12课时任务全部加入配置，教师后台可逐课预览并切换当前课次。
-- AI不再等“先完成第一版”后才解锁：有AI的课次从任务开始就可由学生自行打开。
-- 自动记录：任务开始、首次打开AI、首次发送AI消息、各自时延、AI打开次数、完整聊天、图片、文字、提交时间与事件日志。
-- 注意：`first_user_message_at` 是“首次发送给AI的消息”，不自动等同于“首次学业求助”。正式的 `first_help_request` 应在后续行为编码后确定。
-- W4-W9：A组自动路由到支持型AI，B组路由到自由AI；学生界面不显示组别。
-- W10-W11：撤除实验性支持，两组都自动回到同一个自由AI。
-- W2/W10/W11任务目前标记为“候选”，方便你先看平台形态，正式研究前可在 `src/config/researchConfig.js` 一处替换。
-- W2/W12问卷只留接口和位置，不提前放未冻结题项。
+- **教师后台完整保留并增强**：首页直接有“进入教师后台”，也可以直接访问 `/admin.html`。
+- 后台实时查看：学生是否进入任务、首次打开AI时间、首次发送消息时间、AI消息数、AI聊天图片数、任务图片数、提交状态。
+- 点击任一学生编号，可查看 **12课时完整记录**：文字、任务作品、AI聊天、聊天图片、时间戳和系统事件。
+- 正式数据一键导出：学生信息、课次记录、AI聊天、聊天图片索引、事件日志、完整JSON。
+- **AI聊天支持图片**：学生可以把草图、原型、测试照片和文字一起发给AI。每条图片消息都和对应学生消息、课次、时间戳绑定保存。
+- AI聊天图片能力对A/B两组完全一致；组间差异仍只来自两只Coze智能体的系统提示词。
+- 学生端不再显示“候选任务”的教师说明；候选标记只在教师后台出现。
+- 学生端AI说明改为中性表述：“本节任务中可以使用AI设计助手，也可以不使用。”
+- ZIP中**不放Coze智能体提示词**，避免和你当前已确定的最新版提示词混淆；请直接在Coze中粘贴你手头的两组最新版提示词。
 
-## 12课时默认配置
+## 研究结构
 
-W1 椅子快速设计挑战（pilot，自由AI）
-W2 正式基线设计任务（候选，自由AI；任务后前测问卷待接入）
-W3 辅助绘画装置：理解使用者（自由AI）
-W4 构思方案（A支持型/B自由AI）
-W5 制作V1（A支持型/B自由AI）
-W6 测试V1（A支持型/B自由AI）
-W7 制定修改计划（A支持型/B自由AI）
-W8 制作V2（A支持型/B自由AI）
-W9 V2测试与完成（A支持型/B自由AI）
-W10 迁移任务一（候选，全部自由AI）
-W11 迁移任务二（候选，全部自由AI）
-W12 课程回顾与后测（无AI；后测问卷待接入）
+- W1：椅子快速设计挑战，pilot，全部自由AI。
+- W2：正式基线短任务，全部自由AI；先任务后问卷。
+- W3：辅助绘画装置主项目启动，全部自由AI。
+- W4-W9：A组支持型AI，B组自由AI。
+- W10-W11：撤除支持，两组统一回到自由AI，用于迁移/保持观察。
+- W12：课程回顾与后测，无AI。
 
-## 数据导出
+## 数据字段
 
-教师后台可下载：
-- `participants.csv`：学生编号、年级、分组
-- `session_records.csv`：12课时文字、时间、AI时机、图片元数据、提交记录
-- `chat_messages.csv`：所有AI对话
-- `events.csv`：任务开始、AI打开、上传、保存、发送、提交等事件
-- `course_research_all.json`：完整原始数据
-- `S00_test_archives.json`：测试号归档
+平台自动记录：
 
-## 求助时机的解释
-
-平台自动给出：
+- `task_started_at`
 - `first_ai_open_at` / `first_ai_open_latency_seconds`
 - `first_user_message_at` / `first_user_message_latency_seconds`
+- `ai_open_count`
+- 每条学生/AI消息及时间戳
+- `message_has_image`
+- 聊天图片元数据和对应消息序号
+- 任务文字字段
+- 任务作品/证据图片
+- 提交时间
+- 系统事件日志
 
-其中“首次打开AI”只能说明进入AI界面；“首次发送消息”也不一定必然是学业求助。正式分析中，应先根据行为编码判断哪一条学生消息真正具有求助功能，再由消息时间戳计算正式的首次求助时延。
+注意：`first_user_message_at` 只是“首次发送给AI的消息”，**不自动等于首次学业求助**。正式的首次求助仍需后续行为编码判断哪条消息真正具有求助功能。
+
+## 教师后台
+
+入口：`/admin.html`
+
+正式导出只包含 S01-S30，自动排除 S00：
+
+- `participants.csv`
+- `session_records.csv`
+- `chat_messages.csv`
+- `chat_attachments.csv`
+- `events.csv`
+- `course_research_all.json`
+
+S00测试历史单独导出：
+
+- `S00_test_archives.json`
+
+## AI图片说明
+
+聊天图片通过平台存储后，以公开图片URL发送给Coze多模态对话接口。因此：
+
+1. 两只Coze智能体必须使用**支持图片理解/视觉输入**的同一底层模型；
+2. 支持 JPG、PNG、WEBP，每次最多1张，≤10MB；
+3. 图片消息必须同时配一段文字，便于判断学生的真实求助意图；
+4. 如果部署环境反向代理导致Coze读取不到图片，可在环境变量设置 `PUBLIC_BASE_URL=https://你的公开域名`。
 
 ## 部署
 
 见 `DEPLOY_FIRST.md`。
-
-## Coze智能体
-
-见：
-- `COZE_FREE_AGENT_PROMPT.md`
-- `COZE_SUPPORTED_AGENT_PROMPT.md`

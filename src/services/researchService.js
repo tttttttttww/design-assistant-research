@@ -245,6 +245,7 @@ class ResearchService {
       message_id: data.message_id || randomUUID(), role: data.role, content: data.content,
       created_at: data.created_at || iso(), conversation_id: data.conversation_id || '', chat_id: data.chat_id || '',
       bot_id: data.bot_id || '', model: data.model || '', ai_variant: data.ai_variant || '', prompt_version: data.prompt_version || '',
+      content_type: data.content_type || 'text', message_has_image: Boolean(data.message_has_image), attachments: Array.isArray(data.attachments) ? data.attachments : [],
     };
     await storageService.putObject(mKey(id, sid, message_index), JSON.stringify(row));
     return row;
