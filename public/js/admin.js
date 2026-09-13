@@ -9,6 +9,14 @@ const api = async (path, options = {}) => {
   return d;
 };
 
+const uploadApi = async (path, formData) => {
+  const r = await fetch('/express/api/admin' + path, { method: 'POST', body: formData });
+  let d = {};
+  try { d = await r.json(); } catch {}
+  if (!r.ok) throw new Error(d.error || '上传失败');
+  return d;
+};
+
 let rows = [], settings = null, sessions = [], selectedParticipantId = '';
 const esc = App.escapeHtml;
 const fmtSeconds = v => v == null ? '—' : v < 60 ? `${v}s` : `${Math.floor(v / 60)}m ${v % 60}s`;
@@ -74,6 +82,74 @@ function renderSessionCards() {
 }
 
 document.getElementById('createDefault').onclick = async () => { await api('/participants/create-default', { method: 'POST' }); await loadParticipants(); };
+
+let rosterPreviewData = null;
+const rosterFile = document.getElementById('rosterFile');
+const rosterPreviewBox = document.getElementById('rosterPreview');
+document.getElementById('chooseRoster').onclick = () => rosterFile.click();
+rosterFile.onchange = async () => {
+  const file = rosterFile.files?.[0];
+  if (!file) return;
+  document.getElementById('rosterFileName').textContent = file.name;
+  rosterPreviewBox.classList.remove('hidden');
+  rosterPreviewBox.innerHTML = '<div class="detail-loading"><span class="spinner-inline"></span>正在读取名单并检查编号、姓名、年级……</div>';
+  try {
+    const fd = new FormData();
+    fd.append('roster', file);
+    rosterPreviewData = await uploadApi('/participants/roster-preview', fd);
+    renderRosterPreview(rosterPreviewData);
+  } catch (x) {
+    rosterPreviewData = null;
+    rosterPreviewBox.innerHTML = `<div class="notice warn"><strong>名单读取失败：</strong>${esc(x.message)}</div>`;
+  }
+};
+
+function renderRosterPreview(d) {
+  const duplicateNameText = (d.duplicate_names || []).map(group => group.map(x => `${x.participant_id} ${x.login_name}`).join(' / '));
+  const problems = [];
+  if (d.errors?.length) problems.push(`有 ${d.errors.length} 行需要修正`);
+  if (d.missing?.length) problems.push(`缺少 ${d.missing.length} 个编号`);
+  const status = d.ready_for_full_import
+    ? '<div class="notice roster-ready"><strong>可以导入：</strong>已识别 S01–S30 共30人。请再核对下面预览，然后点击“确认导入30人”。</div>'
+    : `<div class="notice warn"><strong>暂时不能完整导入：</strong>${esc(problems.join('；') || '名单格式需要检查')}。</div>`;
+  const errorHtml = d.errors?.length
+    ? `<details open><summary>需要修正的行（${d.errors.length}）</summary><div class="roster-errors">${d.errors.map(e => `<div>第${e.line}行 · ${esc(e.participant_id)}：${esc(e.reason)}</div>`).join('')}</div></details>`
+    : '';
+  const missingHtml = d.missing?.length ? `<div class="small warn-text">缺少编号：${d.missing.join('、')}</div>` : '';
+  const sameNameHtml = duplicateNameText.length
+    ? `<div class="notice warn"><strong>发现同名学生：</strong>${duplicateNameText.map(esc).join('；')}。编号+姓名仍可使用，但同名学生若互相输错编号，姓名无法进一步区分；上课时请特别提醒他们核对编号。</div>`
+    : '';
+  const rowsHtml = (d.rows || []).map(r => `<tr><td>${esc(r.participant_id)}</td><td>${esc(r.login_name)}</td><td>${esc(r.grade || '—')}</td><td>${esc(r.condition || '保持原值')}</td></tr>`).join('');
+  rosterPreviewBox.innerHTML = `${status}${sameNameHtml}${errorHtml}${missingHtml}<div class="row between roster-preview-head"><div class="small">文件：${esc(d.filename || '')} · 工作表：${esc(d.sheet_name || '')} · 有效 ${d.valid_count || 0} 人</div><button class="btn" id="confirmRosterImport" type="button" ${d.ready_for_full_import ? '' : 'disabled'}>确认导入30人</button></div><div class="table-wrap roster-preview-table"><table class="admin-table"><thead><tr><th>编号</th><th>姓名</th><th>年级</th><th>condition</th></tr></thead><tbody>${rowsHtml || '<tr><td colspan="4">没有识别到有效学生</td></tr>'}</tbody></table></div><p class="small">隐私说明：这里显示姓名只是为了让老师导入前核对；点击确认后平台只保存姓名哈希，原Excel/CSV文件不会保存。</p>`;
+  const confirmBtn = document.getElementById('confirmRosterImport');
+  if (confirmBtn && d.ready_for_full_import) confirmBtn.onclick = confirmRosterImport;
+}
+
+async function confirmRosterImport() {
+  if (!rosterPreviewData?.ready_for_full_import) return;
+  const btn = document.getElementById('confirmRosterImport');
+  btn.disabled = true;
+  btn.textContent = '正在导入…';
+  try {
+    const payloadRows = rosterPreviewData.rows.map(r => ({
+      participant_id: r.participant_id,
+      login_name: r.login_name,
+      grade: r.grade,
+      condition: r.condition,
+    }));
+    const r = await api('/participants/roster-import', { method: 'POST', body: JSON.stringify({ rows: payloadRows }) });
+    rosterPreviewBox.innerHTML = `<div class="notice roster-ready"><strong>名单导入完成：</strong>${r.imported_count} 人。姓名明文没有保存，学生现在可用“编号 + 姓名”登录。</div>`;
+    rosterPreviewData = null;
+    rosterFile.value = '';
+    document.getElementById('rosterFileName').textContent = '已完成导入';
+    await loadParticipants();
+  } catch (x) {
+    btn.disabled = false;
+    btn.textContent = '确认导入30人';
+    alert(x.message);
+  }
+}
+
 document.getElementById('bulkBtn').onclick = async () => {
   const r = await api('/participants/bulk-meta', { method: 'POST', body: JSON.stringify({ text: document.getElementById('bulkText').value }) });
   const bad = r.result.filter(x => x.status !== 'ok');
@@ -88,6 +164,7 @@ async function loadParticipants() {
   document.getElementById('currentTitle').textContent = `${sid} 课堂数据总览`;
   const stats = [
     ['正式学生', formal.length],
+    ['姓名校验已设置', formal.filter(x => x.login_name_ready).length],
     ['已进入任务', formal.filter(x => x.started).length],
     ['打开过AI', formal.filter(x => x.first_ai_open_latency_seconds != null).length],
     ['发过AI消息', formal.filter(x => x.ai_used).length],
@@ -95,7 +172,11 @@ async function loadParticipants() {
     ['已提交', formal.filter(x => x.submitted).length],
   ];
   document.getElementById('summary').innerHTML = stats.map(([k, v]) => `<div class="summary-card"><strong>${v}</strong><span>${k}</span></div>`).join('');
-  document.getElementById('participantTable').innerHTML = `<div class="table-wrap"><table class="admin-table"><thead><tr><th>编号</th><th>年级</th><th>condition</th><th>进入任务</th><th>首次打开AI</th><th>首次发消息</th><th>学生消息</th><th>聊天图片</th><th>任务图片</th><th>提交</th><th>操作</th></tr></thead><tbody>${rows.map(x => `<tr data-id="${x.participant_id}" class="p-row ${selectedParticipantId === x.participant_id ? 'selected-row' : ''}"><td><button class="participant-link view-detail" data-id="${x.participant_id}" type="button"><strong>${x.participant_id}</strong></button>${x.is_test ? ' <span class="badge">测试</span>' : ''}</td><td>${esc(x.grade || '')}</td><td>${esc(x.condition)}</td><td>${badge(x.started)}</td><td>${fmtSeconds(x.first_ai_open_latency_seconds)}</td><td>${fmtSeconds(x.first_user_message_latency_seconds)}</td><td>${x.user_turn_count}</td><td>${x.chat_image_count || 0}</td><td>${x.artifact_count || 0}</td><td>${badge(x.submitted)}</td><td class="reset-cell"><div class="row action-row"><button class="btn ghost mini view-detail" data-id="${x.participant_id}" type="button">查看记录</button><button class="btn danger ghost mini reset-current" data-id="${x.participant_id}" type="button">重置本课次</button></div></td></tr>`).join('')}</tbody></table></div>`;
+  const rosterReady = formal.filter(x => x.login_name_ready).length;
+  const rosterNotice = rosterReady === formal.length
+    ? `<div class="notice roster-ready"><strong>姓名校验名单已就绪：</strong>${rosterReady}/${formal.length}。学生需要“编号 + 姓名”同时匹配才能进入。</div>`
+    : `<div class="notice warn roster-warning"><strong>上课前还要完成姓名校验名单：</strong>目前 ${rosterReady}/${formal.length} 已设置。未设置姓名的正式编号将无法登录。</div>`;
+  document.getElementById('participantTable').innerHTML = `${rosterNotice}<div class="table-wrap"><table class="admin-table"><thead><tr><th>编号</th><th>姓名校验</th><th>年级</th><th>condition</th><th>进入任务</th><th>首次打开AI</th><th>首次发消息</th><th>学生消息</th><th>聊天图片</th><th>任务图片</th><th>提交</th><th>操作</th></tr></thead><tbody>${rows.map(x => `<tr data-id="${x.participant_id}" class="p-row ${selectedParticipantId === x.participant_id ? 'selected-row' : ''}"><td><button class="participant-link view-detail" data-id="${x.participant_id}" type="button"><strong>${x.participant_id}</strong></button>${x.is_test ? ' <span class="badge">测试</span>' : ''}</td><td>${x.is_test ? '<span class="small">S00免校验</span>' : (x.login_name_ready ? '<span class="badge">已设置</span>' : '<span class="small warn-text">未设置</span>')}</td><td>${esc(x.grade || '')}</td><td>${esc(x.condition)}</td><td>${badge(x.started)}</td><td>${fmtSeconds(x.first_ai_open_latency_seconds)}</td><td>${fmtSeconds(x.first_user_message_latency_seconds)}</td><td>${x.user_turn_count}</td><td>${x.chat_image_count || 0}</td><td>${x.artifact_count || 0}</td><td>${badge(x.submitted)}</td><td class="reset-cell"><div class="row action-row"><button class="btn ghost mini view-detail" data-id="${x.participant_id}" type="button">查看记录</button><button class="btn danger ghost mini reset-current" data-id="${x.participant_id}" type="button">重置本课次</button></div></td></tr>`).join('')}</tbody></table></div>`;
   document.querySelectorAll('.p-row').forEach(tr => tr.onclick = e => {
     if (e.target.closest('button')) return;
     detail(tr.dataset.id, true);
@@ -181,12 +262,15 @@ async function detail(id, scroll = false) {
     }).join('');
 
     detailBox.innerHTML = `<div class="row between detail-heading"><div><span class="eyebrow">学生完整数据</span><h2>${id}${d.participant.is_test ? ' · S00测试号' : ''}</h2><p class="small">已读取该编号12课时的任务文字、作品图片、AI完整对话、聊天图片和时间戳。有数据的课次会自动展开。</p></div><button class="btn ghost mini" id="refreshDetail" type="button">刷新此学生记录</button></div>
-      <div class="section"><h3>基本信息</h3><div class="grid two"><label>年级<input id="grade" value="${esc(d.participant.grade || '')}"></label><label>condition<select id="condition"><option value="unassigned">unassigned</option><option value="A">A · 支持型AI</option><option value="B">B · 自由AI</option></select></label></div><button class="btn secondary" id="saveMeta">保存</button></div>
+      <div class="section"><h3>基本信息</h3><div class="grid two"><label>年级<input id="grade" value="${esc(d.participant.grade || '')}"></label><label>condition<select id="condition"><option value="unassigned">unassigned</option><option value="A">A · 支持型AI</option><option value="B">B · 自由AI</option></select></label></div>${d.participant.is_test ? '<p class="small">S00 是教师测试号，不要求姓名校验。</p>' : `<label class="name-reset-label">登录姓名校验 <span class="small">${d.participant.login_name_hash ? '已设置。出于隐私，系统不保存也不显示姓名明文；如需更正，在下框重新输入。' : '尚未设置，学生现在无法用该编号登录。'}</span><input id="loginName" placeholder="输入姓名后保存；留空表示不修改" autocomplete="off"></label>`}<button class="btn secondary" id="saveMeta">保存</button></div>
       <div class="section"><h3>12课时完整记录</h3>${sessionHtml}</div>`;
     document.getElementById('condition').value = d.participant.condition || 'unassigned';
     document.getElementById('refreshDetail').onclick = () => detail(id, false);
     document.getElementById('saveMeta').onclick = async () => {
-      await api(`/participant/${id}/meta`, { method: 'POST', body: JSON.stringify({ grade: document.getElementById('grade').value, condition: document.getElementById('condition').value }) });
+      const payload = { grade: document.getElementById('grade').value, condition: document.getElementById('condition').value };
+      const loginNameInput = document.getElementById('loginName');
+      if (loginNameInput && loginNameInput.value.trim()) payload.login_name = loginNameInput.value.trim();
+      await api(`/participant/${id}/meta`, { method: 'POST', body: JSON.stringify(payload) });
       await loadParticipants();
       await detail(id, false);
     };

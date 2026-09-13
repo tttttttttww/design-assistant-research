@@ -1,4 +1,10 @@
 const id = App.requireParticipant();
+const switchStudentBtn = document.getElementById('switchStudent');
+if (switchStudentBtn) switchStudentBtn.onclick = () => {
+  if (!confirm('确定退出当前学生编号吗？已自动保存的记录不会丢失。')) return;
+  App.clearParticipant();
+  location.href = '/';
+};
 let state = null, chatOpened = false, sending = false, selectedChatImage = null, selectedChatImageUrl = '';
 let autoSaveTimer = null;
 let saveChain = Promise.resolve();

@@ -149,3 +149,25 @@ pre{white-space:pre-wrap;word-break:break-word;background:#f6f4ef;border-radius:
 .archive-tools{margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
 .archive-tools summary{cursor:pointer}
 @media(max-width:780px){.export-grid{grid-template-columns:1fr}.compact-export{grid-column:auto}.action-row{flex-wrap:wrap}}
+
+/* v11.9: 编号 + 姓名双重核对与登录页细节 */
+.teacher-entry-simple{display:block;justify-content:initial}
+.teacher-entry-simple .teacher-btn{width:100%;min-height:50px;display:flex;align-items:center;justify-content:center;text-align:center}
+.test-login-note{text-align:center;margin:10px 0 0;font-size:12px}
+.roster-ready,.roster-warning{margin-bottom:14px}
+.warn-text{color:#a24d32;font-weight:700}
+.name-reset-label{display:grid;gap:8px;font-weight:750;margin:16px 0}
+.cover-card .form>.btn{min-height:50px}
+.topbar #switchStudent{background:#fff;color:var(--green);border-color:#c9d5d1}
+
+/* v11.9: Excel / CSV 名单上传与导入预览 */
+.roster-import-box{margin-top:16px;padding:18px;border:1px solid var(--line);border-radius:16px;background:#fbfcfa}
+.roster-import-box h3{margin:5px 0 6px}
+.roster-upload-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px}
+.roster-preview-head{margin:14px 0 10px;gap:12px;align-items:center}
+.roster-preview-table{max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:14px}
+.roster-preview-table .admin-table{margin:0}
+.roster-errors{margin:8px 0 12px;padding:10px 12px;background:#fff6f1;border:1px solid #efd0c0;border-radius:12px;color:#8f452f;display:grid;gap:5px}
+.manual-roster{margin-top:16px}
+.manual-roster>summary{cursor:pointer;font-weight:800;color:var(--green)}
+@media(max-width:700px){.roster-preview-head{align-items:stretch;flex-direction:column}.roster-preview-head .btn{width:100%}}

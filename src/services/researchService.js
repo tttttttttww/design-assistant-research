@@ -4,7 +4,7 @@ import {
   DEFAULT_SETTINGS, CONDITIONS, SCHEMA_VERSION, SESSIONS, getSessionConfig,
   aiVariantFor, hiddenAiContext, PROMPT_VERSION_FREE, PROMPT_VERSION_SUPPORTED,
 } from '../config/researchConfig.js';
-import { isTestParticipant } from '../utils/validators.js';
+import { isTestParticipant, hashStudentName } from '../utils/validators.js';
 
 const iso = () => new Date().toISOString();
 const parse = (raw, fallback = null) => { try { return raw ? JSON.parse(raw) : fallback; } catch { return fallback; } };
@@ -76,6 +76,7 @@ class ResearchService {
       participant_id: id,
       condition,
       grade: input.grade ?? old.grade ?? '',
+      login_name_hash: input.login_name_hash ?? old.login_name_hash ?? '',
       is_test: isTestParticipant(id),
       created_at: old.created_at || iso(),
       last_active_at: iso(),
@@ -97,13 +98,18 @@ class ResearchService {
     return p;
   }
 
-  async setParticipantMeta(id, { condition, grade } = {}) {
+  async setParticipantMeta(id, { condition, grade, login_name } = {}) {
     const p = await this.getParticipant(id);
     if (condition != null) {
       if (!CONDITIONS.includes(condition)) throw Object.assign(new Error('condition无效'), { status: 400 });
       p.condition = condition;
     }
     if (grade != null) p.grade = String(grade).trim();
+    if (login_name != null) {
+      const hash = hashStudentName(login_name, id);
+      if (!hash) throw Object.assign(new Error('姓名不能为空'), { status: 400 });
+      p.login_name_hash = hash;
+    }
     p.last_active_at = iso();
     await storageService.putObject(pKey(id), JSON.stringify(p));
     return p;
@@ -301,9 +307,11 @@ class ResearchService {
     const messages = session.ai_mode === 'none' ? [] : await this.getMessages(id, session.id);
     let carry = null;
     if (session.carry_from) carry = await this.getSessionRecord(id, session.carry_from);
+    const publicParticipant = { ...participant };
+    delete publicParticipant.login_name_hash;
     return {
       settings,
-      participant,
+      participant: publicParticipant,
       session,
       record,
       ai_variant: aiVariantFor({ session, condition: participant.condition, isTest: participant.is_test }),
@@ -383,7 +391,7 @@ class ResearchService {
       await storageService.putObject(`test-archives/${stamp}.json`, JSON.stringify(current, null, 2));
     }
     await storageService.deletePrefix(`participants/${id}/`);
-    await this.createParticipant(id, { condition: 'unassigned', grade: current.participant?.grade || '' });
+    await this.createParticipant(id, { condition: 'unassigned', grade: current.participant?.grade || '', login_name_hash: current.participant?.login_name_hash || '' });
     return { archived_previous: hasActivity };
   }
 

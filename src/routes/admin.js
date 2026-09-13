@@ -1,11 +1,13 @@
 import express from 'express';
 import archiver from 'archiver';
+import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAdmin } from '../middleware/auth.js';
 import { storageService } from '../services/storageService.js';
 import { researchService } from '../services/researchService.js';
 import { SESSIONS } from '../config/researchConfig.js';
 import { normalizeParticipantId, validateParticipantId } from '../utils/validators.js';
+import { parseRosterBuffer, validateRosterRows } from '../utils/rosterImport.js';
 
 const router = express.Router();
 const csv = v => {
@@ -30,6 +32,21 @@ const sendCsv = (res, name, headers, rows) => {
 const safeName = value => String(value || 'file').replace(/[^a-zA-Z0-9._-]+/g, '_');
 const pad = n => String(n || 0).padStart(5, '0');
 const formalIds = () => Array.from({ length: 30 }, (_, i) => `S${String(i + 1).padStart(2, '0')}`);
+
+const rosterUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 3 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const name = String(file.originalname || '').toLowerCase();
+    const ok = /\.(xlsx|csv)$/.test(name) || [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/csv',
+      'application/csv',
+      'text/plain',
+    ].includes(file.mimetype);
+    cb(null, ok);
+  },
+});
 
 function openZip(res, fileName) {
   res.setHeader('Content-Type', 'application/zip');
@@ -101,6 +118,7 @@ async function summary(id) {
     participant_id: id,
     condition: p.condition,
     grade: p.grade,
+    login_name_ready: Boolean(p.login_name_hash),
     is_test: p.is_test,
     active_session_id: settings.active_session_id,
     started: Boolean(r.started_at),
@@ -129,11 +147,52 @@ router.post('/participants/create-default', requireAdmin, async (req, res) => {
   await ensureDefaultStudents();
   res.json({ created_or_checked: 30 });
 });
+
+
+// Excel / CSV roster preview. The uploaded file is parsed only in memory and is never saved.
+router.post('/participants/roster-preview', requireAdmin, rosterUpload.single('roster'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '请选择 .xlsx 或 .csv 名单文件' });
+    const preview = parseRosterBuffer(req.file.buffer, req.file.originalname);
+    res.json(preview);
+  } catch (e) {
+    if (e.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: '名单文件不能超过 3MB' });
+    res.status(e.status || 400).json({ error: e.message || '名单文件读取失败' });
+  }
+});
+
+// Confirm roster import. Plain-text names exist only in this HTTPS request and are immediately hashed.
+router.post('/participants/roster-import', requireAdmin, async (req, res) => {
+  try {
+    const cleanRows = validateRosterRows(req.body?.rows || []);
+    if (!cleanRows.length) return res.status(400).json({ error: '没有可导入的学生记录' });
+    const result = [];
+    for (const row of cleanRows) {
+      const meta = { login_name: row.login_name };
+      if (row.grade) meta.grade = row.grade;
+      if (row.condition) meta.condition = row.condition;
+      const participant = await researchService.setParticipantMeta(row.participant_id, meta);
+      result.push({
+        participant_id: row.participant_id,
+        grade: participant.grade,
+        condition: participant.condition,
+        login_name_ready: Boolean(participant.login_name_hash),
+        status: 'ok',
+      });
+    }
+    res.json({ imported_count: result.length, result });
+  } catch (e) {
+    res.status(e.status || 400).json({ error: e.message || '名单导入失败' });
+  }
+});
 router.post('/participant/:participantId/meta', requireAdmin, async (req, res) => {
   try {
     const id = normalizeParticipantId(req.params.participantId);
     if (!validateParticipantId(id)) return res.status(400).json({ error: '编号无效' });
-    res.json(await researchService.setParticipantMeta(id, { condition: req.body?.condition, grade: req.body?.grade }));
+    const meta = { condition: req.body?.condition, grade: req.body?.grade };
+    const loginName = String(req.body?.login_name || '').trim();
+    if (loginName) meta.login_name = loginName;
+    res.json(await researchService.setParticipantMeta(id, meta));
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message || '保存失败' });
   }
@@ -142,15 +201,69 @@ router.post('/participants/bulk-meta', requireAdmin, async (req, res) => {
   try {
     const lines = String(req.body?.text || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean);
     const result = [];
+    const validConditions = new Set(['unassigned', 'A', 'B']);
+    const normalizeGrade = value => {
+      const raw = String(value || '').trim().replace(/年级$/, '');
+      const map = { '6': '6', '7': '7', '8': '8', '六': '6', '七': '7', '八': '8' };
+      return map[raw] || '';
+    };
+    const looksLikeGrade = value => Boolean(normalizeGrade(value));
+
     for (const line of lines) {
-      const parts = line.split(/[\t,， ]+/).filter(Boolean);
+      // 首次名单推荐：S01 张三 6 unassigned
+      // 后续只改分组仍兼容旧格式：S01 6 A
+      const parts = /[\t,，]/.test(line)
+        ? line.split(/[\t,，]+/).map(x => x.trim()).filter(Boolean)
+        : line.split(/\s+/).map(x => x.trim()).filter(Boolean);
       const id = normalizeParticipantId(parts[0]);
       if (!validateParticipantId(id) || id === 'S00') { result.push({ line, status: 'invalid' }); continue; }
-      const grade = parts[1] || '';
-      const condition = parts[2] || 'unassigned';
+
+      let login_name;
+      let grade;
+      let gradeSupplied = false;
+      let condition;
+      if (parts.length >= 4) {
+        login_name = parts[1];
+        gradeSupplied = true;
+        grade = normalizeGrade(parts[2]);
+        condition = parts[3];
+      } else if (parts.length === 3) {
+        if (looksLikeGrade(parts[1]) && validConditions.has(parts[2])) {
+          gradeSupplied = true;
+          grade = normalizeGrade(parts[1]);
+          condition = parts[2];
+        } else {
+          login_name = parts[1];
+          gradeSupplied = true;
+          grade = normalizeGrade(parts[2]);
+        }
+      } else if (parts.length === 2) {
+        if (looksLikeGrade(parts[1])) { gradeSupplied = true; grade = normalizeGrade(parts[1]); }
+        else login_name = parts[1];
+      }
+
+      if (gradeSupplied && !grade) {
+        result.push({ line, status: 'invalid', reason: 'grade' });
+        continue;
+      }
+      if (condition != null && !validConditions.has(condition)) {
+        result.push({ line, status: 'invalid', reason: 'condition' });
+        continue;
+      }
+
       try {
-        await researchService.setParticipantMeta(id, { grade, condition });
-        result.push({ participant_id: id, grade, condition, status: 'ok' });
+        const meta = {};
+        if (login_name) meta.login_name = login_name;
+        if (grade != null) meta.grade = grade;
+        if (condition != null) meta.condition = condition;
+        const participant = await researchService.setParticipantMeta(id, meta);
+        result.push({
+          participant_id: id,
+          grade: participant.grade,
+          condition: participant.condition,
+          login_name_ready: Boolean(participant.login_name_hash),
+          status: 'ok',
+        });
       } catch { result.push({ line, status: 'invalid' }); }
     }
     res.json({ result });
@@ -194,7 +307,12 @@ router.post('/session/:sessionId/reset-all', requireAdmin, async (req, res) => {
 
 async function formalData() {
   const out = [];
-  for (const id of formalIds()) out.push(await researchService.getCompleteParticipantData(id));
+  for (const id of formalIds()) {
+    const row = await researchService.getCompleteParticipantData(id);
+    // 姓名只用于登录核对；正式研究导出保持匿名，不带姓名哈希。
+    if (row.participant) delete row.participant.login_name_hash;
+    out.push(row);
+  }
   return out;
 }
 
