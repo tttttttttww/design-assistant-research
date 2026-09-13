@@ -35,9 +35,39 @@ async function loadParticipants(){
     ['发过AI消息',formal.filter(x=>x.ai_used).length],['聊天图片',formal.reduce((n,x)=>n+(x.chat_image_count||0),0)],['已提交',formal.filter(x=>x.submitted).length]
   ];
   document.getElementById('summary').innerHTML=stats.map(([k,v])=>`<div class="summary-card"><strong>${v}</strong><span>${k}</span></div>`).join('');
-  document.getElementById('participantTable').innerHTML=`<div class="table-wrap"><table class="admin-table"><thead><tr><th>编号</th><th>年级</th><th>condition</th><th>进入任务</th><th>首次打开AI</th><th>首次发消息</th><th>学生消息</th><th>聊天图片</th><th>任务图片</th><th>提交</th></tr></thead><tbody>${rows.map(x=>`<tr data-id="${x.participant_id}" class="p-row"><td><strong>${x.participant_id}</strong>${x.is_test?' <span class="badge">测试</span>':''}</td><td>${esc(x.grade||'')}</td><td>${esc(x.condition)}</td><td>${badge(x.started)}</td><td>${fmtSeconds(x.first_ai_open_latency_seconds)}</td><td>${fmtSeconds(x.first_user_message_latency_seconds)}</td><td>${x.user_turn_count}</td><td>${x.chat_image_count||0}</td><td>${x.artifact_count||0}</td><td>${badge(x.submitted)}</td></tr>`).join('')}</tbody></table></div>`;
-  document.querySelectorAll('.p-row').forEach(tr=>tr.onclick=()=>detail(tr.dataset.id));
+  document.getElementById('participantTable').innerHTML=`<div class="table-wrap"><table class="admin-table"><thead><tr><th>编号</th><th>年级</th><th>condition</th><th>进入任务</th><th>首次打开AI</th><th>首次发消息</th><th>学生消息</th><th>聊天图片</th><th>任务图片</th><th>提交</th><th>操作</th></tr></thead><tbody>${rows.map(x=>`<tr data-id="${x.participant_id}" class="p-row"><td><strong>${x.participant_id}</strong>${x.is_test?' <span class="badge">测试</span>':''}</td><td>${esc(x.grade||'')}</td><td>${esc(x.condition)}</td><td>${badge(x.started)}</td><td>${fmtSeconds(x.first_ai_open_latency_seconds)}</td><td>${fmtSeconds(x.first_user_message_latency_seconds)}</td><td>${x.user_turn_count}</td><td>${x.chat_image_count||0}</td><td>${x.artifact_count||0}</td><td>${badge(x.submitted)}</td><td class="reset-cell"><button class="btn danger ghost mini reset-current" data-id="${x.participant_id}" type="button">重置本课次</button></td></tr>`).join('')}</tbody></table></div>`;
+  document.querySelectorAll('.p-row').forEach(tr=>tr.onclick=e=>{if(e.target.closest('.reset-current'))return;detail(tr.dataset.id);});
+  document.querySelectorAll('.reset-current').forEach(btn=>btn.onclick=e=>{e.stopPropagation();resetOne(btn.dataset.id,sid);});
 }
+async function resetOne(id,sid){
+  const ok=confirm(`确定重置 ${id} 的 ${sid} 记录吗？\n\n会清空该课次当前的进入时间、AI时间、聊天、任务文字、提交状态和作品引用。重置前会自动保存后台归档。`);
+  if(!ok)return;
+  try{
+    const r=await api(`/participant/${id}/session/${sid}/reset`,{method:'POST',body:JSON.stringify({confirm:`${id}:${sid}`})});
+    alert(r.archived_previous?'已重置，并保存了重置前归档。':'该学生本课次没有活动数据，已保持为空。');
+    await loadParticipants();
+    const detailBox=document.getElementById('detail');
+    if(detailBox?.dataset?.participantId===id) await detail(id);
+  }catch(x){alert(x.message);}
+}
+
+async function resetAllCurrent(){
+  const sid=settings?.active_session_id;
+  if(!sid)return;
+  const first=confirm(`这是批量操作：将重置 ${sid} 的 S00–S30 当前课次记录。\n\n适合正式上课前清除测试/误触数据。每个有活动的数据都会先自动归档。是否继续？`);
+  if(!first)return;
+  const typed=prompt(`为防止误删，请输入：RESET ${sid}`,'');
+  if(typed!==`RESET ${sid}`){alert('输入不一致，已取消。');return;}
+  try{
+    const r=await api(`/session/${sid}/reset-all`,{method:'POST',body:JSON.stringify({confirm:typed})});
+    alert(`已重置 ${sid}。共处理 ${r.reset_count} 个编号，其中 ${r.archived_count} 个在重置前保存了归档。`);
+    await loadParticipants();
+    document.getElementById('detail').innerHTML='<span class="eyebrow">学生完整记录</span><h2>点击上方学生编号查看</h2><p class="small">可逐课查看文字记录、作品图片、AI聊天、AI聊天图片和系统事件。</p>';
+  }catch(x){alert(x.message);}
+}
+
+document.getElementById('resetCurrentAll').onclick=resetAllCurrent;
+
 function taskImage(id,sid,key,p){return p?`<a target="_blank" href="/express/api/image/${encodeURIComponent(id)}/${encodeURIComponent(sid)}/${encodeURIComponent(key)}/${encodeURIComponent(p.file_name)}"><img src="/express/api/image/${encodeURIComponent(id)}/${encodeURIComponent(sid)}/${encodeURIComponent(key)}/${encodeURIComponent(p.file_name)}"></a>`:'';}
 function chatImage(id,sid,a){return a?.file_name?`<a target="_blank" href="/express/api/chat-image/${encodeURIComponent(id)}/${encodeURIComponent(sid)}/${encodeURIComponent(a.file_name)}"><img src="/express/api/chat-image/${encodeURIComponent(id)}/${encodeURIComponent(sid)}/${encodeURIComponent(a.file_name)}"></a>`:'';}
 function messages(id,sid,arr=[]){
@@ -47,10 +77,13 @@ function events(arr=[]){return arr.length?`<details><summary class="small">查�
 
 async function detail(id){
   const d=await api(`/participant/${id}`);
-  document.getElementById('detail').innerHTML=`<span class="eyebrow">学生完整数据</span><h2>${id}${d.participant.is_test?' · S00测试号':''}</h2><p class="small">这里能查看该编号12课时的文字、任务照片、AI聊天、聊天图片和时间戳。正式导出仍自动排除S00。</p>
+  const detailBox=document.getElementById('detail');
+  detailBox.dataset.participantId=id;
+  detailBox.innerHTML=`<span class="eyebrow">学生完整数据</span><h2>${id}${d.participant.is_test?' · S00测试号':''}</h2><p class="small">这里能查看该编号12课时的文字、任务照片、AI聊天、聊天图片和时间戳。正式导出仍自动排除S00。</p>
   <div class="section"><h3>基本信息</h3><div class="grid two"><label>年级<input id="grade" value="${esc(d.participant.grade||'')}"></label><label>condition<select id="condition"><option value="unassigned">unassigned</option><option value="A">A · 支持型AI</option><option value="B">B · 自由AI</option></select></label></div><button class="btn secondary" id="saveMeta">保存</button></div>
-  <div class="section"><h3>12课时记录</h3>${sessions.map(s=>{const x=d.sessions[s.id],r=x.record,arts=Object.entries(r.artifacts||{}),chatImages=(x.chat_messages||[]).filter(m=>m.message_has_image).length;return `<details class="answer-block"><summary><strong>${s.id} ${esc(s.title)}</strong> ${r.submitted_at?'<span class="badge">已提交</span>':''}</summary><p class="small">AI变体：${esc(r.ai_variant||x.chat_session?.ai_variant||'')} ｜首次打开：${fmtSeconds(r.first_ai_open_latency_seconds)} ｜首次发消息：${fmtSeconds(r.first_user_message_latency_seconds)} ｜打开次数：${r.ai_open_count||0} ｜聊天图片：${chatImages}</p>${Object.entries(r.text_fields||{}).map(([k,v])=>`<p><strong>${esc(k)}：</strong>${esc(v)}</p>`).join('')}${arts.length?`<h4>任务作品 / 证据图片</h4><div class="photo-grid">${arts.map(([k,p])=>taskImage(id,s.id,k,p)).join('')}</div>`:''}<h4>AI聊天</h4>${messages(id,s.id,x.chat_messages)}${events(x.events)}</details>`;}).join('')}</div>`;
+  <div class="section"><h3>12课时记录</h3>${sessions.map(s=>{const x=d.sessions[s.id],r=x.record,arts=Object.entries(r.artifacts||{}),chatImages=(x.chat_messages||[]).filter(m=>m.message_has_image).length;return `<details class="answer-block"><summary><strong>${s.id} ${esc(s.title)}</strong> ${r.submitted_at?'<span class="badge">已提交</span>':''}</summary><p class="small">AI变体：${esc(r.ai_variant||x.chat_session?.ai_variant||'')} ｜首次打开：${fmtSeconds(r.first_ai_open_latency_seconds)} ｜首次发消息：${fmtSeconds(r.first_user_message_latency_seconds)} ｜打开次数：${r.ai_open_count||0} ｜聊天图片：${chatImages}</p>${Object.entries(r.text_fields||{}).map(([k,v])=>`<p><strong>${esc(k)}：</strong>${esc(v)}</p>`).join('')}${arts.length?`<h4>任务作品 / 证据图片</h4><div class="photo-grid">${arts.map(([k,p])=>taskImage(id,s.id,k,p)).join('')}</div>`:''}<h4>AI聊天</h4>${messages(id,s.id,x.chat_messages)}${events(x.events)}<div class="row" style="margin-top:12px"><button class="btn danger ghost mini reset-session-detail" data-id="${id}" data-sid="${s.id}" type="button">重置这一课次</button></div></details>`;}).join('')}</div>`;
   document.getElementById('condition').value=d.participant.condition||'unassigned';
   document.getElementById('saveMeta').onclick=async()=>{await api(`/participant/${id}/meta`,{method:'POST',body:JSON.stringify({grade:document.getElementById('grade').value,condition:document.getElementById('condition').value})});await loadParticipants();await detail(id);};
+  document.querySelectorAll('.reset-session-detail').forEach(btn=>btn.onclick=()=>resetOne(btn.dataset.id,btn.dataset.sid));
 }
 check();

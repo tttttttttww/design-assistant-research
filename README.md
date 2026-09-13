@@ -1,4 +1,4 @@
-# Design Thinking + GenAI Help-Seeking Research Platform v11 Enhanced
+# Design Thinking + GenAI Help-Seeking Research Platform v11 Enhanced 11.2
 
 用于12课时设计思维课程与生成式AI学业求助研究的数据采集平台。
 
@@ -70,3 +70,7 @@ S00测试历史单独导出：
 ## 部署
 
 见 `DEPLOY_FIRST.md`。
+
+
+## 管理员误触重置（11.2）
+教师后台支持按学生重置任意课次，以及批量重置当前课次 S00–S30。重置前自动把当前结构化记录保存到 `reset-archives/`；正式 CSV/JSON 导出不包含这些归档。为防误操作，批量重置必须二次确认并输入 `RESET Wn`。

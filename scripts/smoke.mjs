@@ -20,4 +20,10 @@ if(aiVariantFor({session:getSessionConfig('W4'),condition:'B',isTest:false})!=='
 if(aiVariantFor({session:getSessionConfig('W10'),condition:'A',isTest:false})!=='free') throw new Error('transfer routing failed');
 const mm=cozeService.buildAdditionalMessage('看看这张图','https://example.com/a.jpg');
 if(mm.content_type!=='object_string'||!mm.content.includes('image')) throw new Error('multimodal Coze message failed');
-console.log('SMOKE OK: timing + image metadata + multimodal payload + A/B/transfer routing passed.');
+const reset=await researchService.archiveAndResetSession('S01','W1',{reason:'smoke_reset'});
+if(!reset.archived_previous) throw new Error('reset archive missing');
+r=await researchService.getSessionRecord('S01','W1');
+if(r.started_at||r.ai_used||Object.keys(r.artifacts||{}).length) throw new Error('session reset failed');
+const archives=await researchService.listResetArchives();
+if(!archives.length) throw new Error('reset archive list missing');
+console.log('SMOKE OK: timing + image metadata + multimodal payload + A/B/transfer routing + safe reset passed.');

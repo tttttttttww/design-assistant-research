@@ -42,6 +42,29 @@ router.post('/participant/:participantId/meta',requireAdmin,async(req,res)=>{try
 router.post('/participants/bulk-meta',requireAdmin,async(req,res)=>{try{const lines=String(req.body?.text||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);const result=[];for(const line of lines){const parts=line.split(/[\t,， ]+/).filter(Boolean);const id=normalizeParticipantId(parts[0]);if(!validateParticipantId(id)||id==='S00'){result.push({line,status:'invalid'});continue;}const grade=parts[1]||'';const condition=parts[2]||'unassigned';try{await researchService.setParticipantMeta(id,{grade,condition});result.push({participant_id:id,grade,condition,status:'ok'});}catch{result.push({line,status:'invalid'});}}res.json({result});}catch(e){res.status(500).json({error:e.message||'批量更新失败'});}});
 router.get('/participant/:participantId',requireAdmin,async(req,res)=>{try{res.json(await researchService.getCompleteParticipantData(normalizeParticipantId(req.params.participantId)));}catch(e){res.status(500).json({error:e.message||'读取学生数据失败'});}});
 
+router.post('/participant/:participantId/session/:sessionId/reset',requireAdmin,async(req,res)=>{
+  try {
+    const id=normalizeParticipantId(req.params.participantId);
+    const sid=String(req.params.sessionId||'').toUpperCase();
+    if(!validateParticipantId(id)) return res.status(400).json({error:'编号无效'});
+    if(!SESSIONS.some(s=>s.id===sid)) return res.status(400).json({error:'课次无效'});
+    if(String(req.body?.confirm||'')!==`${id}:${sid}`) return res.status(400).json({error:'确认信息不匹配，未执行重置'});
+    res.json(await researchService.archiveAndResetSession(id,sid,{reason:'single_session_admin_reset'}));
+  } catch(e) { res.status(e.status||500).json({error:e.message||'重置失败'}); }
+});
+
+router.post('/session/:sessionId/reset-all',requireAdmin,async(req,res)=>{
+  try {
+    const sid=String(req.params.sessionId||'').toUpperCase();
+    if(!SESSIONS.some(s=>s.id===sid)) return res.status(400).json({error:'课次无效'});
+    if(String(req.body?.confirm||'').trim()!==`RESET ${sid}`) return res.status(400).json({error:`请输入 RESET ${sid} 才能执行批量重置`});
+    const result=[];
+    for(const id of await allIds(true)) result.push(await researchService.archiveAndResetSession(id,sid,{reason:'whole_session_admin_reset'}));
+    const archived=result.filter(x=>x.archived_previous).length;
+    res.json({session_id:sid,reset_count:result.length,archived_count:archived,result});
+  } catch(e) { res.status(e.status||500).json({error:e.message||'批量重置失败'}); }
+});
+
 async function formalData(){const out=[];for(let i=1;i<=30;i++)out.push(await researchService.getCompleteParticipantData(`S${String(i).padStart(2,'0')}`));return out;}
 router.get('/export/all.json',requireAdmin,async(req,res)=>sendJson(res,'course_research_all.json',await formalData()));
 router.get('/export/participants.csv',requireAdmin,async(req,res)=>{const rows=[];for(let i=1;i<=30;i++){const p=await researchService.getParticipant(`S${String(i).padStart(2,'0')}`);rows.push({participant_id:p.participant_id,grade:p.grade,condition:p.condition,created_at:p.created_at,last_active_at:p.last_active_at});}sendCsv(res,'participants.csv',['participant_id','grade','condition','created_at','last_active_at'],rows);});
@@ -63,4 +86,5 @@ router.get('/export/chat-attachments.csv',requireAdmin,async(req,res)=>{
 
 router.get('/export/events.csv',requireAdmin,async(req,res)=>{const rows=[];for(let i=1;i<=30;i++){const id=`S${String(i).padStart(2,'0')}`;for(const s of SESSIONS){for(const e of await researchService.getEvents(id,s.id))rows.push(e);}}sendCsv(res,'events.csv',['participant_id','session_id','event_index','type','at','data'],rows);});
 router.get('/export/test-archives.json',requireAdmin,async(req,res)=>sendJson(res,'S00_test_archives.json',await researchService.listTestArchives()));
+router.get('/export/reset-archives.json',requireAdmin,async(req,res)=>sendJson(res,'admin_reset_archives.json',await researchService.listResetArchives()));
 export default router;

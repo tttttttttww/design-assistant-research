@@ -328,6 +328,47 @@ class ResearchService {
     return { participant, sessions };
   }
 
+  async archiveAndResetSession(id, sid, { reason = 'manual_admin_reset' } = {}) {
+    const config = getSessionConfig(sid);
+    if (!config) throw Object.assign(new Error('课次不存在'), { status: 404 });
+    const participant = await this.getParticipant(id);
+    const snapshot = {
+      archived_at: iso(),
+      archive_reason: reason,
+      participant,
+      session_config: config,
+      record: await this.getSessionRecord(id, sid),
+      chat_session: await this.getChatSession(id, sid),
+      chat_messages: await this.getMessages(id, sid),
+      events: await this.getEvents(id, sid),
+    };
+    const hasActivity = Boolean(
+      snapshot.record?.started_at || snapshot.record?.saved_at || snapshot.record?.submitted_at ||
+      snapshot.chat_session || snapshot.chat_messages.length || snapshot.events.length ||
+      Object.keys(snapshot.record?.artifacts || {}).length || Object.keys(snapshot.record?.text_fields || {}).length
+    );
+    let archive_key = '';
+    if (hasActivity) {
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      archive_key = `reset-archives/${stamp}_${id}_${sid}.json`;
+      await storageService.putObject(archive_key, JSON.stringify(snapshot, null, 2));
+    }
+    // Clear only the active structured record/chat/event data. Uploaded image blobs are kept
+    // as a safety copy; after reset they are no longer referenced by the active record or formal exports.
+    await storageService.deletePrefix(`${sBase(id, sid)}/`);
+    return { participant_id: id, session_id: sid, reset: true, archived_previous: hasActivity, archive_key };
+  }
+
+  async listResetArchives() {
+    const rows = await storageService.listObjects('reset-archives/');
+    const out = [];
+    for (const row of rows.sort((a, b) => b.key.localeCompare(a.key))) {
+      const raw = await storageService.getObject(row.key);
+      if (raw) out.push({ key: row.key, data: parse(raw, {}) });
+    }
+    return out;
+  }
+
   async archiveAndResetTest() {
     const id = 'S00';
     const current = await this.getCompleteParticipantData(id);

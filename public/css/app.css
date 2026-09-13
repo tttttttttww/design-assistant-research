@@ -113,3 +113,14 @@ pre{white-space:pre-wrap;word-break:break-word;background:#f6f4ef;border-radius:
 .chat-photos img{aspect-ratio:1/1;object-fit:cover}
 @media(max-width:1200px){.summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:700px){.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* v11.2: safer admin reset controls */
+.btn.danger{background:#a94635;color:#fff;border:1px solid #943b2e}
+.btn.danger:hover{background:#8e372b}
+.btn.danger.ghost{background:#fff;color:#9a3f31;border-color:#d7a89f}
+.teacher-entry-simple{justify-content:flex-end}
+.reset-toolbar{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;background:#fff7f2;border:1px solid #e7c6bc;border-radius:16px;padding:14px 16px;margin:0 0 18px}
+.reset-toolbar .small{max-width:780px}
+.reset-cell .btn{white-space:nowrap}
+.admin-table tr .reset-cell{cursor:default}
+@media(max-width:700px){.reset-toolbar{align-items:stretch}.reset-toolbar .btn{width:100%}}
