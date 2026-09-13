@@ -1,6 +1,6 @@
 {
   "name": "design-thinking-help-seeking-platform",
-  "version": "11.4.0",
+  "version": "11.5.0",
   "type": "module",
   "description": "12课时设计思维课程与生成式AI学业求助研究平台",
   "main": "cloud-functions/express/[[default]].js",
@@ -19,5 +19,7 @@
     "multer": "^1.4.5-lts.1",
     "uuid": "^9.0.1"
   },
-  "engines": {"node": ">=20.0.0"}
+  "engines": {
+    "node": ">=20.0.0"
+  }
 }

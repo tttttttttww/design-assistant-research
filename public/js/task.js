@@ -1,5 +1,6 @@
 const id = App.requireParticipant();
 let state = null, chatOpened = false, sending = false, selectedChatImage = null, selectedChatImageUrl = '';
+let autoSaveTimer = null, autoSaving = false;
 
 const esc = App.escapeHtml;
 const fmtLatency = v => v == null ? '—' : `${Math.floor(v/60)}分${v%60}秒`;
@@ -75,9 +76,36 @@ function render(){
 }
 
 function collectFields(){const x={};document.querySelectorAll('[data-field]').forEach(el=>x[el.dataset.field]=el.value);return x;}
-async function saveDraft(){const b=document.getElementById('saveStatus');b.textContent='正在保存……';try{await App.api('/session/save',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,textFields:collectFields()})});b.textContent='已保存 ✓';await load(false);}catch(e){b.textContent=e.message;}}
-async function uploadArtifact(input){const key=input.dataset.artifact,status=document.querySelector(`[data-upload-status="${key}"]`),file=input.files?.[0];if(!file)return;status.textContent='正在上传……';const fd=new FormData();fd.append('participantId',id);fd.append('sessionId',state.session.id);fd.append('artifactKey',key);fd.append('image',file);try{await App.api('/upload',{method:'POST',body:fd});status.textContent='上传成功 ✓';await load(false);}catch(e){status.textContent=e.message;input.value='';}}
-async function openAi(){try{const r=await App.api('/chat/open',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id})});chatOpened=true;state.record=r.record||state.record;state.chat_messages=r.messages||[];render();}catch(e){alert(e.message);}}
+function setSaveStatus(text=''){const b=document.getElementById('saveStatus');if(b)b.textContent=text;}
+function cancelQueuedAutoSave(){if(autoSaveTimer){clearTimeout(autoSaveTimer);autoSaveTimer=null;}}
+async function persistCurrentFields({showStatus=false}={}){
+  if(!state?.session || state.record?.submitted_at || !document.querySelector('[data-field]')) return state?.record;
+  cancelQueuedAutoSave();
+  if(autoSaving){await new Promise(resolve=>setTimeout(resolve,80));}
+  autoSaving=true;
+  if(showStatus)setSaveStatus('正在保存……');
+  try{
+    const r=await App.api('/session/save',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,textFields:collectFields()})});
+    state.record=r.record||state.record;
+    if(showStatus)setSaveStatus('已保存 ✓');
+    return state.record;
+  }catch(e){
+    if(showStatus)setSaveStatus(`保存失败：${e.message}`);
+    throw e;
+  }finally{autoSaving=false;}
+}
+function queueAutoSave(){
+  if(state?.record?.submitted_at)return;
+  cancelQueuedAutoSave();
+  setSaveStatus('正在自动保存……');
+  autoSaveTimer=setTimeout(async()=>{
+    try{await persistCurrentFields();setSaveStatus('已自动保存 ✓');}
+    catch(e){setSaveStatus(`自动保存失败：${e.message}`);}
+  },1000);
+}
+async function saveDraft(){try{await persistCurrentFields({showStatus:true});}catch{}}
+async function uploadArtifact(input){const key=input.dataset.artifact,status=document.querySelector(`[data-upload-status="${key}"]`),file=input.files?.[0];if(!file)return;status.textContent='正在上传……';try{await persistCurrentFields();}catch(e){status.textContent=`先保存文字失败：${e.message}`;input.value='';return;}const fd=new FormData();fd.append('participantId',id);fd.append('sessionId',state.session.id);fd.append('artifactKey',key);fd.append('image',file);try{await App.api('/upload',{method:'POST',body:fd});status.textContent='上传成功 ✓';await load(false);}catch(e){status.textContent=e.message;input.value='';}}
+async function openAi(){try{await persistCurrentFields();const r=await App.api('/chat/open',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id})});chatOpened=true;state.record=r.record||state.record;state.chat_messages=r.messages||[];render();}catch(e){alert(e.message);}}
 function clearSelectedImage(){
   if(selectedChatImageUrl) URL.revokeObjectURL(selectedChatImageUrl);
   selectedChatImage=null; selectedChatImageUrl='';
@@ -100,6 +128,7 @@ async function send(){
   sending=true; document.getElementById('send').disabled=true; document.getElementById('thinking').classList.remove('hidden'); document.getElementById('sendError').classList.add('hidden');
   const file=selectedChatImage, previewUrl=selectedChatImageUrl;
   try{
+    await persistCurrentFields();
     const fd=new FormData(); fd.append('participantId',id); fd.append('sessionId',state.session.id); fd.append('message',msg); if(file) fd.append('image',file);
     const r=await App.api('/chat/send',{method:'POST',body:fd});
     box.value='';
@@ -110,6 +139,7 @@ async function send(){
   finally{sending=false;document.getElementById('thinking')?.classList.add('hidden');if(document.getElementById('send'))document.getElementById('send').disabled=false;}
 }
 function wire(){
+  document.querySelectorAll('[data-field]').forEach(x=>{x.addEventListener('input',queueAutoSave);x.addEventListener('blur',()=>{if(!state.record.submitted_at)persistCurrentFields().then(()=>setSaveStatus('已自动保存 ✓')).catch(e=>setSaveStatus(`自动保存失败：${e.message}`));});});
   document.querySelectorAll('[data-artifact]').forEach(x=>x.onchange=()=>uploadArtifact(x));
   document.getElementById('saveDraft').onclick=saveDraft;
   document.getElementById('taskForm').onsubmit=async e=>{e.preventDefault();if(!confirm('确认提交本节任务吗？提交后本节记录将锁定。'))return;try{await App.api('/session/submit',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,textFields:collectFields()})});await load();}catch(x){alert(x.message);}};
