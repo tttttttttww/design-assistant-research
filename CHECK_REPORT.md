@@ -20,3 +20,11 @@
 - `npm test` 通过；
 - `node --check public/js/admin.js` 通过；
 - `node --check src/routes/admin.js` 通过。
+
+
+## v11.7 表单 / AI 解耦修复
+- AI 打开与回复后不再整页 `render()` / `load()`，只更新聊天区。
+- 任务文字输入实时写入 `sessionStorage` 草稿，页面重绘时优先恢复本地草稿。
+- 自动保存改为串行队列，避免多个 `/session/save` 并发造成旧值覆盖新值。
+- 每次发送 AI 前强制等待最新任务记录保存完成。
+- `/chat/send` 返回最新 record，仅更新状态，不重建任务表单。

@@ -93,7 +93,7 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
       };
     }
 
-    await researchService.markFirstUserMessage(id, sid);
+    const updatedRecord = await researchService.markFirstUserMessage(id, sid);
     const firstStudentTurn = (s.user_turn_count || 0) === 0;
     const hidden = firstStudentTurn ? `${await researchService.hiddenContextForChat(sid)}\n\n【学生实际输入】\n${message}` : message;
     const ai = await cozeService.sendMessage({
@@ -132,7 +132,7 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
       message_has_image: Boolean(attachment),
       image_file_name: attachment?.file_name || '',
     });
-    res.json({ message: ai.assistant_message, session: s, attachment });
+    res.json({ message: ai.assistant_message, session: s, attachment, record: updatedRecord });
   } catch (e) {
     const attemptedId = normalizeParticipantId(req.body?.participantId);
     // Keep failed S00 image locally for teacher debugging; formal-student failed uploads are cleaned as before.

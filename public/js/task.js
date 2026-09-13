@@ -1,9 +1,28 @@
 const id = App.requireParticipant();
 let state = null, chatOpened = false, sending = false, selectedChatImage = null, selectedChatImageUrl = '';
-let autoSaveTimer = null, autoSaving = false;
+let autoSaveTimer = null;
+let saveChain = Promise.resolve();
 
 const esc = App.escapeHtml;
 const fmtLatency = v => v == null ? '—' : `${Math.floor(v/60)}分${v%60}秒`;
+
+// 表单草稿与 AI 聊天必须彼此独立：AI 更新时绝不能重建/清空学生正在填写的任务记录。
+function draftKey(){ return state?.session?.id ? `task_draft:${id}:${state.session.id}` : ''; }
+function readLocalDraft(){
+  try { const key=draftKey(); return key ? (JSON.parse(sessionStorage.getItem(key)||'{}')||{}) : {}; }
+  catch { return {}; }
+}
+function writeLocalDraft(fields){
+  try { const key=draftKey(); if(key) sessionStorage.setItem(key, JSON.stringify(fields||{})); } catch {}
+}
+function clearLocalDraft(){ try { const key=draftKey(); if(key) sessionStorage.removeItem(key); } catch {} }
+function displayTextFields(){ return { ...(state?.record?.text_fields||{}), ...readLocalDraft() }; }
+function updateChatMeta(){
+  const meta=document.getElementById('chatMeta');
+  if(meta && state?.participant?.is_test){
+    meta.textContent=`S00测试数据｜首次打开：${fmtLatency(state.record.first_ai_open_latency_seconds)}｜首次发送：${fmtLatency(state.record.first_user_message_latency_seconds)}`;
+  }
+}
 
 function chatImageUrl(meta){
   return meta?.file_name ? `/express/api/chat-image/${encodeURIComponent(id)}/${encodeURIComponent(state.session.id)}/${encodeURIComponent(meta.file_name)}` : '';
@@ -54,7 +73,7 @@ function chatPanel(){
     ${variantBlocked?'<div class="notice warn">本课已进入分组阶段，但当前编号还没有分组。请老师先在后台设置 A/B。</div>':`<p class="small">本节任务中可以使用AI设计助手，也可以不使用。</p>
     <button class="btn secondary" id="openAi">${state.record.first_ai_open_at?'继续使用AI':'打开AI助手'}</button>
     <div id="chatBox" class="chat-embed ${chatOpened?'':'hidden'}">
-      ${state.participant.is_test?`<div class="chat-meta small">S00测试数据｜首次打开：${fmtLatency(state.record.first_ai_open_latency_seconds)}｜首次发送：${fmtLatency(state.record.first_user_message_latency_seconds)}</div>`:''}
+      ${state.participant.is_test?`<div class="chat-meta small" id="chatMeta">S00测试数据｜首次打开：${fmtLatency(state.record.first_ai_open_latency_seconds)}｜首次发送：${fmtLatency(state.record.first_user_message_latency_seconds)}</div>`:''}
       <div class="messages compact-messages" id="messages"></div>
       <div id="thinking" class="spinner hidden">AI正在查看并回复……</div><div id="sendError" class="notice warn hidden"></div>
       <div id="chatImagePreview" class="chat-image-preview hidden"><img id="chatImageThumb" alt="待发送图片"><div><strong>已选择图片</strong><p class="small">请用文字告诉AI你想让它帮你看什么。</p><button type="button" class="btn ghost mini" id="removeChatImage">移除图片</button></div></div>
@@ -69,7 +88,7 @@ function render(){
   document.getElementById('app').innerHTML=`
     <div class="course-header"><span class="eyebrow">${esc(s.id)} · ${esc(s.date)}</span><div class="row between"><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div>${r.submitted_at?'<span class="badge big">已提交</span>':''}</div></div>
     <div class="course-grid"><div class="course-main">${taskCard(s)}${carryCard(state.carry_from)}
-      <section class="card"><span class="eyebrow">我的任务记录</span><h2>边做边记录，最后统一提交</h2><form id="taskForm" class="form">${s.fields.map(f=>fieldHtml(f,r.text_fields?.[f.key]||'')).join('')}<div class="artifact-list">${s.artifacts.map(a=>artifactHtml(a,r.artifacts?.[a.key])).join('')}</div><div id="saveStatus" class="small"></div><div class="row"><button type="button" class="btn secondary" id="saveDraft" ${r.submitted_at?'disabled':''}>保存当前记录</button><button type="submit" class="btn orange" ${r.submitted_at?'disabled':''}>${r.submitted_at?'本节已提交':'提交本节任务'}</button></div></form></section>
+      <section class="card"><span class="eyebrow">我的任务记录</span><h2>边做边记录，最后统一提交</h2><form id="taskForm" class="form">${s.fields.map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'')).join('')}<div class="artifact-list">${s.artifacts.map(a=>artifactHtml(a,r.artifacts?.[a.key])).join('')}</div><div id="saveStatus" class="small"></div><div class="row"><button type="button" class="btn secondary" id="saveDraft" ${r.submitted_at?'disabled':''}>保存当前记录</button><button type="submit" class="btn orange" ${r.submitted_at?'disabled':''}>${r.submitted_at?'本节已提交':'提交本节任务'}</button></div></form></section>
       ${(s.questionnaire_slot&&state.participant.is_test)?`<section class="card"><span class="eyebrow">${s.questionnaire_slot==='pre'?'前测问卷':'后测问卷'}</span><h2>问卷模块预留（仅S00预览）</h2><p>问卷正式中文版定稿后再接入。正式学生目前不会看到这一块。</p></section>`:''}
     </div><aside class="course-side">${chatPanel()}</aside></div>`;
   wire();
@@ -81,21 +100,24 @@ function cancelQueuedAutoSave(){if(autoSaveTimer){clearTimeout(autoSaveTimer);au
 async function persistCurrentFields({showStatus=false}={}){
   if(!state?.session || state.record?.submitted_at || !document.querySelector('[data-field]')) return state?.record;
   cancelQueuedAutoSave();
-  if(autoSaving){await new Promise(resolve=>setTimeout(resolve,80));}
-  autoSaving=true;
-  if(showStatus)setSaveStatus('正在保存……');
-  try{
-    const r=await App.api('/session/save',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,textFields:collectFields()})});
+  // 先同步写入浏览器草稿，哪怕网络慢/AI更新，界面也不会丢字。
+  const fields=collectFields();
+  writeLocalDraft(fields);
+  const run=async()=>{
+    if(showStatus)setSaveStatus('正在保存……');
+    const r=await App.api('/session/save',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,textFields:fields})});
     state.record=r.record||state.record;
     if(showStatus)setSaveStatus('已保存 ✓');
     return state.record;
-  }catch(e){
-    if(showStatus)setSaveStatus(`保存失败：${e.message}`);
-    throw e;
-  }finally{autoSaving=false;}
+  };
+  // 串行保存，防止“自动保存”和“发送AI”同时写 record.json，旧请求覆盖新内容。
+  const job=saveChain.then(run,run);
+  saveChain=job.catch(()=>{});
+  try{return await job;}catch(e){if(showStatus)setSaveStatus(`保存失败：${e.message}`);throw e;}
 }
 function queueAutoSave(){
   if(state?.record?.submitted_at)return;
+  writeLocalDraft(collectFields());
   cancelQueuedAutoSave();
   setSaveStatus('正在自动保存……');
   autoSaveTimer=setTimeout(async()=>{
@@ -105,7 +127,17 @@ function queueAutoSave(){
 }
 async function saveDraft(){try{await persistCurrentFields({showStatus:true});}catch{}}
 async function uploadArtifact(input){const key=input.dataset.artifact,status=document.querySelector(`[data-upload-status="${key}"]`),file=input.files?.[0];if(!file)return;status.textContent='正在上传……';try{await persistCurrentFields();}catch(e){status.textContent=`先保存文字失败：${e.message}`;input.value='';return;}const fd=new FormData();fd.append('participantId',id);fd.append('sessionId',state.session.id);fd.append('artifactKey',key);fd.append('image',file);try{await App.api('/upload',{method:'POST',body:fd});status.textContent='上传成功 ✓';await load(false);}catch(e){status.textContent=e.message;input.value='';}}
-async function openAi(){try{await persistCurrentFields();const r=await App.api('/chat/open',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id})});chatOpened=true;state.record=r.record||state.record;state.chat_messages=r.messages||[];render();}catch(e){alert(e.message);}}
+async function openAi(){
+  try{
+    await persistCurrentFields();
+    const r=await App.api('/chat/open',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id})});
+    chatOpened=true; state.record=r.record||state.record; state.chat_messages=r.messages||[];
+    // 只更新聊天区，不再 render() 整个页面，因此任务表单不会被重建。
+    document.getElementById('chatBox')?.classList.remove('hidden');
+    const btn=document.getElementById('openAi'); if(btn) btn.textContent='继续使用AI';
+    renderMessages(state.chat_messages); updateChatMeta();
+  }catch(e){alert(e.message);}
+}
 function clearSelectedImage(){
   if(selectedChatImageUrl) URL.revokeObjectURL(selectedChatImageUrl);
   selectedChatImage=null; selectedChatImageUrl='';
@@ -128,21 +160,28 @@ async function send(){
   sending=true; document.getElementById('send').disabled=true; document.getElementById('thinking').classList.remove('hidden'); document.getElementById('sendError').classList.add('hidden');
   const file=selectedChatImage, previewUrl=selectedChatImageUrl;
   try{
+    // 发送 AI 前强制等待表单最新值保存完成。
     await persistCurrentFields();
     const fd=new FormData(); fd.append('participantId',id); fd.append('sessionId',state.session.id); fd.append('message',msg); if(file) fd.append('image',file);
     const r=await App.api('/chat/send',{method:'POST',body:fd});
+    if(r.record) state.record=r.record;
     box.value='';
-    addMessage('user',msg,file?[{preview_url:previewUrl}]:[]); addMessage('assistant',r.message);
+    addMessage('user',msg,r.attachment?[r.attachment]:(file?[{preview_url:previewUrl}]:[]));
+    addMessage('assistant',r.message);
+    if(previewUrl) URL.revokeObjectURL(previewUrl);
     selectedChatImage=null; selectedChatImageUrl='';
-    await load(false,true);
+    const input=document.getElementById('chatImage'); if(input) input.value='';
+    document.getElementById('chatImagePreview')?.classList.add('hidden');
+    updateChatMeta();
+    // 关键：这里不再调用 load()/render()，AI回复只更新聊天区。
   }catch(e){const er=document.getElementById('sendError');er.textContent=e.message;er.classList.remove('hidden');}
   finally{sending=false;document.getElementById('thinking')?.classList.add('hidden');if(document.getElementById('send'))document.getElementById('send').disabled=false;}
 }
 function wire(){
-  document.querySelectorAll('[data-field]').forEach(x=>{x.addEventListener('input',queueAutoSave);x.addEventListener('blur',()=>{if(!state.record.submitted_at)persistCurrentFields().then(()=>setSaveStatus('已自动保存 ✓')).catch(e=>setSaveStatus(`自动保存失败：${e.message}`));});});
+  document.querySelectorAll('[data-field]').forEach(x=>{x.addEventListener('input',()=>{writeLocalDraft(collectFields());queueAutoSave();});x.addEventListener('blur',()=>{if(!state.record.submitted_at)persistCurrentFields().then(()=>setSaveStatus('已自动保存 ✓')).catch(e=>setSaveStatus(`自动保存失败：${e.message}`));});});
   document.querySelectorAll('[data-artifact]').forEach(x=>x.onchange=()=>uploadArtifact(x));
   document.getElementById('saveDraft').onclick=saveDraft;
-  document.getElementById('taskForm').onsubmit=async e=>{e.preventDefault();if(!confirm('确认提交本节任务吗？提交后本节记录将锁定。'))return;try{await App.api('/session/submit',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,textFields:collectFields()})});await load();}catch(x){alert(x.message);}};
+  document.getElementById('taskForm').onsubmit=async e=>{e.preventDefault();if(!confirm('确认提交本节任务吗？提交后本节记录将锁定。'))return;try{cancelQueuedAutoSave();await saveChain;await App.api('/session/submit',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,textFields:collectFields()})});clearLocalDraft();await load();}catch(x){alert(x.message);}};
   if(document.getElementById('openAi'))document.getElementById('openAi').onclick=openAi;
   if(chatOpened&&document.getElementById('messages'))renderMessages(state.chat_messages||[]);
   if(document.getElementById('chatImage'))document.getElementById('chatImage').onchange=e=>selectChatImage(e.target.files?.[0]);
