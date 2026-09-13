@@ -1,17 +1,26 @@
-# V9 首次部署检查
+# v11 部署顺序
 
-1. 解压 v9 ZIP，完整覆盖 GitHub 项目文件。
-2. 确认仓库根目录直接存在 `public/`、`src/`、`cloud-functions/`、`package.json`、`edgeone.json`。
-3. 腾讯云继续使用原项目环境变量；新增 `COZE_MODEL_NAME` 可选。
-4. `ALLOWED_PARTICIPANTS` 推荐填 P01–P28。v9 默认原生允许 P01–P28；只有 `STRICT_PARTICIPANT_ALLOWLIST=1` 才严格按环境变量白名单限制。
-5. EdgeOne：Root `./`；Output `public`；Install `npm install`；Build 可留空或 `npm run build`。
-6. 部署后管理员先设置：Practice、Round1、Round2 开关；formal_round_count；test_repeat_count；max_chat_minutes；enable_self_verification。
-7. 点击“创建/补齐 P01–P28”。
-8. 正式研究前分配每人的 condition：scaffold / regular。
-9. 导师演示时点击“创建 DEMO-S / DEMO-R”；正式导出默认排除 demo。
-10. 用 P01 完整跑 Round1；若 formal_round_count=2，再开放 Round2 测试。
-11. 确认 Round2 自动读取 V2 复测证据，不要求重新录入。
-12. 确认聊天没有固定轮数上限；时间到后才停止继续输入。
-13. 确认学生端不出现 condition、实验组/对照组、G/E/H/I、IDTLM 等研究术语。
-14. 检查管理员可查看：图片、锁定回答、完整聊天、实际修改、复测、反思。
-15. 下载 CSV/JSON，确认默认不含 DEMO-S / DEMO-R。
+1. 用本ZIP内容替换当前GitHub项目（建议先新建分支或保留v10标签）。
+2. 推送GitHub，等待腾讯云 EdgeOne Pages 重新部署。
+3. 在腾讯云环境变量中确认：
+   - `COZE_ACCESS_TOKEN`
+   - `COZE_FREE_BOT_ID`
+   - `COZE_SUPPORTED_BOT_ID`
+   - `ADMIN_PASSWORD`
+   - `BLOB_STORE_NAME`
+   - `EXPERIMENT_RUN_ID=design-thinking-course-202609`
+4. 打开 `/health`，应显示 `course-v11`。
+5. 打开 `/admin.html`，先把当前课次设为 W1，并保持“开放当前课次”。
+6. 用 S00 登录，从任务开始直接测试AI：
+   - 不填写任何字段，先打开AI并发消息；应允许；
+   - 再填写任务、上传图片并提交；
+   - 后台应看到首次打开AI和首次发消息的时延。
+7. 后台把当前课次依次切到 W2-W12，用同一个S00页面刷新即可预览各课任务；无需每次重新登录。
+8. W4-W9测试A/B路由：后台将S00 condition设为A，刷新并发消息；再改B重复测试。A应走支持型Bot，B应走自由Bot。
+
+## 重要
+
+- S00重新从登录页进入会归档并清空上一轮S00数据；如果你只是连续预览W1-W12，不要回登录页，直接在后台切换课次后刷新S00任务页。
+- 正式学生S01-S30编号始终不变。
+- W2/W10/W11目前是候选任务，正式研究前可以只改 `src/config/researchConfig.js`。
+- 问卷题项尚未写入代码，这是故意的：等中文版冻结后再加，避免现在误用未定稿题项。

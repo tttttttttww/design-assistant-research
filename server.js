@@ -3,10 +3,11 @@ import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import app from './cloud-functions/express/[[default]].js';
-const __dirname=dirname(fileURLToPath(import.meta.url));
-const server=express();
-server.use('/express',app);
-server.use(express.static(join(__dirname,'public')));
-server.get('*',(req,res)=>res.sendFile(join(__dirname,'public/index.html')));
-const port=Number(process.env.PORT)||3000;
-server.listen(port,()=>console.log(`Design Assistant running at http://localhost:${port}`));
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const server = express();
+server.use('/express', app);
+server.use(express.static(join(__dirname, 'public')));
+server.get('*', (req, res) => res.sendFile(join(__dirname, 'public/index.html')));
+const port = Number(process.env.PORT) || 3000;
+server.listen(port, () => console.log(`Workshop platform running at http://localhost:${port}`));

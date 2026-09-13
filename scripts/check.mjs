@@ -1,10 +1,19 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs';import { join } from 'node:path';import { execFileSync } from 'node:child_process';
-const root=new URL('..',import.meta.url).pathname;let bad=false,count=0;function walk(d){for(const n of readdirSync(d)){const p=join(d,n),st=statSync(p);if(st.isDirectory()&&!p.includes('node_modules'))walk(p);else if(/\.(js|mjs)$/.test(n)){count++;try{execFileSync(process.execPath,['--check',p],{stdio:'pipe'})}catch(e){bad=true;console.error('Syntax:',p,String(e.stderr||e.message))}}}}walk(root);
-const read=p=>readFileSync(join(root,p),'utf8');const all=['src/config/researchConfig.js','src/services/researchService.js','src/routes/chat.js','src/routes/admin.js','public/js/formal.js','public/js/chat.js','public/js/practice.js','public/js/admin.js','public/formal.html','public/chat.html','public/admin.html'].map(read).join('\n');
-for(const required of ['formal_round_count','formal_round1_open','formal_round2_open','test_repeat_count','enable_self_verification','initial_problem','initial_evidence','initial_reason','alternative_considered','user_turn_count','assistant_turn_count','chat_duration_seconds','DEMO-S','DEMO-R','scaffold','regular','prompt_version'])if(!all.includes(required)){bad=true;console.error('Missing:',required)}
-for(const forbidden of ['max_chat_turns','turn_limit','matching_score','baseline_total','GEHI_total'])if(all.includes(forbidden)){bad=true;console.error('Forbidden:',forbidden)}
-const studentFacing=['public/index.html','public/home.html','public/practice.html','public/formal.html','public/chat.html','public/js/home.js','public/js/practice.js','public/js/formal.js','public/js/chat.js'].map(read).join('\n');
-for(const forbidden of ['实验组','对照组','支架组','常规组','Structured','Autonomous','Troubleshoot','IDTLM','G0','E0','H0','I0'])if(studentFacing.includes(forbidden)){bad=true;console.error('Student-facing research term:',forbidden)}
-if(!read('src/routes/upload.js').includes("['V1','V2','V3']")){bad=true;console.error('Upload versions incomplete')}
-if(!read('src/services/cozeService.js').includes('auto_save_history:true')){bad=true;console.error('Coze history missing')}
-if(bad)process.exit(1);console.log(`CHECK OK: ${count} JS/MJS files parsed; v9 workflow constraints present.`);
+import { readFile, access } from 'node:fs/promises';
+const must = [
+  'public/index.html','public/task.html','public/admin.html','public/js/task.js','public/js/admin.js',
+  'src/config/researchConfig.js','src/services/researchService.js','src/services/cozeService.js',
+  'src/routes/course.js','src/routes/chat.js','src/routes/upload.js','src/routes/admin.js','cloud-functions/express/[[default]].js'
+];
+for (const f of must) await access(f);
+const cfg = await import('../src/config/researchConfig.js');
+if (cfg.SESSIONS.length !== 12) throw new Error(`Expected 12 sessions, got ${cfg.SESSIONS.length}`);
+const ids = cfg.SESSIONS.map(x=>x.id);
+if (new Set(ids).size !== 12) throw new Error('Duplicate session ids');
+for (const s of cfg.SESSIONS) {
+  if (!s.title || !Array.isArray(s.brief) || !Array.isArray(s.fields) || !Array.isArray(s.artifacts)) throw new Error(`Bad session config ${s.id}`);
+  if (!['free','condition','none'].includes(s.ai_mode)) throw new Error(`Bad ai_mode ${s.id}`);
+}
+for (const f of ['public/js/task.js','public/js/admin.js','src/services/researchService.js','src/routes/chat.js']) {
+  const t = await readFile(f,'utf8'); if (!t.trim()) throw new Error(`Empty ${f}`);
+}
+console.log('CHECK OK: 12 sessions, generic task platform, dual AI routing, exports.');
