@@ -8,6 +8,7 @@ process.env.COZE_SUPPORTED_BOT_ID='supported-bot';
 const { researchService } = await import('../src/services/researchService.js');
 const { getSessionConfig, aiVariantFor } = await import('../src/config/researchConfig.js');
 const { cozeService } = await import('../src/services/cozeService.js');
+const { storageService } = await import('../src/services/storageService.js');
 await researchService.createParticipant('S01',{grade:'7',condition:'unassigned'});
 await researchService.setParticipantMeta('S01',{login_name:'张三'});
 const p1=await researchService.getParticipant('S01');
@@ -29,4 +30,22 @@ r=await researchService.getSessionRecord('S01','W1');
 if(r.started_at||r.ai_used||Object.keys(r.artifacts||{}).length) throw new Error('session reset failed');
 const archives=await researchService.listResetArchives();
 if(!archives.length) throw new Error('reset archive list missing');
-console.log('SMOKE OK: roster name hash + timing + image metadata + multimodal payload + A/B/transfer routing + safe reset passed.');
+
+// Whole-cohort replacement: clear S01-S30 active data/uploads, keep S00, close session, rotate cohort revision.
+await researchService.ensureStarted('S01','W2');
+await storageService.putObject('uploads/S01/W2/design_sketch/old.jpg', Buffer.from('old'));
+await researchService.createParticipant('S00',{grade:'',condition:'unassigned'});
+await researchService.ensureStarted('S00','W1');
+const beforeSettings=await researchService.getSettings();
+const replacementRows=Array.from({length:30},(_,i)=>({participant_id:`S${String(i+1).padStart(2,'0')}`,login_name:`新学生${String(i+1).padStart(2,'0')}`,grade:i<10?'6':i<20?'7':'8',condition:'unassigned'}));
+const replaced=await researchService.replaceFormalCohort(replacementRows);
+if(replaced.imported_count!==30||replaced.session_open!==false||replaced.cohort_revision===beforeSettings.cohort_revision) throw new Error('cohort replacement result invalid');
+const s01w2=await researchService.getSessionRecord('S01','W2');
+if(s01w2.started_at||s01w2.saved_at||Object.keys(s01w2.artifacts||{}).length) throw new Error('formal cohort active session data not cleared');
+if(await storageService.getObjectBuffer('uploads/S01/W2/design_sketch/old.jpg')) throw new Error('formal cohort upload not cleared');
+const s00w1=await researchService.getSessionRecord('S00','W1');
+if(!s00w1.started_at) throw new Error('S00 should be preserved during cohort replacement');
+const newP1=await researchService.getParticipant('S01');
+if(newP1.grade!=='6'||!newP1.login_name_hash||newP1.condition!=='unassigned') throw new Error('new cohort roster meta missing');
+console.log('SMOKE OK: roster name hash + timing + image metadata + multimodal payload + A/B/transfer routing + safe reset + whole-cohort replacement passed.');
+

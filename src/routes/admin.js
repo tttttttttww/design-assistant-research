@@ -2,10 +2,12 @@ import express from 'express';
 import archiver from 'archiver';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
+import { randomInt } from 'node:crypto';
+import * as XLSX from 'xlsx';
 import { requireAdmin } from '../middleware/auth.js';
 import { storageService } from '../services/storageService.js';
 import { researchService } from '../services/researchService.js';
-import { SESSIONS } from '../config/researchConfig.js';
+import { SESSIONS, QUESTIONNAIRE_ITEMS, QUESTIONNAIRE_META, QUESTIONNAIRE_VERSION } from '../config/researchConfig.js';
 import { normalizeParticipantId, validateParticipantId } from '../utils/validators.js';
 import { parseRosterBuffer, validateRosterRows } from '../utils/rosterImport.js';
 
@@ -32,6 +34,15 @@ const sendCsv = (res, name, headers, rows) => {
 const safeName = value => String(value || 'file').replace(/[^a-zA-Z0-9._-]+/g, '_');
 const pad = n => String(n || 0).padStart(5, '0');
 const formalIds = () => Array.from({ length: 30 }, (_, i) => `S${String(i + 1).padStart(2, '0')}`);
+const shuffle = arr => {
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+};
+const setWidths = (ws, widths) => { ws['!cols'] = widths.map(w => ({ wch: w })); return ws; };
 
 const rosterUpload = multer({
   storage: multer.memoryStorage(),
@@ -185,6 +196,25 @@ router.post('/participants/roster-import', requireAdmin, async (req, res) => {
     res.status(e.status || 400).json({ error: e.message || '名单导入失败' });
   }
 });
+// Replace the whole formal cohort. This is intentionally destructive for active S01-S30 data.
+router.post('/participants/roster-replace', requireAdmin, async (req, res) => {
+  try {
+    if (String(req.body?.confirm || '') !== 'REPLACE S01-S30') {
+      return res.status(400).json({ error: '确认信息不匹配，未更换名单' });
+    }
+    const cleanRows = validateRosterRows(req.body?.rows || []);
+    const expected = formalIds();
+    const ids = [...new Set(cleanRows.map(r => r.participant_id))].sort();
+    if (cleanRows.length !== 30 || ids.length !== 30 || expected.some((id, i) => ids[i] !== id)) {
+      return res.status(400).json({ error: '更换整批学生必须包含完整的 S01–S30 共30人' });
+    }
+    const result = await researchService.replaceFormalCohort(cleanRows);
+    res.json(result);
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message || '更换整批学生失败' });
+  }
+});
+
 router.post('/participant/:participantId/meta', requireAdmin, async (req, res) => {
   try {
     const id = normalizeParticipantId(req.params.participantId);
@@ -273,6 +303,36 @@ router.post('/participants/bulk-meta', requireAdmin, async (req, res) => {
     res.status(500).json({ error: e.message || '批量更新失败' });
   }
 });
+
+router.post('/participants/stratified-randomize', requireAdmin, async (req, res) => {
+  try {
+    if (String(req.body?.confirm || '').trim() !== 'RANDOMIZE W2') return res.status(400).json({ error: '请输入 RANDOMIZE W2 才能执行分层随机分组' });
+    const participants = [];
+    for (const id of formalIds()) participants.push(await researchService.getParticipant(id));
+    const missing = participants.filter(p => !['6','7','8'].includes(String(p.grade || '').trim())).map(p => p.participant_id);
+    if (missing.length) return res.status(400).json({ error: `以下编号缺少6/7/8年级信息：${missing.join(', ')}` });
+    const already = participants.filter(p => ['A','B'].includes(p.condition));
+    if (already.length && !req.body?.force) return res.status(409).json({ error: '已有正式学生被分到A/B。为避免误重分，系统已停止；如确需重分请使用force并重新确认。' });
+
+    const groups = new Map();
+    for (const p of participants) { const g=String(p.grade); if(!groups.has(g)) groups.set(g,[]); groups.get(g).push(p.participant_id); }
+    const assignments = []; let totalA=0,totalB=0;
+    for (const grade of ['6','7','8']) {
+      const ids = shuffle(groups.get(grade) || []);
+      let start = totalA <= totalB ? 'A' : 'B';
+      for (let i=0;i<ids.length;i++) {
+        const condition = i % 2 === 0 ? start : (start === 'A' ? 'B' : 'A');
+        await researchService.setParticipantMeta(ids[i], { condition });
+        if (condition==='A') totalA++; else totalB++;
+        assignments.push({ participant_id:ids[i], grade, condition });
+      }
+    }
+    const snapshot = { method:'stratified_randomization_by_grade', created_at:new Date().toISOString(), totals:{A:totalA,B:totalB}, assignments };
+    await storageService.putObject(`group-assignments/${snapshot.created_at.replace(/[:.]/g,'-')}.json`, JSON.stringify(snapshot,null,2));
+    res.json(snapshot);
+  } catch (e) { res.status(e.status || 500).json({ error: e.message || '分层随机分组失败' }); }
+});
+
 router.get('/participant/:participantId', requireAdmin, async (req, res) => {
   try {
     const id = normalizeParticipantId(req.params.participantId);
@@ -440,6 +500,30 @@ router.get('/export/task-package.zip', requireAdmin, async (req, res) => {
     if (!res.headersSent) res.status(500).json({ error: '任务记录与作品导出失败' });
     else res.destroy(e);
   }
+});
+
+router.get('/export/questionnaire.csv', requireAdmin, async (req, res) => {
+  const rows = [];
+  for (const id of formalIds()) {
+    const p = await researchService.getParticipant(id);
+    for (const slot of ['pre','post']) {
+      const q = await researchService.getQuestionnaire(id, slot);
+      const row = {
+        participant_id:id,
+        grade:p.grade,
+        condition:p.condition,
+        slot,
+        questionnaire_version:q?.questionnaire_version||'',
+        submitted_at:q?.submitted_at||'',
+        instrumental_mean:q?.scores?.instrumental_mean??'',
+        executive_mean:q?.scores?.executive_mean??'',
+        avoidance_mean:q?.scores?.avoidance_mean??'',
+      };
+      for (const item of QUESTIONNAIRE_ITEMS) row[item.id] = q?.responses?.[item.id] ?? '';
+      rows.push(row);
+    }
+  }
+  sendCsv(res, 'questionnaire_raw.csv', ['participant_id','grade','condition','slot','questionnaire_version','submitted_at','instrumental_mean','executive_mean','avoidance_mean',...QUESTIONNAIRE_ITEMS.map(x=>x.id)], rows);
 });
 
 router.get('/export/all.json', requireAdmin, async (req, res) => sendJson(res, 'course_research_all.json', await formalData()));

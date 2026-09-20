@@ -22,6 +22,10 @@ router.post('/upload', upload.single('image'), async (req, res) => {
     const config = getSessionConfig(sid);
     if (!config) return res.status(400).json({ error: '课次无效' });
     const settings = await researchService.getSettings();
+    if (id !== 'S00') {
+      const revision = String(req.headers['x-cohort-revision'] || '');
+      if (!revision || revision !== settings.cohort_revision) return res.status(409).json({ error: '学生名单已更新，请返回登录页重新输入编号和姓名。' });
+    }
     if (!settings.session_open || settings.active_session_id !== sid) return res.status(409).json({ error: '当前不是这个课次。' });
     if (!config.artifacts.some(a => a.key === artifactKey)) return res.status(400).json({ error: '上传项目无效' });
     if (!req.file) return res.status(400).json({ error: '请选择 JPG、PNG 或 WEBP 图片' });

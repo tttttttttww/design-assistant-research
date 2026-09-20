@@ -6,7 +6,7 @@ document.getElementById('loginForm').onsubmit=async e=>{
   box.classList.add('hidden');
   try{
     const r=await App.api('/validate',{method:'POST',body:JSON.stringify({participantId:id,studentName})});
-    App.setParticipantId(r.participant_id);
+    App.setParticipantId(r.participant_id,r.cohort_revision||'');
     location.href='/task.html';
   }catch(x){
     box.textContent=x.message;

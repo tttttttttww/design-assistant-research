@@ -3,6 +3,7 @@ import { storageService } from './storageService.js';
 import {
   DEFAULT_SETTINGS, CONDITIONS, SCHEMA_VERSION, SESSIONS, getSessionConfig,
   aiVariantFor, hiddenAiContext, PROMPT_VERSION_FREE, PROMPT_VERSION_SUPPORTED,
+  QUESTIONNAIRE_ITEMS, QUESTIONNAIRE_META, QUESTIONNAIRE_VERSION,
 } from '../config/researchConfig.js';
 import { isTestParticipant, hashStudentName } from '../utils/validators.js';
 
@@ -16,6 +17,7 @@ const mPrefix = (id, sid) => `${sBase(id, sid)}/chat/messages/`;
 const mKey = (id, sid, index) => `${mPrefix(id, sid)}${String(index).padStart(5, '0')}.json`;
 const ePrefix = (id, sid) => `${sBase(id, sid)}/events/`;
 const eKey = (id, sid, index) => `${ePrefix(id, sid)}${String(index).padStart(5, '0')}.json`;
+const qKey = (id, slot) => `participants/${id}/questionnaires/${slot}.json`;
 
 function blankRecord(id, sid) {
   return {
@@ -58,6 +60,7 @@ class ResearchService {
       active_session_id: active,
       session_open: input.session_open == null ? current.session_open : Boolean(input.session_open),
       questionnaire_enabled: input.questionnaire_enabled == null ? current.questionnaire_enabled : Boolean(input.questionnaire_enabled),
+      cohort_revision: input.cohort_revision == null ? current.cohort_revision : String(input.cohort_revision || current.cohort_revision),
       updated_at: iso(),
     };
     await storageService.putObject('settings.json', JSON.stringify(next));
@@ -113,6 +116,116 @@ class ResearchService {
     p.last_active_at = iso();
     await storageService.putObject(pKey(id), JSON.stringify(p));
     return p;
+  }
+
+  async replaceFormalCohort(rows = []) {
+    const expected = Array.from({ length: 30 }, (_, i) => `S${String(i + 1).padStart(2, '0')}`);
+    const byId = new Map(rows.map(r => [String(r.participant_id || '').toUpperCase(), r]));
+    if (byId.size !== 30 || expected.some(id => !byId.has(id))) {
+      throw Object.assign(new Error('更换整批学生时必须包含完整的 S01–S30 共30人'), { status: 400 });
+    }
+
+    // 先关闭当前课次，避免更换名单时仍有学生继续写入旧编号。
+    const revision = `cohort-${Date.now()}-${randomUUID().slice(0, 8)}`;
+    await this.saveSettings({ session_open: false, cohort_revision: revision });
+
+    // 彻底清空正式学生的活跃任务/聊天/图片与旧登录信息；S00 不受影响。
+    const chunks = [];
+    for (let i = 0; i < expected.length; i += 5) chunks.push(expected.slice(i, i + 5));
+    for (const chunk of chunks) {
+      await Promise.all(chunk.map(async id => {
+        await Promise.all([
+          storageService.deletePrefix(`participants/${id}/`),
+          storageService.deletePrefix(`uploads/${id}/`),
+          storageService.deleteObject(pKey(id)),
+        ]);
+      }));
+    }
+
+    const result = [];
+    for (const id of expected) {
+      const row = byId.get(id);
+      await this.createParticipant(id, { condition: 'unassigned', grade: '', login_name_hash: '' });
+      const participant = await this.setParticipantMeta(id, {
+        login_name: row.login_name,
+        grade: row.grade || '',
+        condition: row.condition || 'unassigned',
+      });
+      result.push({
+        participant_id: id,
+        grade: participant.grade,
+        condition: participant.condition,
+        login_name_ready: Boolean(participant.login_name_hash),
+        status: 'ok',
+      });
+    }
+    return { imported_count: result.length, cohort_revision: revision, session_open: false, result };
+  }
+
+
+  async getQuestionnaire(id, slot) {
+    if (!['pre','post'].includes(slot)) throw Object.assign(new Error('问卷阶段无效'), { status: 400 });
+    return parse(await storageService.getObject(qKey(id, slot)), null);
+  }
+
+  questionnaireScores(responses = {}) {
+    const dims = { instrumental: [], executive: [], avoidance: [] };
+    for (const item of QUESTIONNAIRE_ITEMS) {
+      const v = Number(responses[item.id]);
+      if (Number.isFinite(v) && v >= 1 && v <= 5) dims[item.dimension].push(v);
+    }
+    const mean = arr => arr.length ? Number((arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(3)) : null;
+    return {
+      instrumental_mean: mean(dims.instrumental),
+      executive_mean: mean(dims.executive),
+      avoidance_mean: mean(dims.avoidance),
+    };
+  }
+
+  async submitQuestionnaire(id, slot, responses = {}) {
+    if (!['pre','post'].includes(slot)) throw Object.assign(new Error('问卷阶段无效'), { status: 400 });
+    const existing = await this.getQuestionnaire(id, slot);
+    if (existing?.submitted_at) throw Object.assign(new Error('该问卷已经提交，不能重复修改。'), { status: 409 });
+    const clean = {};
+    for (const item of QUESTIONNAIRE_ITEMS) {
+      const v = Number(responses[item.id]);
+      if (!Number.isInteger(v) || v < 1 || v > 5) throw Object.assign(new Error(`请完成第${QUESTIONNAIRE_ITEMS.indexOf(item)+1}题`), { status: 400 });
+      clean[item.id] = v;
+    }
+    if (slot === 'post') {
+      const w8 = await this.getSessionRecord(id, 'W8');
+      if (!w8.submitted_at) throw Object.assign(new Error('请先提交W8正式项目，再完成后测问卷。'), { status: 409 });
+    }
+    const row = {
+      participant_id: id, slot, questionnaire_version: QUESTIONNAIRE_VERSION,
+      responses: clean, scores: this.questionnaireScores(clean), submitted_at: iso(),
+    };
+    await storageService.putObject(qKey(id, slot), JSON.stringify(row));
+    await this.appendEvent(id, slot === 'pre' ? 'W2' : 'W8', `questionnaire_${slot}_submitted`, {
+      questionnaire_version: QUESTIONNAIRE_VERSION, scores: row.scores,
+    });
+    return row;
+  }
+
+  async questionnairePublicState(id, slot) {
+    const q = await this.getQuestionnaire(id, slot);
+    return {
+      slot, submitted: Boolean(q?.submitted_at), submitted_at: q?.submitted_at || null,
+      scores: q?.scores || null,
+      meta: QUESTIONNAIRE_META, items: QUESTIONNAIRE_ITEMS,
+    };
+  }
+
+  async assertTaskAccess(id, sid) {
+    const participant = await this.getParticipant(id);
+    const session = getSessionConfig(sid);
+    if (!session) throw Object.assign(new Error('课次不存在'), { status: 404 });
+    if (session.require_questionnaire_before_task) {
+      const pre = await this.getQuestionnaire(id, 'pre');
+      if (!pre?.submitted_at) throw Object.assign(new Error('请先完成前测问卷。'), { status: 409 });
+      if (!participant.is_test && participant.condition === 'unassigned') throw Object.assign(new Error('前测已完成，等待老师完成随机分组后再开始正式任务。'), { status: 409 });
+    }
+    return true;
   }
 
   async getSessionRecord(id, sid) {
@@ -302,21 +415,25 @@ class ResearchService {
     const settings = await this.getSettings();
     const session = getSessionConfig(settings.active_session_id);
     const participant = await this.getParticipant(id);
-    const record = await this.ensureStarted(id, session.id);
-    const chat = session.ai_mode === 'none' ? null : await this.getChatSession(id, session.id);
-    const messages = session.ai_mode === 'none' ? [] : await this.getMessages(id, session.id);
+    const questionnaire = {
+      pre: await this.questionnairePublicState(id, 'pre'),
+      post: await this.questionnairePublicState(id, 'post'),
+    };
+    let task_gate = '';
+    if (session.require_questionnaire_before_task && !questionnaire.pre.submitted) task_gate = 'questionnaire_pre';
+    else if (session.require_questionnaire_before_task && !participant.is_test && participant.condition === 'unassigned') task_gate = 'awaiting_assignment';
+    const record = task_gate ? await this.getSessionRecord(id, session.id) : await this.ensureStarted(id, session.id);
+    if (session.questionnaire_after_submit && record.submitted_at && !questionnaire.post.submitted) task_gate = 'questionnaire_post';
+    const chat = session.ai_mode === 'none' || task_gate ? null : await this.getChatSession(id, session.id);
+    const messages = session.ai_mode === 'none' || task_gate ? [] : await this.getMessages(id, session.id);
     let carry = null;
     if (session.carry_from) carry = await this.getSessionRecord(id, session.carry_from);
     const publicParticipant = { ...participant };
     delete publicParticipant.login_name_hash;
     return {
-      settings,
-      participant: publicParticipant,
-      session,
-      record,
+      settings, participant: publicParticipant, session, record, questionnaire, task_gate,
       ai_variant: aiVariantFor({ session, condition: participant.condition, isTest: participant.is_test }),
-      chat_session: chat,
-      chat_messages: messages,
+      chat_session: chat, chat_messages: messages,
       carry_from: session.carry_from ? { session: getSessionConfig(session.carry_from), record: carry } : null,
     };
   }
@@ -335,7 +452,8 @@ class ResearchService {
       ]);
       return [config.id, { config, record, chat_session, chat_messages, events }];
     }));
-    return { participant, sessions: Object.fromEntries(entries) };
+    const [pre, post] = await Promise.all([this.getQuestionnaire(id, 'pre'), this.getQuestionnaire(id, 'post')]);
+    return { participant, questionnaires: { pre, post }, sessions: Object.fromEntries(entries) };
   }
 
   async archiveAndResetSession(id, sid, { reason = 'manual_admin_reset' } = {}) {

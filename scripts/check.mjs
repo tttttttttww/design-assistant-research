@@ -6,9 +6,9 @@ const must = [
 ];
 for (const f of must) await access(f);
 const cfg = await import('../src/config/researchConfig.js');
-if (cfg.SESSIONS.length !== 12) throw new Error(`Expected 12 sessions, got ${cfg.SESSIONS.length}`);
+if (cfg.SESSIONS.length !== 13) throw new Error(`Expected 13 sessions, got ${cfg.SESSIONS.length}`);
 const ids = cfg.SESSIONS.map(x=>x.id);
-if (new Set(ids).size !== 12) throw new Error('Duplicate session ids');
+if (new Set(ids).size !== 13) throw new Error('Duplicate session ids');
 for (const s of cfg.SESSIONS) {
   if (!s.title || !Array.isArray(s.brief) || !Array.isArray(s.fields) || !Array.isArray(s.artifacts)) throw new Error(`Bad session config ${s.id}`);
   if (!['free','condition','none'].includes(s.ai_mode)) throw new Error(`Bad ai_mode ${s.id}`);
@@ -26,9 +26,13 @@ const adminHtml = await readFile('public/admin.html','utf8');
 if (!task.includes('chatImage') || !task.includes('FormData')) throw new Error('Student chat image UI missing');
 if (!chat.includes("imageUpload.single('image')") || !chat.includes('message_has_image')) throw new Error('Chat image route missing');
 if (!coze.includes("content_type: 'object_string'") || !coze.includes("type: 'image'") || !coze.includes('/v1/files/upload') || !coze.includes('file_id')) throw new Error('Coze multimodal file-id payload missing');
-if (!admin.includes('chat_image_count') || !adminRoute.includes('chat-package.zip') || !adminRoute.includes('task-package.zip')) throw new Error('Admin package exports missing');
+if (!admin.includes('chat_image_count') || !adminRoute.includes('chat-package.zip') || !adminRoute.includes('task-package.zip')) throw new Error('Admin raw-data exports missing');
 if (!admin.includes('resetCurrentAll') || !adminRoute.includes('reset-all') || !adminRoute.includes('reset-archives.json')) throw new Error('Admin reset controls missing');
 if (!indexHtml.includes('studentName') || !authRoute.includes('hashStudentName') || !validators.includes('normalizeStudentName')) throw new Error('ID + name login verification missing');
 if (!admin.includes('login_name_ready') || !adminRoute.includes('login_name_ready')) throw new Error('Roster readiness admin UI missing');
 if (!adminHtml.includes('rosterFile') || !admin.includes('roster-preview') || !adminRoute.includes('roster-import') || !rosterImport.includes('parseXlsx')) throw new Error('Excel/CSV roster import missing');
-console.log('CHECK OK: 12 sessions + ID/name verification + Excel/CSV roster import + privacy-safe roster hashing + admin detail viewer + multimodal AI chat + 2 package exports + JSON backup + dual AI routing + safe reset controls.');
+
+if (!admin.includes('replaceRosterImport') || !adminRoute.includes('roster-replace') || !adminRoute.includes('REPLACE S01-S30')) throw new Error('Whole-cohort roster replacement controls missing');
+if (!authRoute.includes('cohort_revision') || !validators || !adminRoute.includes('replaceFormalCohort')) throw new Error('Cohort revision / replacement safety missing');
+if (!task.includes('questionnaireForm') || !adminRoute.includes('stratified-randomize')) throw new Error('W2 questionnaire/randomization flow missing');
+console.log('CHECK OK: 13 sessions + ID/name verification + Excel/CSV roster import + privacy-safe roster hashing + whole-cohort replacement + cohort revision invalidation + admin detail viewer + multimodal AI chat + 2 package exports + JSON backup + dual AI routing + safe reset controls.');

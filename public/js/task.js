@@ -52,7 +52,10 @@ function renderMessages(messages=[]) {
   messages.forEach(m => addMessage(m.role, m.content, m.attachments || []));
 }
 function artifactUrl(a, sid=state.session.id){ return a ? App.photoUrl(id, sid, a.artifact_key, a) : ''; }
-function taskCard(s){return `<section class="task-box"><span class="eyebrow">${esc(s.student_label)}</span><h1>${esc(s.title)}</h1><p class="lead">${esc(s.subtitle)}</p><div class="brief-list">${s.brief.map(x=>`<p>${esc(x)}</p>`).join('')}</div><h3>本节要求</h3><ul class="requirements">${s.requirements.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section>`;}
+function taskCard(s){
+  const resources=(s.resources||[]).length ? `<div class="resource-pack"><div class="resource-pack-head"><span class="eyebrow">任务资料包</span><h3>本节所需信息都在这里</h3><p class="small">先阅读资料，再开始判断。资料中故意保留了一些未知条件，因为识别“还缺什么”也是任务的一部分。</p></div><div class="resource-grid">${s.resources.map(r=>`<article class="resource-card"><h4>${esc(r.title)}</h4><ul>${(r.items||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></article>`).join('')}</div></div>` : '';
+  return `<section class="task-box"><span class="eyebrow">${esc(s.student_label)}</span><h1>${esc(s.title)}</h1><p class="lead">${esc(s.subtitle)}</p><div class="brief-list">${s.brief.map(x=>`<p>${esc(x)}</p>`).join('')}</div>${resources}<h3>本节要求</h3><ul class="requirements">${s.requirements.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section>`;
+}
 
 function carryCard(carry){
   if(!carry) return '';
@@ -88,14 +91,50 @@ function chatPanel(){
     </div>`}</section>`;
 }
 
+
+function questionnaireHtml(slot){
+  const q=state?.questionnaire?.[slot];
+  if(!q) return '<div class="notice warn">问卷暂时无法读取，请刷新页面。</div>';
+  const scale=q.meta?.scale||[];
+  const items=q.items||[];
+  return `<section class="card questionnaire-card"><span class="eyebrow">${slot==='pre'?'正式前测':'正式后测'}</span><h1>${esc(q.meta?.title||'学业求助意图问卷')}</h1><p class="lead">${esc(q.meta?.instruction||'请按真实情况作答。')}</p><div class="notice"><strong>请注意：</strong>${slot==='pre'?'完成并提交问卷后才进入正式任务。问卷不用于决定你“好或不好”，也没有标准答案。':'请根据你现在真实的想法作答。没有标准答案。'}</div><form id="questionnaireForm" class="questionnaire-form">${items.map((item,idx)=>`<fieldset class="question-item"><legend>${idx+1}. ${esc(item.text)}</legend><div class="likert-row">${scale.map(opt=>`<label><input type="radio" name="q_${esc(item.id)}" value="${opt.value}" required><span>${opt.value}<small>${esc(opt.label)}</small></span></label>`).join('')}</div></fieldset>`).join('')}<div id="questionnaireError" class="notice warn hidden"></div><button class="btn orange" type="submit">提交${slot==='pre'?'前测':'后测'}问卷</button></form></section>`;
+}
+
+async function submitQuestionnaire(slot){
+  const form=document.getElementById('questionnaireForm');
+  const responses={};
+  for(const item of state.questionnaire[slot].items||[]){
+    const checked=form.querySelector(`input[name="q_${item.id}"]:checked`);
+    if(!checked){ const e=document.getElementById('questionnaireError'); e.textContent='请完成所有题目后再提交。'; e.classList.remove('hidden'); return; }
+    responses[item.id]=Number(checked.value);
+  }
+  if(!confirm(`确认提交${slot==='pre'?'前测':'后测'}问卷吗？提交后不能修改。`)) return;
+  try{
+    await App.api(`/questionnaire/${slot}`,{method:'POST',body:JSON.stringify({participantId:id,responses})});
+    await load();
+  }catch(x){ const e=document.getElementById('questionnaireError'); e.textContent=x.message; e.classList.remove('hidden'); }
+}
+
+function gateHtml(){
+  if(state.task_gate==='questionnaire_pre') return `<div class="single-column-page">${questionnaireHtml('pre')}</div>`;
+  if(state.task_gate==='questionnaire_post') return `<div class="single-column-page"><section class="card"><span class="eyebrow">W8正式项目已提交</span><h2>最后一步：完成后测问卷</h2><p>完成后测后，本阶段数据才完整。</p></section>${questionnaireHtml('post')}</div>`;
+  if(state.task_gate==='awaiting_assignment') return `<div class="single-column-page"><section class="card"><span class="eyebrow">前测已完成</span><h1>等待老师完成随机分组</h1><p class="lead">请先不要使用其他AI。老师完成分组后，点击下面按钮进入正式任务。</p><button class="btn" id="refreshAssignment">刷新分组状态</button></section></div>`;
+  return '';
+}
+
 function render(){
   const s=state.session,r=state.record;
   document.title=`${s.id} ${s.title}`;
+  if(state.task_gate){
+    document.getElementById('app').innerHTML=`<div class="course-header"><span class="eyebrow">${esc(s.id)} · ${esc(s.date)}</span><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div></div>${gateHtml()}`;
+    if(document.getElementById('questionnaireForm')) document.getElementById('questionnaireForm').onsubmit=e=>{e.preventDefault();submitQuestionnaire(state.task_gate==='questionnaire_post'?'post':'pre');};
+    if(document.getElementById('refreshAssignment')) document.getElementById('refreshAssignment').onclick=()=>load();
+    return;
+  }
   document.getElementById('app').innerHTML=`
     <div class="course-header"><span class="eyebrow">${esc(s.id)} · ${esc(s.date)}</span><div class="row between"><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div>${r.submitted_at?'<span class="badge big">已提交</span>':''}</div></div>
     <div class="course-grid"><div class="course-main">${taskCard(s)}${carryCard(state.carry_from)}
       <section class="card"><span class="eyebrow">我的任务记录</span><h2>边做边记录，最后统一提交</h2><form id="taskForm" class="form">${s.fields.map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'')).join('')}<div class="artifact-list">${s.artifacts.map(a=>artifactHtml(a,r.artifacts?.[a.key])).join('')}</div><div id="saveStatus" class="small"></div><div class="row"><button type="button" class="btn secondary" id="saveDraft" ${r.submitted_at?'disabled':''}>保存当前记录</button><button type="submit" class="btn orange" ${r.submitted_at?'disabled':''}>${r.submitted_at?'本节已提交':'提交本节任务'}</button></div></form></section>
-      ${(s.questionnaire_slot&&state.participant.is_test)?`<section class="card"><span class="eyebrow">${s.questionnaire_slot==='pre'?'前测问卷':'后测问卷'}</span><h2>问卷模块预留（仅S00预览）</h2><p>问卷正式中文版定稿后再接入。正式学生目前不会看到这一块。</p></section>`:''}
     </div><aside class="course-side">${chatPanel()}</aside></div>`;
   wire();
 }

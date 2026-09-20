@@ -20,12 +20,17 @@ const imageUpload = multer({
 });
 const ext = file => file.mimetype === 'image/png' ? 'png' : file.mimetype === 'image/webp' ? 'webp' : 'jpg';
 
-async function access(id, sid) {
+async function access(req, id, sid) {
   const settings = await researchService.getSettings();
+  if (id !== 'S00') {
+    const revision = String(req.headers['x-cohort-revision'] || '');
+    if (!revision || revision !== settings.cohort_revision) throw Object.assign(new Error('学生名单已更新，请返回登录页重新输入编号和姓名。'), { status: 409 });
+  }
   if (!settings.session_open) throw Object.assign(new Error('当前课次还没有开放。'), { status: 409 });
   if (settings.active_session_id !== sid) throw Object.assign(new Error('当前不是这个课次。'), { status: 409 });
   const config = getSessionConfig(sid);
   if (!config || config.ai_mode === 'none') throw Object.assign(new Error('本节课没有AI助手。'), { status: 409 });
+  await researchService.assertTaskAccess(id, sid);
   const state = await researchService.currentState(id);
   if (state.record.submitted_at) throw Object.assign(new Error('本节任务已经提交。'), { status: 409 });
   if (state.ai_variant === 'unassigned') throw Object.assign(new Error('本课已进入分组阶段，但你的组别尚未配置，请联系老师。'), { status: 409 });
@@ -45,7 +50,7 @@ router.get('/chat/state', async (req, res) => {
     const id = normalizeParticipantId(req.query.participantId);
     const sid = String(req.query.sessionId || '').toUpperCase();
     if (!isAllowedParticipant(id)) return res.status(403).json({ error: '编号无效' });
-    const state = await access(id, sid);
+    const state = await access(req, id, sid);
     res.json({ session: await researchService.getChatSession(id, sid), messages: await researchService.getMessages(id, sid), ai_variant: state.ai_variant });
   } catch (e) { res.status(e.status || 500).json({ error: e.message || '读取聊天失败' }); }
 });
@@ -55,7 +60,7 @@ router.post('/chat/open', async (req, res) => {
     const id = normalizeParticipantId(req.body?.participantId);
     const sid = String(req.body?.sessionId || '').toUpperCase();
     if (!isAllowedParticipant(id)) return res.status(403).json({ error: '编号无效' });
-    const state = await access(id, sid);
+    const state = await access(req, id, sid);
     const result = await researchService.markAiOpened(id, sid);
     const s = result.session;
     if (!s.bot_id) {
@@ -76,7 +81,7 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
     const message = String(req.body?.message || '');
     if (!isAllowedParticipant(id)) return res.status(403).json({ error: '编号无效' });
     if (!validateMessage(message)) return res.status(400).json({ error: '请用文字告诉AI你想让它帮你看什么。' });
-    const state = await access(id, sid);
+    const state = await access(req, id, sid);
     let s = await researchService.ensureChatSession(id, sid);
     if (s.locked) return res.status(409).json({ error: '本节AI记录已经结束。' });
 

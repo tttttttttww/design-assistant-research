@@ -150,7 +150,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#f6f4ef;border-radius:
 .archive-tools summary{cursor:pointer}
 @media(max-width:780px){.export-grid{grid-template-columns:1fr}.compact-export{grid-column:auto}.action-row{flex-wrap:wrap}}
 
-/* v11.11: 编号 + 姓名双重核对与登录页细节 */
+/* v11.12: 编号 + 姓名双重核对与登录页细节 */
 .teacher-entry-simple{display:block;justify-content:initial}
 .teacher-entry-simple .teacher-btn{width:100%;min-height:50px;display:flex;align-items:center;justify-content:center;text-align:center}
 .test-login-note{text-align:center;margin:10px 0 0;font-size:12px}
@@ -160,7 +160,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#f6f4ef;border-radius:
 .cover-card .form>.btn{min-height:50px}
 .topbar #switchStudent{background:#fff;color:var(--green);border-color:#c9d5d1}
 
-/* v11.11: Excel / CSV 名单上传与导入预览 */
+/* v11.12: Excel / CSV 名单上传与导入预览 */
 .roster-import-box{margin-top:16px;padding:18px;border:1px solid var(--line);border-radius:16px;background:#fbfcfa}
 .roster-import-box h3{margin:5px 0 6px}
 .roster-upload-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px}
@@ -171,3 +171,22 @@ pre{white-space:pre-wrap;word-break:break-word;background:#f6f4ef;border-radius:
 .manual-roster{margin-top:16px}
 .manual-roster>summary{cursor:pointer;font-weight:800;color:var(--green)}
 @media(max-width:700px){.roster-preview-head{align-items:stretch;flex-direction:column}.roster-preview-head .btn{width:100%}}
+
+/* v11.12: 整批更换学生名单 */
+.roster-action-buttons{justify-content:flex-end;flex-wrap:wrap}
+.roster-action-buttons .btn{white-space:nowrap}
+.roster-mode-note{margin:10px 0 14px;background:#fffaf3}
+@media(max-width:900px){.roster-action-buttons{width:100%;justify-content:stretch}.roster-action-buttons .btn{flex:1 1 260px}}
+
+/* v11.13 questionnaire + formal study gates */
+.single-column-page{max-width:980px;margin:0 auto 48px;padding:0 18px}.questionnaire-card{padding:28px}.questionnaire-form{display:grid;gap:16px;margin-top:18px}.question-item{border:1px solid #e3e7ee;border-radius:14px;padding:16px 18px;background:#fff}.question-item legend{font-weight:700;line-height:1.6;padding:0 6px}.likert-row{display:grid;grid-template-columns:repeat(5,minmax(90px,1fr));gap:8px;margin-top:12px}.likert-row label{cursor:pointer}.likert-row input{position:absolute;opacity:0;pointer-events:none}.likert-row span{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:66px;border:1px solid #d9dee7;border-radius:10px;padding:8px;background:#f8fafc;font-weight:700}.likert-row small{font-weight:400;margin-top:4px}.likert-row input:checked+span{outline:3px solid rgba(40,93,255,.18);border-color:#285dff;background:#eef3ff}.questionnaire-card .btn{margin-top:8px}@media(max-width:760px){.likert-row{grid-template-columns:1fr}.likert-row span{min-height:auto;flex-direction:row;gap:8px;justify-content:flex-start}.question-item{padding:14px}}
+
+
+/* v11.17: W2 self-contained mature-course information pack */
+.resource-pack{margin:22px 0 18px;padding:18px;border:1px solid #d8d3c8;border-radius:18px;background:#fff}
+.resource-pack-head h3{margin:3px 0 4px}.resource-pack-head p{margin:0 0 14px}
+.resource-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.resource-card{border:1px solid #e1ddd4;border-radius:14px;padding:14px 16px;background:#faf9f5}
+.resource-card h4{margin:0 0 8px;font-size:15px;color:var(--green)}
+.resource-card ul{margin:0;padding-left:20px}.resource-card li{margin:6px 0}
+@media(max-width:760px){.resource-grid{grid-template-columns:1fr}}

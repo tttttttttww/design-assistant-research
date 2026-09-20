@@ -42,6 +42,7 @@ router.post('/validate', async (req, res) => {
       is_test: isTestParticipant(participantId),
       test_info: testInfo,
       active_session_id: settings.active_session_id,
+      cohort_revision: settings.cohort_revision,
     });
   } catch (e) {
     console.error('validate', e);
