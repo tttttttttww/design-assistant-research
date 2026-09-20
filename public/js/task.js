@@ -48,12 +48,13 @@ function addMessage(role, content, attachments=[]) {
 }
 function renderMessages(messages=[]) {
   const box = document.getElementById('messages');
-  box.innerHTML = messages.length ? '' : '<div class="empty-chat" id="emptyChat"><h3>需要时再问AI</h3><p>本节任务中可以使用AI设计助手，也可以不使用。</p></div>';
+  const requiredOnce = Boolean(state?.session?.ai_use_required_once);
+  box.innerHTML = messages.length ? '' : `<div class="empty-chat" id="emptyChat"><h3>${requiredOnce?'完成第一版判断后，和AI真实讨论一次':'需要时再问AI'}</h3><p>${requiredOnce?'请选择一个你真正不确定、最想比较或最需要反馈的点来问；之后是否继续使用由你自己决定。':'本节任务中可以使用AI设计助手，也可以不使用。'}</p></div>`;
   messages.forEach(m => addMessage(m.role, m.content, m.attachments || []));
 }
 function artifactUrl(a, sid=state.session.id){ return a ? App.photoUrl(id, sid, a.artifact_key, a) : ''; }
 function taskCard(s){
-  const resources=(s.resources||[]).length ? `<div class="resource-pack"><div class="resource-pack-head"><span class="eyebrow">任务资料包</span><h3>本节所需信息都在这里</h3><p class="small">先阅读资料，再开始判断。资料中故意保留了一些未知条件，因为识别“还缺什么”也是任务的一部分。</p></div><div class="resource-grid">${s.resources.map(r=>`<article class="resource-card"><h4>${esc(r.title)}</h4><ul>${(r.items||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></article>`).join('')}</div></div>` : '';
+  const resources=(s.resources||[]).length ? `<div class="resource-pack"><div class="resource-pack-head"><span class="eyebrow">任务资料包</span><h3>先看共同资料，再开始判断</h3><p class="small">所有同学看到相同资料。先依据资料形成自己的判断；遇到真正不确定的地方，再按本节要求使用AI。</p></div><div class="resource-grid">${s.resources.map(r=>`<article class="resource-card"><h4>${esc(r.title)}</h4><ul>${(r.items||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></article>`).join('')}</div></div>` : '';
   return `<section class="task-box"><span class="eyebrow">${esc(s.student_label)}</span><h1>${esc(s.title)}</h1><p class="lead">${esc(s.subtitle)}</p><div class="brief-list">${s.brief.map(x=>`<p>${esc(x)}</p>`).join('')}</div>${resources}<h3>本节要求</h3><ul class="requirements">${s.requirements.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section>`;
 }
 
@@ -78,8 +79,10 @@ function chatPanel(){
   if(state.session.ai_mode==='none') return `<section class="card sticky-card"><span class="eyebrow">本节无需AI</span><h2>专注整理与反思</h2><p class="small">本节没有AI对话入口。</p></section>`;
   const variantBlocked=state.ai_variant==='unassigned';
   const variantLabel=state.participant.is_test ? `S00测试预览：${state.ai_variant}` : 'AI设计助手';
-  return `<section class="card sticky-card ai-card"><div class="row between"><div><span class="eyebrow">${esc(variantLabel)}</span><h2>AI设计助手</h2></div><span class="badge">可选</span></div>
-    ${variantBlocked?'<div class="notice warn">本课已进入分组阶段，但当前编号还没有分组。请老师先在后台设置 A/B。</div>':`<p class="small">本节任务中可以使用AI设计助手，也可以不使用。</p>
+  const requiredOnce=Boolean(state.session.ai_use_required_once);
+  const policyText=state.session.ai_instruction || '本节任务中可以使用AI设计助手，也可以不使用。';
+  return `<section class="card sticky-card ai-card"><div class="row between"><div><span class="eyebrow">${esc(variantLabel)}</span><h2>AI设计助手</h2></div><span class="badge">${requiredOnce?'至少讨论1次':'可选'}</span></div>
+    ${variantBlocked?'<div class="notice warn">本课已进入分组阶段，但当前编号还没有分组。请老师先在后台设置 A/B。</div>':`<p class="small">${esc(policyText)}</p>
     <button class="btn secondary" id="openAi">${state.record.first_ai_open_at?'继续使用AI':'打开AI助手'}</button>
     <div id="chatBox" class="chat-embed ${chatOpened?'':'hidden'}">
       ${state.participant.is_test?`<div class="chat-meta small" id="chatMeta">S00测试数据｜首次打开：${fmtLatency(state.record.first_ai_open_latency_seconds)}｜首次发送：${fmtLatency(state.record.first_user_message_latency_seconds)}</div>`:''}
@@ -122,6 +125,36 @@ function gateHtml(){
   return '';
 }
 
+function updateRevealKey(){ return state?.session?.id ? `mid_task_update:${id}:${state.session.id}` : ''; }
+function updateIsRevealed(){
+  if(!state?.session?.mid_task_update) return true;
+  try { if(sessionStorage.getItem(updateRevealKey())==='1') return true; } catch {}
+  const vals=displayTextFields();
+  return (state.session.fields||[]).filter(f=>f.stage==='after_update').some(f=>String(vals?.[f.key]||'').trim());
+}
+function taskFieldsHtml(s){
+  const vals=displayTextFields();
+  const before=(s.fields||[]).filter(f=>f.stage!=='after_update');
+  const after=(s.fields||[]).filter(f=>f.stage==='after_update');
+  if(!s.mid_task_update || !after.length) return (s.fields||[]).map(f=>fieldHtml(f,vals?.[f.key]??'')).join('');
+  const revealed=updateIsRevealed();
+  const u=s.mid_task_update;
+  const updateCard=`<div class="notice mid-task-update"><span class="eyebrow">任务进行到一半</span><h3>${esc(u.title||'收到新反馈')}</h3><p>${esc(u.intro||'')}</p><button type="button" class="btn secondary" id="revealUpdate" ${revealed?'disabled':''}>${revealed?'新反馈已查看 ✓':esc(u.button||'查看新反馈')}</button><div id="updateContent" class="${revealed?'':'hidden'}" style="margin-top:12px"><ul class="requirements">${(u.items||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div></div>`;
+  return `${before.map(f=>fieldHtml(f,vals?.[f.key]??'')).join('')}${updateCard}<div id="afterUpdateFields" class="${revealed?'':'hidden'}">${after.map(f=>fieldHtml(f,vals?.[f.key]??'')).join('')}</div>`;
+}
+async function revealMidTaskUpdate(){
+  const u=state?.session?.mid_task_update; if(!u) return;
+  const vals=collectFields();
+  const missing=(u.after_fields||[]).map(k=>state.session.fields.find(f=>f.key===k)).filter(f=>f && !String(vals[f.key]||'').trim());
+  if(missing.length){ alert(`请先完成：${missing[0].label}`); return; }
+  try{ await persistCurrentFields({showStatus:true}); }catch{return;}
+  try{ sessionStorage.setItem(updateRevealKey(),'1'); }catch{}
+  document.getElementById('updateContent')?.classList.remove('hidden');
+  document.getElementById('afterUpdateFields')?.classList.remove('hidden');
+  const btn=document.getElementById('revealUpdate'); if(btn){btn.disabled=true;btn.textContent='新反馈已查看 ✓';}
+  App.api('/session/event',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,type:'mid_task_update_revealed',data:{}})}).catch(()=>{});
+}
+
 function render(){
   const s=state.session,r=state.record;
   document.title=`${s.id} ${s.title}`;
@@ -134,7 +167,7 @@ function render(){
   document.getElementById('app').innerHTML=`
     <div class="course-header"><span class="eyebrow">${esc(s.id)} · ${esc(s.date)}</span><div class="row between"><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div>${r.submitted_at?'<span class="badge big">已提交</span>':''}</div></div>
     <div class="course-grid"><div class="course-main">${taskCard(s)}${carryCard(state.carry_from)}
-      <section class="card"><span class="eyebrow">我的任务记录</span><h2>边做边记录，最后统一提交</h2><form id="taskForm" class="form">${s.fields.map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'')).join('')}<div class="artifact-list">${s.artifacts.map(a=>artifactHtml(a,r.artifacts?.[a.key])).join('')}</div><div id="saveStatus" class="small"></div><div class="row"><button type="button" class="btn secondary" id="saveDraft" ${r.submitted_at?'disabled':''}>保存当前记录</button><button type="submit" class="btn orange" ${r.submitted_at?'disabled':''}>${r.submitted_at?'本节已提交':'提交本节任务'}</button></div></form></section>
+      <section class="card"><span class="eyebrow">我的任务记录</span><h2>边做边记录，最后统一提交</h2><form id="taskForm" class="form">${taskFieldsHtml(s)}<div class="artifact-list">${s.artifacts.map(a=>artifactHtml(a,r.artifacts?.[a.key])).join('')}</div><div id="saveStatus" class="small"></div><div class="row"><button type="button" class="btn secondary" id="saveDraft" ${r.submitted_at?'disabled':''}>保存当前记录</button><button type="submit" class="btn orange" ${r.submitted_at?'disabled':''}>${r.submitted_at?'本节已提交':'提交本节任务'}</button></div></form></section>
     </div><aside class="course-side">${chatPanel()}</aside></div>`;
   wire();
 }
@@ -227,6 +260,7 @@ function wire(){
   document.querySelectorAll('[data-artifact]').forEach(x=>x.onchange=()=>uploadArtifact(x));
   document.getElementById('saveDraft').onclick=saveDraft;
   document.getElementById('taskForm').onsubmit=async e=>{e.preventDefault();if(!confirm('确认提交本节任务吗？提交后本节记录将锁定。'))return;try{cancelQueuedAutoSave();await saveChain;await App.api('/session/submit',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,textFields:collectFields()})});clearLocalDraft();await load();}catch(x){alert(x.message);}};
+  if(document.getElementById('revealUpdate'))document.getElementById('revealUpdate').onclick=revealMidTaskUpdate;
   if(document.getElementById('openAi'))document.getElementById('openAi').onclick=openAi;
   if(chatOpened&&document.getElementById('messages'))renderMessages(state.chat_messages||[]);
   if(document.getElementById('chatImage'))document.getElementById('chatImage').onchange=e=>selectChatImage(e.target.files?.[0]);

@@ -198,7 +198,7 @@ if(randomBtn) randomBtn.onclick=async()=>{
   const formalRows=rows.filter(x=>!x.is_test);
   const missing=formalRows.filter(x=>!['6','7','8'].includes(String(x.grade||'').trim())).map(x=>x.participant_id);
   if(missing.length){ alert(`请先补全年级信息：${missing.join('、')}`); return; }
-  if(!confirm('确认按年级（6/7/8）分层随机分配A/B吗？\n\n该功能留给W3正式主项目前使用。W2共同试行任务不需要分组。系统会保存本次分组快照。')) return;
+  if(!confirm('确认按年级（6/7/8）分层随机分配A/B吗？\n\n该功能留给W3正式主项目前使用。W2共同AI试用任务不需要分组。系统会保存本次分组快照。')) return;
   const typed=prompt('为防止误操作，请输入：RANDOMIZE W2','');
   if(typed!=='RANDOMIZE W2'){ alert('输入不一致，已取消。'); return; }
   try{
