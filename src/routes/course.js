@@ -37,7 +37,7 @@ router.post('/session/save', async (req, res) => {
     const settings = await cohortGuard(req, id, res); if (!settings) return;
     if (!settings.session_open || settings.active_session_id !== sid) return res.status(409).json({ error: '当前不是这个课次。' });
     await researchService.assertTaskAccess(id, sid);
-    res.json({ record: await researchService.saveFields(id, sid, req.body?.textFields || {}) });
+    res.json({ record: await researchService.saveFields(id, sid, req.body?.textFields || {}, req.body?.saveContext || {}) });
   } catch (e) { res.status(e.status || 500).json({ error: e.message || '保存失败' }); }
 });
 
@@ -48,7 +48,7 @@ router.post('/session/submit', async (req, res) => {
     const settings = await cohortGuard(req, id, res); if (!settings) return;
     if (!settings.session_open || settings.active_session_id !== sid) return res.status(409).json({ error: '当前不是这个课次。' });
     await researchService.assertTaskAccess(id, sid);
-    res.json({ record: await researchService.submitSession(id, sid, req.body?.textFields || {}) });
+    res.json({ record: await researchService.submitSession(id, sid, req.body?.textFields || {}, req.body?.saveContext || {}) });
   } catch (e) { res.status(e.status || 500).json({ error: e.message || '提交失败' }); }
 });
 

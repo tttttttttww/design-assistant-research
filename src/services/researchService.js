@@ -17,6 +17,8 @@ const mPrefix = (id, sid) => `${sBase(id, sid)}/chat/messages/`;
 const mKey = (id, sid, index) => `${mPrefix(id, sid)}${String(index).padStart(5, '0')}.json`;
 const ePrefix = (id, sid) => `${sBase(id, sid)}/events/`;
 const eKey = (id, sid, index) => `${ePrefix(id, sid)}${String(index).padStart(5, '0')}.json`;
+const revPrefix = (id, sid) => `${sBase(id, sid)}/revisions/`;
+const revKey = (id, sid, index) => `${revPrefix(id, sid)}${String(index).padStart(5, '0')}.json`;
 const qKey = (id, slot) => `participants/${id}/questionnaires/${slot}.json`;
 
 function blankRecord(id, sid) {
@@ -31,7 +33,10 @@ function blankRecord(id, sid) {
     first_user_message_latency_seconds: null,
     ai_open_count: 0,
     ai_used: false,
+    ai_requirement_met: null,
     text_fields: {},
+    revision_count: 0,
+    field_revision_counts: {},
     artifacts: {},
     saved_at: null,
     submitted_at: null,
@@ -256,15 +261,67 @@ class ResearchService {
     return r;
   }
 
-  async saveFields(id, sid, textFields = {}) {
+  async getRevisions(id, sid) {
+    const rows = await storageService.listObjects(revPrefix(id, sid));
+    const out = [];
+    for (const row of rows.sort((a, b) => a.key.localeCompare(b.key))) {
+      const raw = await storageService.getObject(row.key);
+      if (raw) out.push(JSON.parse(raw));
+    }
+    return out;
+  }
+
+  async saveFields(id, sid, textFields = {}, saveContext = {}) {
     const r = await this.ensureStarted(id, sid);
     if (r.submitted_at) throw Object.assign(new Error('本节任务已经提交，不能再修改。'), { status: 409 });
     const config = getSessionConfig(sid);
     const allowed = new Set(config.fields.map(f => f.key));
-    for (const [k, v] of Object.entries(textFields || {})) if (allowed.has(k)) r.text_fields[k] = String(v ?? '').trim();
+    const changed = [];
+    for (const [k, v] of Object.entries(textFields || {})) {
+      if (!allowed.has(k)) continue;
+      const nextText = String(v ?? '').trim();
+      const previousText = String(r.text_fields[k] ?? '').trim();
+      if (nextText !== previousText) changed.push({ field_key: k, previous_text: previousText, text: nextText });
+      r.text_fields[k] = nextText;
+    }
+
+    if (changed.length) {
+      let revisionIndex = Number(r.revision_count || 0);
+      const perFieldCount = { ...(r.field_revision_counts || {}) };
+      const lastAiAt = saveContext?.last_ai_message_at ? Date.parse(saveContext.last_ai_message_at) : NaN;
+      for (const item of changed) {
+        revisionIndex += 1;
+        const fieldRevisionNo = Number(perFieldCount[item.field_key] || 0) + 1;
+        perFieldCount[item.field_key] = fieldRevisionNo;
+        const createdAt = iso();
+        const secondsSinceAi = Number.isFinite(lastAiAt) ? Math.max(0, Math.floor((Date.parse(createdAt) - lastAiAt) / 1000)) : null;
+        const row = {
+          participant_id: id,
+          session_id: sid,
+          revision_index: revisionIndex,
+          field_key: item.field_key,
+          field_revision_no: fieldRevisionNo,
+          previous_text: item.previous_text,
+          text: item.text,
+          created_at: createdAt,
+          save_reason: String(saveContext?.reason || 'save'),
+          last_ai_message_id: String(saveContext?.last_ai_message_id || ''),
+          last_ai_message_at: String(saveContext?.last_ai_message_at || ''),
+          seconds_since_last_ai_reply: secondsSinceAi,
+        };
+        await storageService.putObject(revKey(id, sid, revisionIndex), JSON.stringify(row));
+      }
+      r.revision_count = revisionIndex;
+      r.field_revision_counts = perFieldCount;
+    }
+
     r.saved_at = iso();
     await this.saveSessionRecord(id, sid, r);
-    await this.appendEvent(id, sid, 'fields_saved', { keys: Object.keys(textFields || {}).filter(k => allowed.has(k)) });
+    await this.appendEvent(id, sid, 'fields_saved', {
+      keys: Object.keys(textFields || {}).filter(k => allowed.has(k)),
+      changed_keys: changed.map(x => x.field_key),
+      save_reason: String(saveContext?.reason || 'save'),
+    });
     return r;
   }
 
@@ -280,14 +337,16 @@ class ResearchService {
     return r;
   }
 
-  async submitSession(id, sid, textFields = {}) {
+  async submitSession(id, sid, textFields = {}, saveContext = {}) {
     const config = getSessionConfig(sid);
-    let r = await this.saveFields(id, sid, textFields);
+    let r = await this.saveFields(id, sid, textFields, { ...saveContext, reason: saveContext?.reason || 'submit' });
     if (r.submitted_at) return r;
     const missingField = config.fields.find(f => f.required && !String(r.text_fields[f.key] || '').trim());
     if (missingField) throw Object.assign(new Error(`请先完成：${missingField.label}`), { status: 400 });
     const missingArtifact = config.artifacts.find(a => a.required && !r.artifacts[a.key]);
     if (missingArtifact) throw Object.assign(new Error(`请先完成：${missingArtifact.label}`), { status: 400 });
+    if (config.ai_use_required_once && !r.ai_used) await this.appendEvent(id, sid, 'ai_required_not_used_at_submit', {});
+    r.ai_requirement_met = config.ai_use_required_once ? Boolean(r.ai_used) : null;
     r.submitted_at = iso();
     r.completed_at = iso();
     await this.saveSessionRecord(id, sid, r);
@@ -444,13 +503,14 @@ class ResearchService {
     // 在云端 Blob 上容易等待很久，前端又没有加载状态，看起来就像“点了没反应”。
     // 这里改为按课次并行读取，并在每个课次内并行拉取记录 / 聊天 / 事件。
     const entries = await Promise.all(SESSIONS.map(async config => {
-      const [record, chat_session, chat_messages, events] = await Promise.all([
+      const [record, chat_session, chat_messages, events, revisions] = await Promise.all([
         this.getSessionRecord(id, config.id),
         this.getChatSession(id, config.id),
         this.getMessages(id, config.id),
         this.getEvents(id, config.id),
+        this.getRevisions(id, config.id),
       ]);
-      return [config.id, { config, record, chat_session, chat_messages, events }];
+      return [config.id, { config, record, chat_session, chat_messages, events, revisions }];
     }));
     const [pre, post] = await Promise.all([this.getQuestionnaire(id, 'pre'), this.getQuestionnaire(id, 'post')]);
     return { participant, questionnaires: { pre, post }, sessions: Object.fromEntries(entries) };
@@ -469,10 +529,11 @@ class ResearchService {
       chat_session: await this.getChatSession(id, sid),
       chat_messages: await this.getMessages(id, sid),
       events: await this.getEvents(id, sid),
+      revisions: await this.getRevisions(id, sid),
     };
     const hasActivity = Boolean(
       snapshot.record?.started_at || snapshot.record?.saved_at || snapshot.record?.submitted_at ||
-      snapshot.chat_session || snapshot.chat_messages.length || snapshot.events.length ||
+      snapshot.chat_session || snapshot.chat_messages.length || snapshot.events.length || snapshot.revisions.length ||
       Object.keys(snapshot.record?.artifacts || {}).length || Object.keys(snapshot.record?.text_fields || {}).length
     );
     let archive_key = '';

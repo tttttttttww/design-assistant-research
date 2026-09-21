@@ -9,6 +9,10 @@ const cfg = await import('../src/config/researchConfig.js');
 if (cfg.SESSIONS.length !== 13) throw new Error(`Expected 13 sessions, got ${cfg.SESSIONS.length}`);
 const ids = cfg.SESSIONS.map(x=>x.id);
 if (new Set(ids).size !== 13) throw new Error('Duplicate session ids');
+
+const w2 = cfg.SESSIONS.find(x=>x.id==='W2');
+if (!w2 || w2.ai_mode!=='free' || w2.phase!=='pilot' || (w2.artifacts||[]).length) throw new Error('W2 pilot/free/no-upload config invalid');
+if (!w2.bonus_task || !(w2.fields||[]).some(f=>f.stage==='bonus_before')) throw new Error('W2 optional locker bonus task missing');
 for (const s of cfg.SESSIONS) {
   if (!s.title || !Array.isArray(s.brief) || !Array.isArray(s.fields) || !Array.isArray(s.artifacts)) throw new Error(`Bad session config ${s.id}`);
   if (!['free','condition','none'].includes(s.ai_mode)) throw new Error(`Bad ai_mode ${s.id}`);
@@ -34,5 +38,10 @@ if (!adminHtml.includes('rosterFile') || !admin.includes('roster-preview') || !a
 
 if (!admin.includes('replaceRosterImport') || !adminRoute.includes('roster-replace') || !adminRoute.includes('REPLACE S01-S30')) throw new Error('Whole-cohort roster replacement controls missing');
 if (!authRoute.includes('cohort_revision') || !validators || !adminRoute.includes('replaceFormalCohort')) throw new Error('Cohort revision / replacement safety missing');
-if (!task.includes('questionnaireForm') || !adminRoute.includes('stratified-randomize')) throw new Error('W2 questionnaire/randomization flow missing');
-console.log('CHECK OK: 13 sessions + ID/name verification + Excel/CSV roster import + privacy-safe roster hashing + whole-cohort replacement + cohort revision invalidation + admin detail viewer + multimodal AI chat + 2 package exports + JSON backup + dual AI routing + safe reset controls.');
+if (!task.includes('questionnaireForm') || !adminRoute.includes('stratified-randomize')) throw new Error('Questionnaire/randomization flow missing');
+if (!task.includes('ai_draft_deleted_unsent') || !task.includes('chat_history_revisit') || !task.includes('bonusTaskHtml')) throw new Error('W2 trace/bonus UI missing');
+if (!adminRoute.includes('task_revisions.csv') || !adminRoute.includes('behavior_events.csv')) throw new Error('Trace exports missing');
+const research = await readFile('src/services/researchService.js','utf8');
+if (!research.includes('getRevisions') || !research.includes('field_revision_counts')) throw new Error('Task revision history service missing');
+if (task.includes('请选择一个你真正不确定') || task.includes('最想比较或最需要反馈')) throw new Error('Help-seeking strategy prompt should not appear in W2 UI');
+console.log('CHECK OK v11.21: 13 sessions + W2 lunch/locker pilot + neutral AI-use wording + draft/revisit traces + task revision history + trace exports + old-data-safe storage path.');

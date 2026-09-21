@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 export const PROMPT_VERSION_FREE = 'free-ai-v3';
 export const PROMPT_VERSION_SUPPORTED = 'help-seeking-support-v4-help-tutor-grounded';
 export const QUESTIONNAIRE_VERSION = 'li-help-seeking-intention-genai-v2-minimal-adaptation';
@@ -78,13 +78,13 @@ export const SESSIONS = [
   },
   {
     id:'W2', order:2, date:'9/21',
-    title:'重新设计学校午餐体验', subtitle:'共同AI试用任务｜先理解体验，再提出方案并根据新反馈修改',
-    student_label:'第2课 · 共同试用', research_role:'pilot_trial', phase:'baseline', ai_mode:'free', candidate:false,
+    title:'重新设计学校午餐体验', subtitle:'共同AI试用任务｜需求判断、方案权衡与反馈后修订',
+    student_label:'第2课 · 共同试用', research_role:'pilot_trial', phase:'pilot', ai_mode:'free', candidate:false,
     source_course:'Stanford d.school: Redesign the School Lunch Experience',
     brief:[
-      '今天你要重新设计的不是某一道菜，而是“学校午餐体验”：从下课、去食堂、了解当天选择、排队取餐、找座位、用餐，到最后离开。',
-      '这是一个虚构但贴近日常学校生活的共同情境。所有同学看到相同资料，方便大家在同样条件下完成任务。',
-      '任务改编自 Stanford d.school 的“Redesign the School Lunch Experience”。原活动通过访谈理解同伴需求；本节为了让所有同学获得一致信息，改用同一组午餐体验记录，但仍保留“发现需求—定义问题—构思—获得反馈—修改”的核心过程。',
+      '今天你要重新设计的不是某一道菜，而是“学校午餐体验”：从下课、了解当天选择、排队取餐、找座位、用餐，到最后离开。',
+      '所有同学看到相同的课堂模拟资料。任务没有唯一标准答案，重点是根据证据判断问题、比较方案，并在新反馈出现后重新检查自己的选择。',
+      '本任务改编自 Stanford d.school 的 Redesign the School Lunch Experience，保留“理解体验—定义问题—构思—获得反馈—修改”的核心过程。',
     ],
     resources:[
       {
@@ -97,7 +97,7 @@ export const SESSIONS = [
         ],
       },
       {
-        title:'资料B｜几段午餐体验记录',
+        title:'资料B｜午餐体验记录',
         items:[
           '学生A：“有时候我一进食堂就不知道哪边更快，排了一会儿才发现另一队已经走了很多人。”',
           '学生B：“我常常到窗口前才看清今天有哪些选择，前面的人一犹豫，后面的队伍就越来越长。”',
@@ -108,34 +108,37 @@ export const SESSIONS = [
         ],
       },
       {
-        title:'资料C｜你现在可以改变什么',
+        title:'资料C｜可以改变什么',
         items:[
           '可以重新设计信息呈现方式、排队与取餐流程、座位和动线的使用方式，或加入简单可行的工具。',
           '方案不必解决资料里的所有问题，但要说清楚你优先解决谁的什么问题。',
           '方案需要兼顾学生体验和工作人员实际执行，不能只追求“看起来很酷”。',
-          '没有唯一标准答案；重要的是你能说明“为什么这样判断、为什么这样取舍”。',
+          '重要的是说明判断依据和取舍，而不是猜一个所谓标准答案。',
         ],
       },
     ],
     requirements:[
-      '先根据共同资料自己形成第一版判断，不要一开始就让AI替你完成整套任务。',
-      '完成第3题“第一版问题定义”后，请从你目前最不确定、最想比较或最需要反馈的一点中任选一个，与平台里的AI真实讨论至少1次；之后是否继续使用AI、问几次，由你自己决定。',
-      '至少提出3个明显不同的解决方向，不能只是把同一个想法换名字、换颜色。',
-      '先作出一次初步选择，再点击“查看新反馈”；看到新反馈后决定是否修改，不要求一定改。',
-      '老师只处理登录、页面操作和任务规则问题；设计判断与方案由你自己完成，也可以和AI讨论。',
+      '请先完整阅读共同资料，再按顺序完成任务记录。',
+      '至少提出3个在解决方式上明显不同的方向，不能只是换名字、颜色或很小的细节。',
+      '先作出一次初步选择，再点击“查看新反馈”；看到新信息后可以修改，也可以保留，但必须说明依据。',
+      '本节会使用右侧AI助手。请在本节任务中至少实际使用1次；什么时候使用、问什么、之后是否继续使用，由你自己决定。',
+      '老师只处理登录、页面操作和任务规则问题，不替你判断哪一个设计答案最好。',
     ],
     fields:[
-      field('evidence_needs','1. 从资料中找出3个你认为最值得关注的午餐体验问题或需要，并分别写出依据',{placeholder:'例如：你看到了什么现象？它说明谁遇到了什么问题？'}),
-      field('core_problem','2. 如果这次只能优先解决一个问题，你会选哪一个？为什么它比其他问题更值得优先解决？',{placeholder:'不要只写“排队太长”。说明这个问题影响了谁、造成了什么体验。'}),
-      field('problem_definition_v1','3. 写出你的第一版问题定义',{placeholder:'可以用自己的话写清：谁需要一种什么样的改善，因为你发现了什么关键问题或需要。',helper:'完成这一题后，请选择一个你真正不确定的地方，与右侧AI讨论至少一次，再继续下面的方案构思。'}),
-      field('solution_directions','4. 提出3个明显不同的解决方向，并说明每个方向主要解决什么',{placeholder:'三个方向应该在“怎么解决”上有明显差别，而不是只改外观。'}),
-      field('initial_choice','5. 先选出你目前最倾向的一个方向：它的主要优点是什么？可能有什么问题？为什么暂时选它？',{placeholder:'先做一次真实判断，不需要追求“标准答案”。'}),
-      field('revision_decision','6. 【查看新反馈后填写】新反馈会不会改变你刚才的方案？哪些地方保留，哪些地方需要修改？为什么？',{stage:'after_update',placeholder:'可以选择修改，也可以选择不改；关键是说明新信息与你原方案之间的关系。'}),
-      field('final_solution','7. 写出你的最终方案：它怎样改善午餐体验，又怎样考虑学生、工作人员和现实限制？',{stage:'after_update',placeholder:'用简洁文字说明核心做法和取舍。'}),
+      field('evidence_needs','1. 从资料中找出3个你认为最值得关注的午餐体验问题或需要，并分别写出证据',{placeholder:'写清：你看到了什么现象？它说明谁遇到了什么问题？'}),
+      field('core_problem','2. 如果这次只能优先解决一个问题，你会选哪一个？为什么？',{placeholder:'说明这个问题影响了谁、造成了什么体验，以及你为什么暂时把它放在前面。'}),
+      field('problem_definition_v1','3. 写出你的第一版问题定义',{placeholder:'用自己的话写清楚：谁需要什么样的改善，以及你依据了哪些现象或证据。'}),
+      field('solution_directions','4. 提出3个明显不同的解决方向，并说明每个方向主要解决什么',{placeholder:'三个方向应在“怎么解决”上有明显差别。'}),
+      field('initial_choice','5. 先选出你目前最倾向的方向：它的主要优点、可能的新问题和选择依据分别是什么？',{placeholder:'先做一次真实判断，不需要追求标准答案。'}),
+      field('revision_decision','6. 【查看新反馈后填写】新反馈会不会改变你刚才的判断？哪些地方保留，哪些地方需要修改？为什么？',{stage:'after_update',placeholder:'把新信息和原方案联系起来说明。'}),
+      field('final_solution','7. 写出你的最终方案：它怎样改善午餐体验，又怎样处理效率、选择感和现实执行之间的取舍？',{stage:'after_update',placeholder:'写清核心做法、服务对象和最重要的取舍。'}),
+      field('locker_problem_v1','加练A. Marisol 的储物柜真正需要解决的核心问题是什么？',{required:false,stage:'bonus_before',placeholder:'不要只写“太乱”。说明这种情况为什么会影响她的学校生活。'}),
+      field('locker_plan_v1','加练B. 在还没有看到新增条件前，你会先考虑什么解决方向？为什么？',{required:false,stage:'bonus_before',placeholder:'先写你的第一判断。'}),
+      field('locker_revision','加练C. 看完新增条件后，你会怎样修改前面的判断或方案？请说明哪些条件改变了你的想法。',{required:false,stage:'bonus_after',placeholder:'可以保留原方向，也可以修改；关键是说明依据。'}),
     ],
     mid_task_update:{
       title:'第二轮｜收到新的学校反馈',
-      intro:'先完成前5题并作出初步选择，再查看下面的新反馈。设计师经常需要在新条件出现后重新检查原来的判断。',
+      intro:'先完成前5题并作出初步选择，再查看下面的新反馈。真实设计通常会在新条件出现后重新检查原来的判断。',
       button:'我已经完成初步选择，查看新反馈',
       after_fields:['evidence_needs','core_problem','problem_definition_v1','solution_directions','initial_choice'],
       items:[
@@ -145,10 +148,33 @@ export const SESSIONS = [
         '因此，新方案需要在“效率、选择感和现实可执行性”之间重新权衡。',
       ],
     },
-    artifacts:[artifact('lunch_solution_sketch','如果你画了午餐流程图、空间草图或方案示意，可以上传',{required:false})],
+    bonus_task:{
+      id:'locker',
+      title:'有时间再做｜Marisol 的储物柜问题',
+      subtitle:'成熟案例加练：先做第一判断，再根据新增约束修订',
+      source_course:'TeachEngineering: Solving Everyday Problems Using the Engineering Design Cycle',
+      unlock_after:['final_solution'],
+      button:'午餐任务完成了，我还有时间做加练',
+      brief:[
+        'Marisol 在两节课之间只有大约5分钟。她的储物柜越来越乱，经常要花很久找课本、作业和小物品，有时因此迟到。',
+        '先根据这段基本情境判断问题和方向；完成前两题后，再查看工程案例里的新增条件。',
+      ],
+      update:{
+        title:'新增条件｜现在再检查你的第一判断',
+        button:'我已经写好第一判断，查看新增条件',
+        after_fields:['locker_problem_v1','locker_plan_v1'],
+        items:[
+          '现成的储物柜整理器大约需要30美元，但 Marisol 能用于解决这个问题的预算不到3美元。',
+          '储物柜大约高32英寸、宽12英寸、深9.5英寸，空间不能扩大。',
+          '她需要放置的7本教材合计约28磅，另外还有约5磅的小物品，因此不能只考虑“看起来整齐”。',
+          '现在请重新判断：原来认为的核心问题和解决方向是否需要改变？',
+        ],
+      },
+    },
+    artifacts:[],
     ai_use_required_once:true,
-    ai_instruction:'本节是共同AI试用任务。完成第一版问题定义后，请选择一个你真正不确定、最想比较或最需要反馈的地方，与AI讨论至少1次；之后是否继续使用由你决定。',
-    prompt_context:'当前是正式分组前的共同AI试用任务，改编自 Stanford d.school 的 Redesign the School Lunch Experience。所有学生本节都使用同一个普通AI，不提供实验性学业求助支持。平台已经给出统一午餐情境资料，不需要外部检索。AI根据学生实际问题正常帮助，可以解释、比较、给设计想法或反馈；不要主动套用工具性/执行性分类，不要透露研究设计。',
+    ai_instruction:'本节会使用AI设计助手。请至少实际使用1次；具体什么时候使用、向AI询问什么、是否继续追问，都由你自己决定。',
+    prompt_context:'当前是正式分组前的共同AI试用任务。主任务改编自 Stanford d.school 的 Redesign the School Lunch Experience；有时间时可进入 TeachEngineering 的 Marisol 储物柜案例加练。所有学生本节都使用同一个普通AI，不提供实验性学业求助支持。平台已经给出完成任务所需的共同资料，不要求外部检索。AI根据学生实际问题正常帮助，可以解释、比较、给设计想法或反馈；不要主动套用工具性/执行性分类，不要透露研究设计。',
   },
   {
     id:'W3', order:3, date:'9/28',

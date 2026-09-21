@@ -443,11 +443,17 @@ router.get('/export/task-package.zip', requireAdmin, async (req, res) => {
   try {
     archive = openZip(res, 'task_records_and_works.zip');
     const rows = [];
+    const revisionRows = [];
+    const eventRows = [];
     let imageCount = 0;
     for (const id of formalIds()) {
       const participant = await researchService.getParticipant(id);
       for (const s of SESSIONS) {
-        const r = await researchService.getSessionRecord(id, s.id);
+        const [r, revisions, events] = await Promise.all([
+          researchService.getSessionRecord(id, s.id),
+          researchService.getRevisions(id, s.id),
+          researchService.getEvents(id, s.id),
+        ]);
         const fieldLabel = Object.fromEntries((s.fields || []).map(f => [f.key, f.label]));
         const taskText = Object.entries(r.text_fields || {})
           .filter(([, value]) => String(value || '').trim())
@@ -489,11 +495,43 @@ router.get('/export/task-package.zip', requireAdmin, async (req, res) => {
           submitted_at: r.submitted_at,
           completed_at: r.completed_at,
         });
+        for (const rev of revisions) revisionRows.push({
+          participant_id:id,
+          grade:participant.grade,
+          condition:participant.condition,
+          session_id:s.id,
+          session_title:s.title,
+          revision_index:rev.revision_index,
+          field_key:rev.field_key,
+          field_revision_no:rev.field_revision_no,
+          previous_text:rev.previous_text,
+          text:rev.text,
+          created_at:rev.created_at,
+          save_reason:rev.save_reason,
+          last_ai_message_id:rev.last_ai_message_id,
+          last_ai_message_at:rev.last_ai_message_at,
+          seconds_since_last_ai_reply:rev.seconds_since_last_ai_reply,
+        });
+        for (const ev of events) eventRows.push({
+          participant_id:id,
+          grade:participant.grade,
+          condition:participant.condition,
+          session_id:s.id,
+          session_title:s.title,
+          event_index:ev.event_index,
+          type:ev.type,
+          at:ev.at,
+          data:ev.data,
+        });
       }
     }
     const headers = ['participant_id','grade','condition_current','session_id','session_title','date','research_role','condition_at_time','ai_variant','started_at','first_ai_open_at','first_ai_open_latency_seconds','first_user_message_at','first_user_message_latency_seconds','ai_open_count','ai_used','task_text','text_fields_json','work_file_names','work_zip_paths','submitted_at','completed_at'];
     archive.append(csvText(headers, rows), { name: 'task_records.csv' });
-    archive.append(`正式数据仅含 S01-S30，自动排除 S00。\ntask_records.csv 与 works/ 中的作品、证据图片通过 work_zip_paths 一一对应。\n每个学生每个课次一行，共 ${rows.length} 行；共导出作品/任务图片 ${imageCount} 张。\n`, { name: 'README.txt' });
+    const revisionHeaders = ['participant_id','grade','condition','session_id','session_title','revision_index','field_key','field_revision_no','previous_text','text','created_at','save_reason','last_ai_message_id','last_ai_message_at','seconds_since_last_ai_reply'];
+    archive.append(csvText(revisionHeaders, revisionRows), { name: 'task_revisions.csv' });
+    const eventHeaders = ['participant_id','grade','condition','session_id','session_title','event_index','type','at','data'];
+    archive.append(csvText(eventHeaders, eventRows), { name: 'behavior_events.csv' });
+    archive.append(`正式数据仅含 S01-S30，自动排除 S00。\ntask_records.csv：每个学生每个课次的当前/最终任务记录。\ntask_revisions.csv：任务文本框的版本历史，可与 last_ai_message_id / last_ai_message_at 对齐，观察AI回复前后的任务修改。\nbehavior_events.csv：AI输入草稿、删除未发送、离开未发送、回看旧回复、查看新反馈等时间事件。\nworks/：W1及W3以后需要上传的作品/证据图片；W2不要求最终图片。\n共 ${rows.length} 条课次记录、${revisionRows.length} 条版本记录、${eventRows.length} 条行为事件、${imageCount} 张任务图片。\n`, { name: 'README.txt' });
     await archive.finalize();
   } catch (e) {
     console.error('task package export', e);

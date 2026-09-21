@@ -114,7 +114,7 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
 
     if (attachment && ai.coze_file_id) attachment.coze_file_id = ai.coze_file_id;
 
-    await researchService.appendMessage(id, sid, {
+    const userMessageRow = await researchService.appendMessage(id, sid, {
       role: 'user', content: message, content_type: attachment ? 'text+image' : 'text',
       message_has_image: Boolean(attachment), attachments: attachment ? [attachment] : [],
       message_id: uuidv4(), conversation_id: ai.conversation_id, chat_id: ai.chat_id,
@@ -127,7 +127,7 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
     s.model = ai.model;
     s.assistant_turn_count = (s.assistant_turn_count || 0) + 1;
     await researchService.saveChatSession(id, sid, s);
-    await researchService.appendMessage(id, sid, {
+    const assistantMessageRow = await researchService.appendMessage(id, sid, {
       role: 'assistant', content: ai.assistant_message, content_type: 'text', message_has_image: false, attachments: [],
       message_id: ai.message_id || uuidv4(), conversation_id: ai.conversation_id, chat_id: ai.chat_id,
       bot_id: ai.bot_id, model: ai.model, ai_variant: state.ai_variant, prompt_version: s.prompt_version,
@@ -137,7 +137,7 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
       message_has_image: Boolean(attachment),
       image_file_name: attachment?.file_name || '',
     });
-    res.json({ message: ai.assistant_message, session: s, attachment, record: updatedRecord });
+    res.json({ message: ai.assistant_message, session: s, attachment, record: updatedRecord, user_message: userMessageRow, assistant_message_row: assistantMessageRow });
   } catch (e) {
     const attemptedId = normalizeParticipantId(req.body?.participantId);
     // Keep failed S00 image locally for teacher debugging; formal-student failed uploads are cleaned as before.

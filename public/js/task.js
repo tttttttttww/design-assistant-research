@@ -8,9 +8,84 @@ if (switchStudentBtn) switchStudentBtn.onclick = () => {
 let state = null, chatOpened = false, sending = false, selectedChatImage = null, selectedChatImageUrl = '';
 let autoSaveTimer = null;
 let saveChain = Promise.resolve();
+let aiDraftTrace = { active:false, startedAt:0, maxChars:0, editCount:0, leftLogged:false };
+let revisitTimer = null, revisitLogged = false;
 
 const esc = App.escapeHtml;
 const fmtLatency = v => v == null ? '—' : `${Math.floor(v/60)}分${v%60}秒`;
+
+function postTraceEvent(type, data={}, {keepalive=false}={}){
+  if(!state?.session?.id || !type) return Promise.resolve();
+  const headers={'Content-Type':'application/json'};
+  const rev=App.cohortRevision(); if(rev) headers['X-Cohort-Revision']=rev;
+  return fetch(`${App.apiBase}/session/event`,{
+    method:'POST', headers, keepalive,
+    body:JSON.stringify({participantId:id,sessionId:state.session.id,type,data}),
+  }).catch(()=>{});
+}
+function lastAssistantMessage(){
+  const arr=state?.chat_messages||[];
+  for(let i=arr.length-1;i>=0;i--) if(arr[i]?.role==='assistant') return arr[i];
+  return null;
+}
+function saveContext(reason='save'){
+  const m=lastAssistantMessage();
+  return { reason, last_ai_message_id:m?.message_id||'', last_ai_message_at:m?.created_at||'' };
+}
+function draftTraceData(extra={}){
+  const now=Date.now();
+  return { duration_ms:aiDraftTrace.startedAt?Math.max(0,now-aiDraftTrace.startedAt):0, max_chars:aiDraftTrace.maxChars||0, edit_count:aiDraftTrace.editCount||0, ...extra };
+}
+function resetAiDraftTrace(){ aiDraftTrace={active:false,startedAt:0,maxChars:0,editCount:0,leftLogged:false}; }
+function onAiDraftInput(el){
+  const text=String(el?.value||'');
+  if(!aiDraftTrace.active && text.length){
+    aiDraftTrace={active:true,startedAt:Date.now(),maxChars:text.length,editCount:1,leftLogged:false};
+    postTraceEvent('ai_draft_started',{initial_chars:text.length});
+    return;
+  }
+  if(!aiDraftTrace.active) return;
+  aiDraftTrace.editCount+=1;
+  aiDraftTrace.maxChars=Math.max(aiDraftTrace.maxChars,text.length);
+  aiDraftTrace.leftLogged=false;
+  if(!text.length){
+    if(aiDraftTrace.maxChars>=2) postTraceEvent('ai_draft_deleted_unsent',draftTraceData());
+    resetAiDraftTrace();
+  }
+}
+function markAiDraftSent(finalText=''){
+  if(aiDraftTrace.active){
+    postTraceEvent('ai_draft_sent',draftTraceData({final_chars:String(finalText||'').length}));
+    resetAiDraftTrace();
+  }
+}
+function markAiDraftLeft(reason='page_hidden', keepalive=false){
+  const el=document.getElementById('message');
+  const text=String(el?.value||'');
+  if(!aiDraftTrace.active || !text.length || aiDraftTrace.leftLogged) return;
+  aiDraftTrace.leftLogged=true;
+  postTraceEvent('ai_draft_left_unsent',draftTraceData({current_chars:text.length,reason}),{keepalive});
+}
+function wireChatRevisit(){
+  const box=document.getElementById('messages');
+  if(!box || box.dataset.revisitWired==='1') return;
+  box.dataset.revisitWired='1';
+  box.addEventListener('scroll',()=>{
+    const distance=Math.max(0,box.scrollHeight-box.clientHeight-box.scrollTop);
+    if(distance>160 && (state?.chat_messages||[]).length>=4 && !revisitLogged){
+      clearTimeout(revisitTimer);
+      revisitTimer=setTimeout(()=>{
+        const d=Math.max(0,box.scrollHeight-box.clientHeight-box.scrollTop);
+        if(d>160){
+          revisitLogged=true;
+          postTraceEvent('chat_history_revisit',{distance_from_bottom:Math.round(d),message_count:(state?.chat_messages||[]).length,dwell_ms:2000});
+        }
+      },2000);
+    }else if(distance<=60){
+      clearTimeout(revisitTimer); revisitTimer=null; revisitLogged=false;
+    }
+  });
+}
 
 // 表单草稿与 AI 聊天必须彼此独立：AI 更新时绝不能重建/清空学生正在填写的任务记录。
 function draftKey(){ return state?.session?.id ? `task_draft:${id}:${state.session.id}` : ''; }
@@ -33,10 +108,12 @@ function updateChatMeta(){
 function chatImageUrl(meta){
   return meta?.file_name ? `/express/api/chat-image/${encodeURIComponent(id)}/${encodeURIComponent(state.session.id)}/${encodeURIComponent(meta.file_name)}` : '';
 }
-function addMessage(role, content, attachments=[]) {
+function addMessage(role, content, attachments=[], meta={}) {
   document.getElementById('emptyChat')?.remove();
   const el = document.createElement('div');
   el.className = `message ${role}`;
+  if(meta?.message_id) el.dataset.messageId=meta.message_id;
+  if(meta?.message_index) el.dataset.messageIndex=String(meta.message_index);
   const text = document.createElement('div'); text.textContent = content; el.appendChild(text);
   for(const a of attachments || []){
     const src = a.preview_url || chatImageUrl(a);
@@ -49,12 +126,13 @@ function addMessage(role, content, attachments=[]) {
 function renderMessages(messages=[]) {
   const box = document.getElementById('messages');
   const requiredOnce = Boolean(state?.session?.ai_use_required_once);
-  box.innerHTML = messages.length ? '' : `<div class="empty-chat" id="emptyChat"><h3>${requiredOnce?'完成第一版判断后，和AI真实讨论一次':'需要时再问AI'}</h3><p>${requiredOnce?'请选择一个你真正不确定、最想比较或最需要反馈的点来问；之后是否继续使用由你自己决定。':'本节任务中可以使用AI设计助手，也可以不使用。'}</p></div>`;
-  messages.forEach(m => addMessage(m.role, m.content, m.attachments || []));
+  box.innerHTML = messages.length ? '' : `<div class="empty-chat" id="emptyChat"><h3>${requiredOnce?'本节需要实际使用AI助手':'AI设计助手'}</h3><p>${requiredOnce?'至少使用1次即可；什么时候使用、问什么、之后是否继续使用，由你自己决定。':'本节任务中可以使用AI设计助手，也可以不使用。'}</p></div>`;
+  messages.forEach(m => addMessage(m.role, m.content, m.attachments || [], m));
+  wireChatRevisit();
 }
 function artifactUrl(a, sid=state.session.id){ return a ? App.photoUrl(id, sid, a.artifact_key, a) : ''; }
 function taskCard(s){
-  const resources=(s.resources||[]).length ? `<div class="resource-pack"><div class="resource-pack-head"><span class="eyebrow">任务资料包</span><h3>先看共同资料，再开始判断</h3><p class="small">所有同学看到相同资料。先依据资料形成自己的判断；遇到真正不确定的地方，再按本节要求使用AI。</p></div><div class="resource-grid">${s.resources.map(r=>`<article class="resource-card"><h4>${esc(r.title)}</h4><ul>${(r.items||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></article>`).join('')}</div></div>` : '';
+  const resources=(s.resources||[]).length ? `<div class="resource-pack"><div class="resource-pack-head"><span class="eyebrow">任务资料包</span><h3>先看共同资料，再开始判断</h3><p class="small">所有同学看到相同资料。请根据资料完成任务；右侧AI助手全程可用。</p></div><div class="resource-grid">${s.resources.map(r=>`<article class="resource-card"><h4>${esc(r.title)}</h4><ul>${(r.items||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></article>`).join('')}</div></div>` : '';
   return `<section class="task-box"><span class="eyebrow">${esc(s.student_label)}</span><h1>${esc(s.title)}</h1><p class="lead">${esc(s.subtitle)}</p><div class="brief-list">${s.brief.map(x=>`<p>${esc(x)}</p>`).join('')}</div>${resources}<h3>本节要求</h3><ul class="requirements">${s.requirements.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section>`;
 }
 
@@ -81,7 +159,7 @@ function chatPanel(){
   const variantLabel=state.participant.is_test ? `S00测试预览：${state.ai_variant}` : 'AI设计助手';
   const requiredOnce=Boolean(state.session.ai_use_required_once);
   const policyText=state.session.ai_instruction || '本节任务中可以使用AI设计助手，也可以不使用。';
-  return `<section class="card sticky-card ai-card"><div class="row between"><div><span class="eyebrow">${esc(variantLabel)}</span><h2>AI设计助手</h2></div><span class="badge">${requiredOnce?'至少讨论1次':'可选'}</span></div>
+  return `<section class="card sticky-card ai-card"><div class="row between"><div><span class="eyebrow">${esc(variantLabel)}</span><h2>AI设计助手</h2></div><span class="badge">${requiredOnce?'本节至少使用1次':'可选'}</span></div>
     ${variantBlocked?'<div class="notice warn">本课已进入分组阶段，但当前编号还没有分组。请老师先在后台设置 A/B。</div>':`<p class="small">${esc(policyText)}</p>
     <button class="btn secondary" id="openAi">${state.record.first_ai_open_at?'继续使用AI':'打开AI助手'}</button>
     <div id="chatBox" class="chat-embed ${chatOpened?'':'hidden'}">
@@ -134,25 +212,78 @@ function updateIsRevealed(){
 }
 function taskFieldsHtml(s){
   const vals=displayTextFields();
-  const before=(s.fields||[]).filter(f=>f.stage!=='after_update');
-  const after=(s.fields||[]).filter(f=>f.stage==='after_update');
-  if(!s.mid_task_update || !after.length) return (s.fields||[]).map(f=>fieldHtml(f,vals?.[f.key]??'')).join('');
+  const main=(s.fields||[]).filter(f=>!String(f.stage||'').startsWith('bonus_'));
+  const before=main.filter(f=>f.stage!=='after_update');
+  const after=main.filter(f=>f.stage==='after_update');
+  if(!s.mid_task_update || !after.length) return main.map(f=>fieldHtml(f,vals?.[f.key]??'')).join('');
   const revealed=updateIsRevealed();
   const u=s.mid_task_update;
   const updateCard=`<div class="notice mid-task-update"><span class="eyebrow">任务进行到一半</span><h3>${esc(u.title||'收到新反馈')}</h3><p>${esc(u.intro||'')}</p><button type="button" class="btn secondary" id="revealUpdate" ${revealed?'disabled':''}>${revealed?'新反馈已查看 ✓':esc(u.button||'查看新反馈')}</button><div id="updateContent" class="${revealed?'':'hidden'}" style="margin-top:12px"><ul class="requirements">${(u.items||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div></div>`;
   return `${before.map(f=>fieldHtml(f,vals?.[f.key]??'')).join('')}${updateCard}<div id="afterUpdateFields" class="${revealed?'':'hidden'}">${after.map(f=>fieldHtml(f,vals?.[f.key]??'')).join('')}</div>`;
+}
+
+function bonusRevealKey(){ return state?.session?.id ? `bonus_task:${id}:${state.session.id}` : ''; }
+function bonusUpdateKey(){ return state?.session?.id ? `bonus_task_update:${id}:${state.session.id}` : ''; }
+function bonusIsRevealed(){
+  if(!state?.session?.bonus_task) return false;
+  try { if(sessionStorage.getItem(bonusRevealKey())==='1') return true; } catch {}
+  const vals=displayTextFields();
+  return (state.session.fields||[]).filter(f=>String(f.stage||'').startsWith('bonus_')).some(f=>String(vals?.[f.key]||'').trim());
+}
+function bonusUpdateIsRevealed(){
+  if(!state?.session?.bonus_task?.update) return true;
+  try { if(sessionStorage.getItem(bonusUpdateKey())==='1') return true; } catch {}
+  const vals=displayTextFields();
+  return (state.session.fields||[]).filter(f=>f.stage==='bonus_after').some(f=>String(vals?.[f.key]||'').trim());
+}
+function bonusTaskHtml(s){
+  const b=s.bonus_task; if(!b) return '';
+  const vals=displayTextFields();
+  const revealed=bonusIsRevealed();
+  if(!revealed){
+    return `<div class="bonus-task-card"><span class="eyebrow">可选加练</span><h3>${esc(b.title||'加练任务')}</h3><p>${esc(b.subtitle||'')}</p><button type="button" class="btn secondary" id="revealBonus">${esc(b.button||'进入加练任务')}</button><p class="small">如果课堂时间不够，可以不做这一部分，不影响主任务提交。</p></div>`;
+  }
+  const before=(s.fields||[]).filter(f=>f.stage==='bonus_before');
+  const after=(s.fields||[]).filter(f=>f.stage==='bonus_after');
+  const update=b.update;
+  const updateRevealed=bonusUpdateIsRevealed();
+  const updateCard=update?`<div class="notice mid-task-update"><span class="eyebrow">加练第二轮</span><h3>${esc(update.title||'新增条件')}</h3><button type="button" class="btn secondary" id="revealBonusUpdate" ${updateRevealed?'disabled':''}>${updateRevealed?'新增条件已查看 ✓':esc(update.button||'查看新增条件')}</button><div id="bonusUpdateContent" class="${updateRevealed?'':'hidden'}" style="margin-top:12px"><ul class="requirements">${(update.items||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div></div>`:'';
+  return `<div class="bonus-task-card active"><span class="eyebrow">可选加练</span><h3>${esc(b.title||'加练任务')}</h3><p>${esc(b.subtitle||'')}</p>${b.source_course?`<p class="small">课程来源：${esc(b.source_course)}</p>`:''}<div class="brief-list">${(b.brief||[]).map(x=>`<p>${esc(x)}</p>`).join('')}</div>${before.map(f=>fieldHtml(f,vals?.[f.key]??'')).join('')}${updateCard}<div id="bonusAfterFields" class="${updateRevealed?'':'hidden'}">${after.map(f=>fieldHtml(f,vals?.[f.key]??'')).join('')}</div></div>`;
 }
 async function revealMidTaskUpdate(){
   const u=state?.session?.mid_task_update; if(!u) return;
   const vals=collectFields();
   const missing=(u.after_fields||[]).map(k=>state.session.fields.find(f=>f.key===k)).filter(f=>f && !String(vals[f.key]||'').trim());
   if(missing.length){ alert(`请先完成：${missing[0].label}`); return; }
-  try{ await persistCurrentFields({showStatus:true}); }catch{return;}
+  try{ await persistCurrentFields({showStatus:true,saveReason:'before_main_update'}); }catch{return;}
   try{ sessionStorage.setItem(updateRevealKey(),'1'); }catch{}
   document.getElementById('updateContent')?.classList.remove('hidden');
   document.getElementById('afterUpdateFields')?.classList.remove('hidden');
   const btn=document.getElementById('revealUpdate'); if(btn){btn.disabled=true;btn.textContent='新反馈已查看 ✓';}
   App.api('/session/event',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,type:'mid_task_update_revealed',data:{}})}).catch(()=>{});
+}
+
+async function revealBonusTask(){
+  const b=state?.session?.bonus_task; if(!b) return;
+  const vals=collectFields();
+  const missing=(b.unlock_after||[]).map(k=>state.session.fields.find(f=>f.key===k)).filter(f=>f && !String(vals[f.key]||'').trim());
+  if(missing.length){ alert(`请先完成主任务：${missing[0].label}`); return; }
+  try{ await persistCurrentFields({showStatus:true,saveReason:'before_bonus'}); }catch{return;}
+  try{ sessionStorage.setItem(bonusRevealKey(),'1'); }catch{}
+  postTraceEvent('bonus_task_revealed',{bonus_task_id:b.id||'bonus'});
+  render();
+}
+async function revealBonusUpdate(){
+  const b=state?.session?.bonus_task, u=b?.update; if(!u) return;
+  const vals=collectFields();
+  const missing=(u.after_fields||[]).map(k=>state.session.fields.find(f=>f.key===k)).filter(f=>f && !String(vals[f.key]||'').trim());
+  if(missing.length){ alert(`请先完成：${missing[0].label}`); return; }
+  try{ await persistCurrentFields({showStatus:true,saveReason:'before_bonus_update'}); }catch{return;}
+  try{ sessionStorage.setItem(bonusUpdateKey(),'1'); }catch{}
+  document.getElementById('bonusUpdateContent')?.classList.remove('hidden');
+  document.getElementById('bonusAfterFields')?.classList.remove('hidden');
+  const btn=document.getElementById('revealBonusUpdate'); if(btn){btn.disabled=true;btn.textContent='新增条件已查看 ✓';}
+  postTraceEvent('bonus_task_update_revealed',{bonus_task_id:b.id||'bonus'});
 }
 
 function render(){
@@ -167,7 +298,7 @@ function render(){
   document.getElementById('app').innerHTML=`
     <div class="course-header"><span class="eyebrow">${esc(s.id)} · ${esc(s.date)}</span><div class="row between"><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div>${r.submitted_at?'<span class="badge big">已提交</span>':''}</div></div>
     <div class="course-grid"><div class="course-main">${taskCard(s)}${carryCard(state.carry_from)}
-      <section class="card"><span class="eyebrow">我的任务记录</span><h2>边做边记录，最后统一提交</h2><form id="taskForm" class="form">${taskFieldsHtml(s)}<div class="artifact-list">${s.artifacts.map(a=>artifactHtml(a,r.artifacts?.[a.key])).join('')}</div><div id="saveStatus" class="small"></div><div class="row"><button type="button" class="btn secondary" id="saveDraft" ${r.submitted_at?'disabled':''}>保存当前记录</button><button type="submit" class="btn orange" ${r.submitted_at?'disabled':''}>${r.submitted_at?'本节已提交':'提交本节任务'}</button></div></form></section>
+      <section class="card"><span class="eyebrow">我的任务记录</span><h2>边做边记录，最后统一提交</h2><form id="taskForm" class="form">${taskFieldsHtml(s)}${bonusTaskHtml(s)}<div class="artifact-list">${s.artifacts.map(a=>artifactHtml(a,r.artifacts?.[a.key])).join('')}</div><div id="saveStatus" class="small"></div><div class="row"><button type="button" class="btn secondary" id="saveDraft" ${r.submitted_at?'disabled':''}>保存当前记录</button><button type="submit" class="btn orange" ${r.submitted_at?'disabled':''}>${r.submitted_at?'本节已提交':'提交本节任务'}</button></div></form></section>
     </div><aside class="course-side">${chatPanel()}</aside></div>`;
   wire();
 }
@@ -175,7 +306,7 @@ function render(){
 function collectFields(){const x={};document.querySelectorAll('[data-field]').forEach(el=>x[el.dataset.field]=el.value);return x;}
 function setSaveStatus(text=''){const b=document.getElementById('saveStatus');if(b)b.textContent=text;}
 function cancelQueuedAutoSave(){if(autoSaveTimer){clearTimeout(autoSaveTimer);autoSaveTimer=null;}}
-async function persistCurrentFields({showStatus=false}={}){
+async function persistCurrentFields({showStatus=false,saveReason='autosave'}={}){
   if(!state?.session || state.record?.submitted_at || !document.querySelector('[data-field]')) return state?.record;
   cancelQueuedAutoSave();
   // 先同步写入浏览器草稿，哪怕网络慢/AI更新，界面也不会丢字。
@@ -183,7 +314,7 @@ async function persistCurrentFields({showStatus=false}={}){
   writeLocalDraft(fields);
   const run=async()=>{
     if(showStatus)setSaveStatus('正在保存……');
-    const r=await App.api('/session/save',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,textFields:fields})});
+    const r=await App.api('/session/save',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,textFields:fields,saveContext:saveContext(saveReason)})});
     state.record=r.record||state.record;
     if(showStatus)setSaveStatus('已保存 ✓');
     return state.record;
@@ -201,13 +332,13 @@ function queueAutoSave(){
   autoSaveTimer=setTimeout(async()=>{
     try{await persistCurrentFields();setSaveStatus('已自动保存 ✓');}
     catch(e){setSaveStatus(`自动保存失败：${e.message}`);}
-  },1000);
+  },2500);
 }
-async function saveDraft(){try{await persistCurrentFields({showStatus:true});}catch{}}
-async function uploadArtifact(input){const key=input.dataset.artifact,status=document.querySelector(`[data-upload-status="${key}"]`),file=input.files?.[0];if(!file)return;status.textContent='正在上传……';try{await persistCurrentFields();}catch(e){status.textContent=`先保存文字失败：${e.message}`;input.value='';return;}const fd=new FormData();fd.append('participantId',id);fd.append('sessionId',state.session.id);fd.append('artifactKey',key);fd.append('image',file);try{await App.api('/upload',{method:'POST',body:fd});status.textContent='上传成功 ✓';await load(false);}catch(e){status.textContent=e.message;input.value='';}}
+async function saveDraft(){try{await persistCurrentFields({showStatus:true,saveReason:'manual_save'});}catch{}}
+async function uploadArtifact(input){const key=input.dataset.artifact,status=document.querySelector(`[data-upload-status="${key}"]`),file=input.files?.[0];if(!file)return;status.textContent='正在上传……';try{await persistCurrentFields({saveReason:'before_artifact_upload'});}catch(e){status.textContent=`先保存文字失败：${e.message}`;input.value='';return;}const fd=new FormData();fd.append('participantId',id);fd.append('sessionId',state.session.id);fd.append('artifactKey',key);fd.append('image',file);try{await App.api('/upload',{method:'POST',body:fd});status.textContent='上传成功 ✓';await load(false);}catch(e){status.textContent=e.message;input.value='';}}
 async function openAi(){
   try{
-    await persistCurrentFields();
+    await persistCurrentFields({saveReason:'before_ai_open'});
     const r=await App.api('/chat/open',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id})});
     chatOpened=true; state.record=r.record||state.record; state.chat_messages=r.messages||[];
     // 只更新聊天区，不再 render() 整个页面，因此任务表单不会被重建。
@@ -239,13 +370,18 @@ async function send(){
   const file=selectedChatImage, previewUrl=selectedChatImageUrl;
   try{
     // 发送 AI 前强制等待表单最新值保存完成。
-    await persistCurrentFields();
+    await persistCurrentFields({saveReason:'before_ai_send'});
     const fd=new FormData(); fd.append('participantId',id); fd.append('sessionId',state.session.id); fd.append('message',msg); if(file) fd.append('image',file);
     const r=await App.api('/chat/send',{method:'POST',body:fd});
     if(r.record) state.record=r.record;
+    markAiDraftSent(msg);
     box.value='';
-    addMessage('user',msg,r.attachment?[r.attachment]:(file?[{preview_url:previewUrl}]:[]));
-    addMessage('assistant',r.message);
+    const userRow=r.user_message||{role:'user',content:msg,attachments:r.attachment?[r.attachment]:[],created_at:new Date().toISOString()};
+    const assistantRow=r.assistant_message_row||{role:'assistant',content:r.message,attachments:[],created_at:new Date().toISOString()};
+    state.chat_messages=[...(state.chat_messages||[]),userRow,assistantRow];
+    addMessage('user',msg,r.attachment?[r.attachment]:(file?[{preview_url:previewUrl}]:[]),userRow);
+    addMessage('assistant',r.message,[],assistantRow);
+    wireChatRevisit();
     if(previewUrl) URL.revokeObjectURL(previewUrl);
     selectedChatImage=null; selectedChatImageUrl='';
     const input=document.getElementById('chatImage'); if(input) input.value='';
@@ -256,17 +392,27 @@ async function send(){
   finally{sending=false;document.getElementById('thinking')?.classList.add('hidden');if(document.getElementById('send'))document.getElementById('send').disabled=false;}
 }
 function wire(){
-  document.querySelectorAll('[data-field]').forEach(x=>{x.addEventListener('input',()=>{writeLocalDraft(collectFields());queueAutoSave();});x.addEventListener('blur',()=>{if(!state.record.submitted_at)persistCurrentFields().then(()=>setSaveStatus('已自动保存 ✓')).catch(e=>setSaveStatus(`自动保存失败：${e.message}`));});});
+  document.querySelectorAll('[data-field]').forEach(x=>{x.addEventListener('input',()=>{writeLocalDraft(collectFields());queueAutoSave();});x.addEventListener('blur',()=>{if(!state.record.submitted_at)persistCurrentFields({saveReason:'blur'}).then(()=>setSaveStatus('已自动保存 ✓')).catch(e=>setSaveStatus(`自动保存失败：${e.message}`));});});
   document.querySelectorAll('[data-artifact]').forEach(x=>x.onchange=()=>uploadArtifact(x));
   document.getElementById('saveDraft').onclick=saveDraft;
-  document.getElementById('taskForm').onsubmit=async e=>{e.preventDefault();if(!confirm('确认提交本节任务吗？提交后本节记录将锁定。'))return;try{cancelQueuedAutoSave();await saveChain;await App.api('/session/submit',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,textFields:collectFields()})});clearLocalDraft();await load();}catch(x){alert(x.message);}};
+  document.getElementById('taskForm').onsubmit=async e=>{e.preventDefault();if(!confirm('确认提交本节任务吗？提交后本节记录将锁定。'))return;try{cancelQueuedAutoSave();await saveChain;markAiDraftLeft('session_submit');await App.api('/session/submit',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,textFields:collectFields(),saveContext:saveContext('submit')})});clearLocalDraft();await load();}catch(x){alert(x.message);}};
   if(document.getElementById('revealUpdate'))document.getElementById('revealUpdate').onclick=revealMidTaskUpdate;
+  if(document.getElementById('revealBonus'))document.getElementById('revealBonus').onclick=revealBonusTask;
+  if(document.getElementById('revealBonusUpdate'))document.getElementById('revealBonusUpdate').onclick=revealBonusUpdate;
   if(document.getElementById('openAi'))document.getElementById('openAi').onclick=openAi;
   if(chatOpened&&document.getElementById('messages'))renderMessages(state.chat_messages||[]);
   if(document.getElementById('chatImage'))document.getElementById('chatImage').onchange=e=>selectChatImage(e.target.files?.[0]);
   if(document.getElementById('removeChatImage'))document.getElementById('removeChatImage').onclick=clearSelectedImage;
   if(document.getElementById('send'))document.getElementById('send').onclick=send;
-  if(document.getElementById('message'))document.getElementById('message').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}};
+  if(document.getElementById('message')){
+    const msgBox=document.getElementById('message');
+    msgBox.addEventListener('input',()=>onAiDraftInput(msgBox));
+    msgBox.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}};
+  }
+  wireChatRevisit();
 }
 async function load(show=true, keepChat=false){try{const r=await App.api(`/session/current?participantId=${encodeURIComponent(id)}`);state=r;if(keepChat&&state.chat_messages?.length)chatOpened=true;render();}catch(e){document.getElementById('app').innerHTML=`<div class="notice warn">${esc(e.message)}</div>`;}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')markAiDraftLeft('page_hidden',true);});
+window.addEventListener('pagehide',()=>markAiDraftLeft('pagehide',true));
+
 load();

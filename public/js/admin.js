@@ -289,9 +289,12 @@ function messages(id, sid, arr = []) {
 function events(arr = []) {
   return arr.length ? `<details><summary class="small">查看系统事件（${arr.length}）</summary><pre>${esc(JSON.stringify(arr, null, 2))}</pre></details>` : '';
 }
+function revisions(arr = []) {
+  return arr.length ? `<details><summary class="small">查看任务文本版本历史（${arr.length}）</summary><pre>${esc(JSON.stringify(arr, null, 2))}</pre></details>` : '';
+}
 function sessionHasData(x) {
   const r = x?.record || {};
-  return Boolean(r.started_at || r.saved_at || r.submitted_at || x?.chat_session || (x?.chat_messages || []).length || (x?.events || []).length || Object.keys(r.artifacts || {}).length || Object.keys(r.text_fields || {}).length);
+  return Boolean(r.started_at || r.saved_at || r.submitted_at || x?.chat_session || (x?.chat_messages || []).length || (x?.events || []).length || (x?.revisions || []).length || Object.keys(r.artifacts || {}).length || Object.keys(r.text_fields || {}).length);
 }
 
 async function detail(id, scroll = false) {
@@ -303,7 +306,7 @@ async function detail(id, scroll = false) {
   try {
     const d = await api(`/participant/${id}`);
     const sessionHtml = sessions.map(s => {
-      const x = d.sessions?.[s.id] || { record: {}, chat_session: null, chat_messages: [], events: [] };
+      const x = d.sessions?.[s.id] || { record: {}, chat_session: null, chat_messages: [], events: [], revisions: [] };
       const r = x.record || {};
       const arts = Object.entries(r.artifacts || {});
       const fieldLabels = Object.fromEntries((s.fields || []).map(f => [f.key, f.label]));
@@ -312,10 +315,10 @@ async function detail(id, scroll = false) {
       const chatImages = (x.chat_messages || []).filter(m => m.message_has_image).length;
       const hasData = sessionHasData(x);
       const shouldOpen = hasData || s.id === settings?.active_session_id;
-      return `<details class="answer-block session-detail ${hasData ? 'has-data' : 'no-data'}" ${shouldOpen ? 'open' : ''}><summary><strong>${s.id} ${esc(s.title)}</strong> ${hasData ? '<span class="badge">有记录</span>' : '<span class="small">暂无记录</span>'} ${r.submitted_at ? '<span class="badge">已提交</span>' : ''}</summary><p class="small">AI变体：${esc(r.ai_variant || x.chat_session?.ai_variant || '—')} ｜首次打开：${fmtSeconds(r.first_ai_open_latency_seconds)} ｜首次发消息：${fmtSeconds(r.first_user_message_latency_seconds)} ｜打开次数：${r.ai_open_count || 0} ｜聊天图片：${chatImages}</p><h4>任务文字记录</h4>${textEntries.length ? textEntries.map(([k, v]) => `<div class="record-field"><strong>${esc(fieldLabels[k] || k)}</strong><div class="record-text">${esc(v)}</div></div>`).join('') : '<p class="small empty-record">暂无任务文字记录</p>'}<h4>任务作品 / 证据图片</h4>${arts.length ? `<div class="photo-grid">${arts.map(([k, p]) => taskImage(id, s.id, k, p, artifactLabels[k] || k)).join('')}</div>` : '<p class="small empty-record">暂无任务作品图片</p>'}<h4>AI聊天</h4>${messages(id, s.id, x.chat_messages)}${events(x.events)}<div class="row" style="margin-top:12px"><button class="btn danger ghost mini reset-session-detail" data-id="${id}" data-sid="${s.id}" type="button">重置这一课次</button></div></details>`;
+      return `<details class="answer-block session-detail ${hasData ? 'has-data' : 'no-data'}" ${shouldOpen ? 'open' : ''}><summary><strong>${s.id} ${esc(s.title)}</strong> ${hasData ? '<span class="badge">有记录</span>' : '<span class="small">暂无记录</span>'} ${r.submitted_at ? '<span class="badge">已提交</span>' : ''}</summary><p class="small">AI变体：${esc(r.ai_variant || x.chat_session?.ai_variant || '—')} ｜首次打开：${fmtSeconds(r.first_ai_open_latency_seconds)} ｜首次发消息：${fmtSeconds(r.first_user_message_latency_seconds)} ｜打开次数：${r.ai_open_count || 0} ｜聊天图片：${chatImages} ｜文本版本：${(x.revisions||[]).length}</p><h4>任务文字记录</h4>${textEntries.length ? textEntries.map(([k, v]) => `<div class="record-field"><strong>${esc(fieldLabels[k] || k)}</strong><div class="record-text">${esc(v)}</div></div>`).join('') : '<p class="small empty-record">暂无任务文字记录</p>'}<h4>任务作品 / 证据图片</h4>${arts.length ? `<div class="photo-grid">${arts.map(([k, p]) => taskImage(id, s.id, k, p, artifactLabels[k] || k)).join('')}</div>` : '<p class="small empty-record">暂无任务作品图片</p>'}<h4>AI聊天</h4>${messages(id, s.id, x.chat_messages)}${revisions(x.revisions||[])}${events(x.events)}<div class="row" style="margin-top:12px"><button class="btn danger ghost mini reset-session-detail" data-id="${id}" data-sid="${s.id}" type="button">重置这一课次</button></div></details>`;
     }).join('');
 
-    detailBox.innerHTML = `<div class="row between detail-heading"><div><span class="eyebrow">学生完整数据</span><h2>${id}${d.participant.is_test ? ' · S00测试号' : ''}</h2><p class="small">已读取该编号13周的任务文字、作品图片、问卷、AI完整对话、聊天图片和时间戳。有数据的课次会自动展开。</p></div><button class="btn ghost mini" id="refreshDetail" type="button">刷新此学生记录</button></div>
+    detailBox.innerHTML = `<div class="row between detail-heading"><div><span class="eyebrow">学生完整数据</span><h2>${id}${d.participant.is_test ? ' · S00测试号' : ''}</h2><p class="small">已读取该编号13周的任务文字、作品图片、问卷、AI完整对话、聊天图片、任务文本版本历史和时间戳。有数据的课次会自动展开。</p></div><button class="btn ghost mini" id="refreshDetail" type="button">刷新此学生记录</button></div>
       <div class="section"><h3>基本信息</h3><div class="grid two"><label>年级<input id="grade" value="${esc(d.participant.grade || '')}"></label><label>condition<select id="condition"><option value="unassigned">unassigned</option><option value="A">A · 支持型AI</option><option value="B">B · 自由AI</option></select></label></div>${d.participant.is_test ? '<p class="small">S00 是教师测试号，不要求姓名校验。</p>' : `<label class="name-reset-label">登录姓名校验 <span class="small">${d.participant.login_name_hash ? '已设置。出于隐私，系统不保存也不显示姓名明文；如需更正，在下框重新输入。' : '尚未设置，学生现在无法用该编号登录。'}</span><input id="loginName" placeholder="输入姓名后保存；留空表示不修改" autocomplete="off"></label>`}<button class="btn secondary" id="saveMeta">保存</button></div>
       <div class="section"><h3>问卷</h3><div class="grid two"><div class="answer-block"><strong>前测</strong><p class="small">${d.questionnaires?.pre?.submitted_at?`已提交：${esc(d.questionnaires.pre.submitted_at)}｜IHS=${esc(d.questionnaires.pre.scores?.instrumental_mean??'')} EHS=${esc(d.questionnaires.pre.scores?.executive_mean??'')} AHS=${esc(d.questionnaires.pre.scores?.avoidance_mean??'')}`:'未提交'}</p></div><div class="answer-block"><strong>后测</strong><p class="small">${d.questionnaires?.post?.submitted_at?`已提交：${esc(d.questionnaires.post.submitted_at)}｜IHS=${esc(d.questionnaires.post.scores?.instrumental_mean??'')} EHS=${esc(d.questionnaires.post.scores?.executive_mean??'')} AHS=${esc(d.questionnaires.post.scores?.avoidance_mean??'')}`:'未提交'}</p></div></div></div><div class="section"><h3>13周完整记录</h3>${sessionHtml}</div>`;
     document.getElementById('condition').value = d.participant.condition || 'unassigned';
