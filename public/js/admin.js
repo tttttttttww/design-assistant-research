@@ -264,11 +264,21 @@ const liveStatusMeta = status => ({
 function renderLiveParticipantList(){
   const box=document.getElementById('liveParticipantList');
   if(!box) return;
-  const formal=rows.filter(x=>!x.is_test);
-  box.innerHTML=formal.map(x=>{
+  // 实时监看同时显示 S00 测试账号与 S01-S30 正式学生；S00 固定在最上方。
+  const ordered=[...rows].sort((a,b)=>{
+    if(a.is_test&&!b.is_test) return -1;
+    if(!a.is_test&&b.is_test) return 1;
+    return String(a.participant_id).localeCompare(String(b.participant_id));
+  });
+  const formalCount=ordered.filter(x=>!x.is_test).length;
+  const testCount=ordered.filter(x=>x.is_test).length;
+  const toolbar=`<div class="live-list-toolbar"><strong>${formalCount}名正式学生${testCount?` + S00测试`:''}</strong><span class="small">上下滚动查看全部账号</span></div>`;
+  box.innerHTML=toolbar+(ordered.map(x=>{
     const [label,cls]=liveStatusMeta(x.live_status);
-    return `<button class="live-student ${liveSelectedParticipantId===x.participant_id?'selected':''}" data-id="${x.participant_id}" type="button"><div class="live-student-top"><strong>${x.participant_id}</strong><span class="live-status ${cls}">${label}</span></div><div class="live-student-meta"><span>${esc(x.grade||'—')}年级</span><span>${x.user_turn_count||0}轮</span><span>${x.task_field_label?esc(x.task_field_label):'—'}</span></div></button>`;
-  }).join('') || '<div class="small">暂无学生</div>';
+    const gradeText=x.is_test?'测试账号':`${esc(x.grade||'—')}年级`;
+    const testBadge=x.is_test?' <span class="badge test-badge">测试</span>':'';
+    return `<button class="live-student ${x.is_test?'test-account ':''}${liveSelectedParticipantId===x.participant_id?'selected':''}" data-id="${x.participant_id}" type="button"><div class="live-student-top"><strong>${x.participant_id}${testBadge}</strong><span class="live-status ${cls}">${label}</span></div><div class="live-student-meta"><span>${gradeText}</span><span>${x.user_turn_count||0}轮</span><span>${x.task_field_label?esc(x.task_field_label):'—'}</span></div></button>`;
+  }).join('') || '<div class="small">暂无学生</div>');
   box.querySelectorAll('.live-student').forEach(btn=>btn.onclick=()=>selectLiveParticipant(btn.dataset.id));
 }
 

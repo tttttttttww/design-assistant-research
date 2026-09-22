@@ -47,6 +47,9 @@ if (task.includes('请选择一个你真正不确定') || task.includes('最想�
 if (!chat.includes('taskContext') || !chat.includes('aiResponseReceivedAt') || !task.includes('chatTaskContext')) throw new Error('Task-step/timing chat context missing');
 if (!adminHtml.includes('AI求助过程数据 ZIP') || !adminHtml.includes('W8后测问卷 CSV')) throw new Error('Admin export labels not updated');
 if (!adminHtml.includes('实时AI对话') || !admin.includes('refreshLiveMonitor') || !adminRoute.includes('/live/:participantId')) throw new Error('Teacher live monitor missing');
+if (!admin.includes('S00测试') || !admin.includes('test-account') || !admin.includes('const ordered=[...rows]')) throw new Error('S00 live-monitor account missing');
+const css = await readFile('public/css/app.css','utf8');
+if (!css.includes('scrollbar-gutter:stable') || !css.includes('height:clamp(520px,72vh,760px)') || !css.includes('.live-list-toolbar')) throw new Error('Live monitor internal scrolling fix missing');
 if (!adminRoute.includes('storage-diagnostics') || !adminRoute.includes('restore-reset-archive') || !research.includes('restoreResetArchive')) throw new Error('History diagnostics/restore missing');
 if (!chat.includes('s.processing = true') || !chat.includes('ai_request_started') || !research.includes('updateMessage')) throw new Error('Live processing state / early user-message persistence missing');
-console.log('CHECK OK v11.23: live teacher monitor + history diagnostics/restore + process-evidence export + data-safety guards.');
+console.log('CHECK OK v11.24: live monitor scroll fixed + S00 test account visible + history diagnostics/restore + process-evidence export + data-safety guards.');

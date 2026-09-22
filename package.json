@@ -1,8 +1,8 @@
 {
   "name": "design-thinking-help-seeking-platform",
-  "version": "11.23.0",
+  "version": "11.24.0",
   "type": "module",
-  "description": "13周设计思维课程与生成式AI学业求助研究平台（实时教师监看+历史数据诊断+求助过程证据导出）",
+  "description": "13周设计思维课程与生成式AI学业求助研究平台（实时教师监看滚动修复+S00测试账号+历史数据诊断+求助过程证据导出）",
   "main": "cloud-functions/express/[[default]].js",
   "scripts": {
     "start": "node server.js",
