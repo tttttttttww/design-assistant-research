@@ -5,7 +5,7 @@ if (switchStudentBtn) switchStudentBtn.onclick = () => {
   App.clearParticipant();
   location.href = '/';
 };
-let state = null, chatOpened = false, sending = false, selectedChatImage = null, selectedChatImageUrl = '';
+let state = null, chatOpened = false, sending = false, selectedChatImage = null, selectedChatImageUrl = '', lastTaskFieldKey = '';
 let autoSaveTimer = null;
 let saveChain = Promise.resolve();
 let aiDraftTrace = { active:false, startedAt:0, maxChars:0, editCount:0, leftLogged:false };
@@ -18,9 +18,17 @@ function postTraceEvent(type, data={}, {keepalive=false}={}){
   if(!state?.session?.id || !type) return Promise.resolve();
   const headers={'Content-Type':'application/json'};
   const rev=App.cohortRevision(); if(rev) headers['X-Cohort-Revision']=rev;
+  const context=chatTaskContext();
+  const field=(state?.session?.fields||[]).find(f=>f.key===context.field_key);
+  const traceData={
+    task_field_key:context.field_key||'',
+    task_field_label:field?.label||'',
+    task_field_stage:field?.stage||'',
+    ...data,
+  };
   return fetch(`${App.apiBase}/session/event`,{
     method:'POST', headers, keepalive,
-    body:JSON.stringify({participantId:id,sessionId:state.session.id,type,data}),
+    body:JSON.stringify({participantId:id,sessionId:state.session.id,type,data:traceData}),
   }).catch(()=>{});
 }
 function lastAssistantMessage(){
@@ -31,6 +39,35 @@ function lastAssistantMessage(){
 function saveContext(reason='save'){
   const m=lastAssistantMessage();
   return { reason, last_ai_message_id:m?.message_id||'', last_ai_message_at:m?.created_at||'' };
+}
+function lastTaskFieldStorageKey(){ return state?.session?.id ? `last_task_field:${id}:${state.session.id}` : ''; }
+function rememberTaskField(key=''){
+  lastTaskFieldKey=String(key||'');
+  try{ const k=lastTaskFieldStorageKey(); if(k) sessionStorage.setItem(k,lastTaskFieldKey); }catch{}
+}
+function restoreTaskField(){
+  try{ const k=lastTaskFieldStorageKey(); if(k) lastTaskFieldKey=sessionStorage.getItem(k)||''; }catch{}
+}
+function chatTaskContext(){
+  const vals=collectFields();
+  const fields=state?.session?.fields||[];
+  const mainUpdate=updateIsRevealed(), bonus=bonusIsRevealed(), bonusUpdate=bonusUpdateIsRevealed();
+  const visible=fields.filter(f=>{
+    const stage=String(f.stage||'');
+    if(stage==='after_update') return mainUpdate;
+    if(stage==='bonus_before') return bonus;
+    if(stage==='bonus_after') return bonus&&bonusUpdate;
+    return !stage.startsWith('bonus_');
+  });
+  let field=fields.find(f=>f.key===lastTaskFieldKey);
+  if(!field || !visible.some(v=>v.key===field.key)) field=visible.find(f=>!String(vals?.[f.key]||'').trim()) || visible.at(-1);
+  return {
+    field_key:field?.key||'',
+    completed_field_keys:Object.entries(vals||{}).filter(([,v])=>String(v||'').trim()).map(([k])=>k),
+    main_update_revealed:mainUpdate,
+    bonus_task_revealed:bonus,
+    bonus_update_revealed:bonusUpdate,
+  };
 }
 function draftTraceData(extra={}){
   const now=Date.now();
@@ -159,6 +196,7 @@ function chatPanel(){
   const variantLabel=state.participant.is_test ? `S00测试预览：${state.ai_variant}` : 'AI设计助手';
   const requiredOnce=Boolean(state.session.ai_use_required_once);
   const policyText=state.session.ai_instruction || '本节任务中可以使用AI设计助手，也可以不使用。';
+  const chatImageEnabled=state.session.chat_image_enabled!==false;
   return `<section class="card sticky-card ai-card"><div class="row between"><div><span class="eyebrow">${esc(variantLabel)}</span><h2>AI设计助手</h2></div><span class="badge">${requiredOnce?'本节至少使用1次':'可选'}</span></div>
     ${variantBlocked?'<div class="notice warn">本课已进入分组阶段，但当前编号还没有分组。请老师先在后台设置 A/B。</div>':`<p class="small">${esc(policyText)}</p>
     <button class="btn secondary" id="openAi">${state.record.first_ai_open_at?'继续使用AI':'打开AI助手'}</button>
@@ -166,8 +204,8 @@ function chatPanel(){
       ${state.participant.is_test?`<div class="chat-meta small" id="chatMeta">S00测试数据｜首次打开：${fmtLatency(state.record.first_ai_open_latency_seconds)}｜首次发送：${fmtLatency(state.record.first_user_message_latency_seconds)}</div>`:''}
       <div class="messages compact-messages" id="messages"></div>
       <div id="thinking" class="spinner hidden">AI正在查看并回复……</div><div id="sendError" class="notice warn hidden"></div>
-      <div id="chatImagePreview" class="chat-image-preview hidden"><img id="chatImageThumb" alt="待发送图片"><div><strong>已选择图片</strong><p class="small">请用文字告诉AI你想让它帮你看什么。</p><button type="button" class="btn ghost mini" id="removeChatImage">移除图片</button></div></div>
-      <div class="composer-tools"><label class="attach-btn ${state.record.submitted_at?'disabled':''}">＋ 添加草图 / 原型照片<input id="chatImage" type="file" accept="image/jpeg,image/png,image/webp" ${state.record.submitted_at?'disabled':''}></label><span class="small">每次最多1张，≤10MB</span></div>
+      ${chatImageEnabled?`<div id="chatImagePreview" class="chat-image-preview hidden"><img id="chatImageThumb" alt="待发送图片"><div><strong>已选择图片</strong><p class="small">请用文字告诉AI你想让它帮你看什么。</p><button type="button" class="btn ghost mini" id="removeChatImage">移除图片</button></div></div>
+      <div class="composer-tools"><label class="attach-btn ${state.record.submitted_at?'disabled':''}">＋ 添加草图 / 原型照片<input id="chatImage" type="file" accept="image/jpeg,image/png,image/webp" ${state.record.submitted_at?'disabled':''}></label><span class="small">每次最多1张，≤10MB</span></div>`:'<p class="small">本节不需要上传图片，请直接使用文字与AI交流。</p>'}
       <div class="composer-wrap"><textarea id="message" placeholder="输入你现在想问AI的内容……" ${state.record.submitted_at?'disabled':''}></textarea><button class="btn" id="send" ${state.record.submitted_at?'disabled':''}>发送</button></div>
     </div>`}</section>`;
 }
@@ -371,7 +409,7 @@ async function send(){
   try{
     // 发送 AI 前强制等待表单最新值保存完成。
     await persistCurrentFields({saveReason:'before_ai_send'});
-    const fd=new FormData(); fd.append('participantId',id); fd.append('sessionId',state.session.id); fd.append('message',msg); if(file) fd.append('image',file);
+    const fd=new FormData(); fd.append('participantId',id); fd.append('sessionId',state.session.id); fd.append('message',msg); fd.append('clientSentAt',new Date().toISOString()); fd.append('taskContext',JSON.stringify(chatTaskContext())); if(file) fd.append('image',file);
     const r=await App.api('/chat/send',{method:'POST',body:fd});
     if(r.record) state.record=r.record;
     markAiDraftSent(msg);
@@ -392,7 +430,7 @@ async function send(){
   finally{sending=false;document.getElementById('thinking')?.classList.add('hidden');if(document.getElementById('send'))document.getElementById('send').disabled=false;}
 }
 function wire(){
-  document.querySelectorAll('[data-field]').forEach(x=>{x.addEventListener('input',()=>{writeLocalDraft(collectFields());queueAutoSave();});x.addEventListener('blur',()=>{if(!state.record.submitted_at)persistCurrentFields({saveReason:'blur'}).then(()=>setSaveStatus('已自动保存 ✓')).catch(e=>setSaveStatus(`自动保存失败：${e.message}`));});});
+  document.querySelectorAll('[data-field]').forEach(x=>{x.addEventListener('focus',()=>rememberTaskField(x.dataset.field));x.addEventListener('input',()=>{rememberTaskField(x.dataset.field);writeLocalDraft(collectFields());queueAutoSave();});x.addEventListener('blur',()=>{rememberTaskField(x.dataset.field);if(!state.record.submitted_at)persistCurrentFields({saveReason:'blur'}).then(()=>setSaveStatus('已自动保存 ✓')).catch(e=>setSaveStatus(`自动保存失败：${e.message}`));});});
   document.querySelectorAll('[data-artifact]').forEach(x=>x.onchange=()=>uploadArtifact(x));
   document.getElementById('saveDraft').onclick=saveDraft;
   document.getElementById('taskForm').onsubmit=async e=>{e.preventDefault();if(!confirm('确认提交本节任务吗？提交后本节记录将锁定。'))return;try{cancelQueuedAutoSave();await saveChain;markAiDraftLeft('session_submit');await App.api('/session/submit',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,textFields:collectFields(),saveContext:saveContext('submit')})});clearLocalDraft();await load();}catch(x){alert(x.message);}};
@@ -411,7 +449,7 @@ function wire(){
   }
   wireChatRevisit();
 }
-async function load(show=true, keepChat=false){try{const r=await App.api(`/session/current?participantId=${encodeURIComponent(id)}`);state=r;if(keepChat&&state.chat_messages?.length)chatOpened=true;render();}catch(e){document.getElementById('app').innerHTML=`<div class="notice warn">${esc(e.message)}</div>`;}}
+async function load(show=true, keepChat=false){try{const r=await App.api(`/session/current?participantId=${encodeURIComponent(id)}`);state=r;restoreTaskField();if((keepChat||state.chat_messages?.length)&&state.chat_messages?.length)chatOpened=true;render();}catch(e){document.getElementById('app').innerHTML=`<div class="notice warn">${esc(e.message)}</div>`;}}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')markAiDraftLeft('page_hidden',true);});
 window.addEventListener('pagehide',()=>markAiDraftLeft('pagehide',true));
 

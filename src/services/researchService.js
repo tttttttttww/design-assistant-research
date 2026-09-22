@@ -300,6 +300,8 @@ class ResearchService {
           session_id: sid,
           revision_index: revisionIndex,
           field_key: item.field_key,
+          field_label: config.fields.find(f => f.key === item.field_key)?.label || item.field_key,
+          field_stage: config.fields.find(f => f.key === item.field_key)?.stage || '',
           field_revision_no: fieldRevisionNo,
           previous_text: item.previous_text,
           text: item.text,
@@ -424,6 +426,16 @@ class ResearchService {
       created_at: data.created_at || iso(), conversation_id: data.conversation_id || '', chat_id: data.chat_id || '',
       bot_id: data.bot_id || '', model: data.model || '', ai_variant: data.ai_variant || '', prompt_version: data.prompt_version || '',
       content_type: data.content_type || 'text', message_has_image: Boolean(data.message_has_image), attachments: Array.isArray(data.attachments) ? data.attachments : [],
+      interaction_id: data.interaction_id || '',
+      client_sent_at: data.client_sent_at || '',
+      server_received_at: data.server_received_at || '',
+      ai_request_started_at: data.ai_request_started_at || '',
+      ai_response_received_at: data.ai_response_received_at || '',
+      ai_latency_ms: Number.isFinite(Number(data.ai_latency_ms)) ? Number(data.ai_latency_ms) : null,
+      task_field_key: data.task_field_key || '',
+      task_field_label: data.task_field_label || '',
+      task_field_stage: data.task_field_stage || '',
+      task_context: data.task_context && typeof data.task_context === 'object' ? data.task_context : {},
     };
     await storageService.putObject(mKey(id, sid, message_index), JSON.stringify(row));
     return row;

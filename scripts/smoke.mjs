@@ -16,8 +16,12 @@ if(!p1.login_name_hash||p1.login_name_hash==='张三'||Object.prototype.hasOwnPr
 let r=await researchService.ensureStarted('S01','W1'); if(!r.started_at) throw new Error('W1 not started');
 await researchService.markAiOpened('S01','W1'); await researchService.markFirstUserMessage('S01','W1');
 r=await researchService.getSessionRecord('S01','W1'); if(r.first_user_message_latency_seconds==null) throw new Error('latency missing');
-await researchService.appendMessage('S01','W1',{role:'user',content:'请看看我的草图哪里可以改',content_type:'text+image',message_has_image:true,attachments:[{type:'image',file_name:'chat_test.jpg',file_path:'uploads/S01/W1/chat/chat_test.jpg'}]});
+await researchService.appendMessage('S01','W1',{role:'user',content:'请看看我的草图哪里可以改',content_type:'text+image',message_has_image:true,attachments:[{type:'image',file_name:'chat_test.jpg',file_path:'uploads/S01/W1/chat/chat_test.jpg'}],interaction_id:'smoke-i1',client_sent_at:'2026-09-22T00:00:00.000Z',server_received_at:'2026-09-22T00:00:00.100Z',ai_request_started_at:'2026-09-22T00:00:00.120Z',ai_response_received_at:'2026-09-22T00:00:01.120Z',ai_latency_ms:1000,task_field_key:'design_note',task_field_label:'用一句话说明你的设计思路',task_field_stage:'before_update',task_context:{field_key:'design_note'}});
 const msgs=await researchService.getMessages('S01','W1'); if(!msgs[0]?.message_has_image||msgs[0]?.attachments?.length!==1) throw new Error('image message metadata missing');
+if(msgs[0]?.interaction_id!=='smoke-i1'||msgs[0]?.ai_latency_ms!==1000||msgs[0]?.task_field_key!=='design_note') throw new Error('interaction timing/task-step metadata missing');
+await researchService.saveFields('S01','W2',{core_problem:'排队与信息判断'},{reason:'smoke_revision',last_ai_message_id:'ai-smoke',last_ai_message_at:new Date().toISOString()});
+const revs=await researchService.getRevisions('S01','W2'); if(!revs.length||!revs[0].field_label||!('field_stage' in revs[0])) throw new Error('revision field label/stage missing');
+if(getSessionConfig('W2').chat_image_enabled!==false) throw new Error('W2 chat image must be disabled');
 await researchService.setParticipantMeta('S01',{condition:'A'});
 if(aiVariantFor({session:getSessionConfig('W4'),condition:'A',isTest:false})!=='supported') throw new Error('A routing failed');
 if(aiVariantFor({session:getSessionConfig('W4'),condition:'B',isTest:false})!=='free') throw new Error('B routing failed');
@@ -47,5 +51,5 @@ const s00w1=await researchService.getSessionRecord('S00','W1');
 if(!s00w1.started_at) throw new Error('S00 should be preserved during cohort replacement');
 const newP1=await researchService.getParticipant('S01');
 if(newP1.grade!=='6'||!newP1.login_name_hash||newP1.condition!=='unassigned') throw new Error('new cohort roster meta missing');
-console.log('SMOKE OK: roster name hash + timing + image metadata + multimodal payload + A/B/transfer routing + safe reset + whole-cohort replacement passed.');
+console.log('SMOKE OK v11.22: roster/name safety + interaction timing/task-step metadata + revision metadata + W2 text-only chat + A/B/transfer routing + safe reset + cohort replacement passed.');
 

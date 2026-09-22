@@ -1,6 +1,6 @@
-export const SCHEMA_VERSION = 15;
-export const PROMPT_VERSION_FREE = 'free-ai-v3';
-export const PROMPT_VERSION_SUPPORTED = 'help-seeking-support-v4-help-tutor-grounded';
+export const SCHEMA_VERSION = 16;
+export const PROMPT_VERSION_FREE = 'free-ai-v4-grounded-evidence';
+export const PROMPT_VERSION_SUPPORTED = 'help-seeking-support-v5-help-tutor-grounded-evidence';
 export const QUESTIONNAIRE_VERSION = 'li-help-seeking-intention-genai-v2-minimal-adaptation';
 
 export const CONDITIONS = ['unassigned', 'A', 'B'];
@@ -79,7 +79,7 @@ export const SESSIONS = [
   {
     id:'W2', order:2, date:'9/21',
     title:'重新设计学校午餐体验', subtitle:'共同AI试用任务｜需求判断、方案权衡与反馈后修订',
-    student_label:'第2课 · 共同试用', research_role:'pilot_trial', phase:'pilot', ai_mode:'free', candidate:false,
+    student_label:'第2课 · 共同试用', research_role:'pilot_trial', phase:'pilot', ai_mode:'free', candidate:false, chat_image_enabled:false,
     source_course:'Stanford d.school: Redesign the School Lunch Experience',
     brief:[
       '今天你要重新设计的不是某一道菜，而是“学校午餐体验”：从下课、了解当天选择、排队取餐、找座位、用餐，到最后离开。',
@@ -327,6 +327,7 @@ export function hiddenAiContext(session) {
     `任务说明：${session.brief.join(' ')}`,
     `任务要求：${session.requirements.join(' ')}`,
     session.prompt_context || '',
+    '共同事实约束：不得把课堂任务资料中未提供的具体数字、比例、时长、调查结果、效果量或研究结论当作已知事实编造。若资料不足，应明确说明“当前资料无法确认”，可以建议需要补充什么证据；如果只是提出假设或示例，必须明确标成假设/示例。实验组与对照组都遵守这一基础规则。',
     '学生可以自主决定是否、何时使用AI。不要主动要求学生采用固定求助模板。',
   ].filter(Boolean).join('\n');
 }

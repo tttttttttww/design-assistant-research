@@ -11,7 +11,7 @@ const ids = cfg.SESSIONS.map(x=>x.id);
 if (new Set(ids).size !== 13) throw new Error('Duplicate session ids');
 
 const w2 = cfg.SESSIONS.find(x=>x.id==='W2');
-if (!w2 || w2.ai_mode!=='free' || w2.phase!=='pilot' || (w2.artifacts||[]).length) throw new Error('W2 pilot/free/no-upload config invalid');
+if (!w2 || w2.ai_mode!=='free' || w2.phase!=='pilot' || (w2.artifacts||[]).length || w2.chat_image_enabled!==false) throw new Error('W2 pilot/free/no-upload config invalid');
 if (!w2.bonus_task || !(w2.fields||[]).some(f=>f.stage==='bonus_before')) throw new Error('W2 optional locker bonus task missing');
 for (const s of cfg.SESSIONS) {
   if (!s.title || !Array.isArray(s.brief) || !Array.isArray(s.fields) || !Array.isArray(s.artifacts)) throw new Error(`Bad session config ${s.id}`);
@@ -40,8 +40,10 @@ if (!admin.includes('replaceRosterImport') || !adminRoute.includes('roster-repla
 if (!authRoute.includes('cohort_revision') || !validators || !adminRoute.includes('replaceFormalCohort')) throw new Error('Cohort revision / replacement safety missing');
 if (!task.includes('questionnaireForm') || !adminRoute.includes('stratified-randomize')) throw new Error('Questionnaire/randomization flow missing');
 if (!task.includes('ai_draft_deleted_unsent') || !task.includes('chat_history_revisit') || !task.includes('bonusTaskHtml')) throw new Error('W2 trace/bonus UI missing');
-if (!adminRoute.includes('task_revisions.csv') || !adminRoute.includes('behavior_events.csv')) throw new Error('Trace exports missing');
+if (!adminRoute.includes('task_revisions.csv') || !adminRoute.includes('behavior_events.csv') || !adminRoute.includes('process_timeline.csv') || !adminRoute.includes('interaction_id') || !adminRoute.includes('ai_latency_ms')) throw new Error('Process-evidence exports missing');
 const research = await readFile('src/services/researchService.js','utf8');
 if (!research.includes('getRevisions') || !research.includes('field_revision_counts')) throw new Error('Task revision history service missing');
 if (task.includes('请选择一个你真正不确定') || task.includes('最想比较或最需要反馈')) throw new Error('Help-seeking strategy prompt should not appear in W2 UI');
-console.log('CHECK OK v11.21: 13 sessions + W2 lunch/locker pilot + neutral AI-use wording + draft/revisit traces + task revision history + trace exports + old-data-safe storage path.');
+if (!chat.includes('taskContext') || !chat.includes('aiResponseReceivedAt') || !task.includes('chatTaskContext')) throw new Error('Task-step/timing chat context missing');
+if (!adminHtml.includes('AI求助过程数据 ZIP') || !adminHtml.includes('W8后测问卷 CSV')) throw new Error('Admin export labels not updated');
+console.log('CHECK OK v11.22: process-evidence export + task-step context + real AI timing + W2 text-only chat + grounded-evidence rule + posttest-only export.');

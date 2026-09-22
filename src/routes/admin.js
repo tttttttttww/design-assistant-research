@@ -378,17 +378,24 @@ async function formalData() {
   return out;
 }
 
-// ===== 推荐的正式导出：只保留两个工作包 + 一个完整 JSON 备份 =====
+// ===== 推荐的正式导出：求助过程证据 + 任务作品 + W8后测 + 完整JSON =====
 router.get('/export/chat-package.zip', requireAdmin, async (req, res) => {
   let archive;
   try {
-    archive = openZip(res, 'AI_chat_and_images.zip');
+    archive = openZip(res, 'AI_helpseeking_process_evidence.zip');
     const rows = [];
+    const revisionRows = [];
+    const eventRows = [];
+    const timelineRows = [];
     let imageCount = 0;
     for (const id of formalIds()) {
       const participant = await researchService.getParticipant(id);
       for (const s of SESSIONS) {
-        const messages = await researchService.getMessages(id, s.id);
+        const [messages, revisions, events] = await Promise.all([
+          researchService.getMessages(id, s.id),
+          researchService.getRevisions(id, s.id),
+          researchService.getEvents(id, s.id),
+        ]);
         for (const m of messages) {
           const imageNames = [];
           const imageZipPaths = [];
@@ -410,12 +417,22 @@ router.get('/export/chat-package.zip', requireAdmin, async (req, res) => {
             course_session_id: s.id,
             session_title: s.title,
             message_index: m.message_index,
+            interaction_id: m.interaction_id || '',
             role: m.role,
             content: m.content,
             content_type: m.content_type,
             message_has_image: m.message_has_image,
             image_file_names: imageNames.join('; '),
             image_zip_paths: imageZipPaths.join('; '),
+            client_sent_at: m.client_sent_at || '',
+            server_received_at: m.server_received_at || '',
+            ai_request_started_at: m.ai_request_started_at || '',
+            ai_response_received_at: m.ai_response_received_at || '',
+            ai_latency_ms: m.ai_latency_ms ?? '',
+            task_field_key: m.task_field_key || '',
+            task_field_label: m.task_field_label || '',
+            task_field_stage: m.task_field_stage || '',
+            task_context_json: m.task_context || {},
             created_at: m.created_at,
             conversation_id: m.conversation_id,
             chat_id: m.chat_id,
@@ -425,15 +442,134 @@ router.get('/export/chat-package.zip', requireAdmin, async (req, res) => {
             prompt_version: m.prompt_version,
           });
         }
+        for (const rev of revisions) revisionRows.push({
+          participant_id:id,
+          grade:participant.grade,
+          condition:participant.condition,
+          session_id:s.id,
+          session_title:s.title,
+          revision_index:rev.revision_index,
+          field_key:rev.field_key,
+          field_label:rev.field_label || '',
+          field_stage:rev.field_stage || '',
+          field_revision_no:rev.field_revision_no,
+          previous_text:rev.previous_text,
+          text:rev.text,
+          created_at:rev.created_at,
+          save_reason:rev.save_reason,
+          last_ai_message_id:rev.last_ai_message_id,
+          last_ai_message_at:rev.last_ai_message_at,
+          seconds_since_last_ai_reply:rev.seconds_since_last_ai_reply,
+        });
+        for (const ev of events) {
+          const d = ev.data || {};
+          eventRows.push({
+            participant_id:id,
+            grade:participant.grade,
+            condition:participant.condition,
+            session_id:s.id,
+            session_title:s.title,
+            event_index:ev.event_index,
+            type:ev.type,
+            at:ev.at,
+            interaction_id:d.interaction_id || '',
+            task_field_key:d.task_field_key || '',
+            task_field_label:d.task_field_label || '',
+            task_field_stage:d.task_field_stage || '',
+            duration_ms:d.duration_ms ?? '',
+            max_chars:d.max_chars ?? '',
+            edit_count:d.edit_count ?? '',
+            current_chars:d.current_chars ?? '',
+            reason:d.reason || '',
+            message_count:d.message_count ?? '',
+            dwell_ms:d.dwell_ms ?? '',
+            ai_latency_ms:d.ai_latency_ms ?? '',
+            data_json:d,
+          });
+        }
       }
     }
-    const headers = ['participant_id','grade','condition','course_session_id','session_title','message_index','role','content','content_type','message_has_image','image_file_names','image_zip_paths','created_at','conversation_id','chat_id','bot_id','model','ai_variant','prompt_version'];
+    const headers = ['participant_id','grade','condition','course_session_id','session_title','message_index','interaction_id','role','content','content_type','message_has_image','image_file_names','image_zip_paths','client_sent_at','server_received_at','ai_request_started_at','ai_response_received_at','ai_latency_ms','task_field_key','task_field_label','task_field_stage','task_context_json','created_at','conversation_id','chat_id','bot_id','model','ai_variant','prompt_version'];
     archive.append(csvText(headers, rows), { name: 'chat_messages.csv' });
-    archive.append(`正式数据仅含 S01-S30，自动排除 S00。\nchat_messages.csv 与 chat_images/ 中的图片通过 image_zip_paths 一一对应。\n共导出聊天消息 ${rows.length} 条，聊天图片 ${imageCount} 张。\n`, { name: 'README.txt' });
+    const revisionHeaders = ['participant_id','grade','condition','session_id','session_title','revision_index','field_key','field_label','field_stage','field_revision_no','previous_text','text','created_at','save_reason','last_ai_message_id','last_ai_message_at','seconds_since_last_ai_reply'];
+    archive.append(csvText(revisionHeaders, revisionRows), { name: 'task_revisions.csv' });
+    const eventHeaders = ['participant_id','grade','condition','session_id','session_title','event_index','type','at','interaction_id','task_field_key','task_field_label','task_field_stage','duration_ms','max_chars','edit_count','current_chars','reason','message_count','dwell_ms','ai_latency_ms','data_json'];
+    archive.append(csvText(eventHeaders, eventRows), { name: 'behavior_events.csv' });
+
+    for (const r of rows) timelineRows.push({
+      participant_id:r.participant_id,
+      grade:r.grade,
+      condition:r.condition,
+      session_id:r.course_session_id,
+      session_title:r.session_title,
+      event_time:r.role==='user' ? (r.client_sent_at || r.created_at) : (r.ai_response_received_at || r.created_at),
+      source_type:'chat_message',
+      subtype:r.role,
+      interaction_id:r.interaction_id,
+      message_index:r.message_index,
+      role:r.role,
+      content:r.content,
+      field_key:r.task_field_key,
+      field_label:r.task_field_label,
+      field_stage:r.task_field_stage,
+      previous_text:'',
+      revised_text:'',
+      raw_data_json:r.task_context_json,
+    });
+    for (const r of revisionRows) timelineRows.push({
+      participant_id:r.participant_id,
+      grade:r.grade,
+      condition:r.condition,
+      session_id:r.session_id,
+      session_title:r.session_title,
+      event_time:r.created_at,
+      source_type:'task_revision',
+      subtype:r.save_reason || 'revision',
+      interaction_id:'',
+      message_index:'',
+      role:'',
+      content:'',
+      field_key:r.field_key,
+      field_label:r.field_label,
+      field_stage:r.field_stage,
+      previous_text:r.previous_text,
+      revised_text:r.text,
+      raw_data_json:{ last_ai_message_id:r.last_ai_message_id, last_ai_message_at:r.last_ai_message_at, seconds_since_last_ai_reply:r.seconds_since_last_ai_reply },
+    });
+    for (const r of eventRows) timelineRows.push({
+      participant_id:r.participant_id,
+      grade:r.grade,
+      condition:r.condition,
+      session_id:r.session_id,
+      session_title:r.session_title,
+      event_time:r.at,
+      source_type:'behavior_event',
+      subtype:r.type,
+      interaction_id:r.interaction_id,
+      message_index:'',
+      role:'',
+      content:'',
+      field_key:r.task_field_key,
+      field_label:r.task_field_label,
+      field_stage:r.task_field_stage,
+      previous_text:'',
+      revised_text:'',
+      raw_data_json:r.data_json,
+    });
+    timelineRows.sort((a,b) => String(a.participant_id).localeCompare(String(b.participant_id)) || String(a.session_id).localeCompare(String(b.session_id)) || String(a.event_time).localeCompare(String(b.event_time)) || String(a.source_type).localeCompare(String(b.source_type)));
+    let seqKey = '', seq = 0;
+    for (const row of timelineRows) {
+      const key = `${row.participant_id}|${row.session_id}`;
+      if (key !== seqKey) { seqKey = key; seq = 0; }
+      row.sequence_order = ++seq;
+    }
+    const timelineHeaders = ['participant_id','grade','condition','session_id','session_title','sequence_order','event_time','source_type','subtype','interaction_id','message_index','role','content','field_key','field_label','field_stage','previous_text','revised_text','raw_data_json'];
+    archive.append(csvText(timelineHeaders, timelineRows), { name: 'process_timeline.csv' });
+    archive.append(`正式数据仅含 S01-S30，自动排除 S00。\nchat_messages.csv：学生与AI完整消息，含 interaction_id、真实AI请求/回复时间、ai_latency_ms，以及发送时所在任务步骤字段。\nbehavior_events.csv：输入草稿开始/删除未发送/离开未发送、回看旧回复、查看新反馈等可观察事件；删除草稿正文不会保存。\ntask_revisions.csv：任务文本框V1/V2/V3版本历史，可通过 last_ai_message_id / last_ai_message_at 与AI回复对齐。\nprocess_timeline.csv：把聊天、行为事件、任务修订按学生×课次合并为统一时间线，仅整理原始证据，不自动判定IHS/EHS/AHS。\nchat_images/：学生在允许上传图片的课次中发送给AI的原图；W2关闭聊天图片。\n共导出聊天消息 ${rows.length} 条、版本记录 ${revisionRows.length} 条、行为事件 ${eventRows.length} 条、聊天图片 ${imageCount} 张。\n`, { name: 'README.txt' });
     await archive.finalize();
   } catch (e) {
-    console.error('chat package export', e);
-    if (!res.headersSent) res.status(500).json({ error: 'AI聊天与图片导出失败' });
+    console.error('help-seeking process package export', e);
+    if (!res.headersSent) res.status(500).json({ error: 'AI求助过程数据导出失败' });
     else res.destroy(e);
   }
 });
@@ -443,17 +579,11 @@ router.get('/export/task-package.zip', requireAdmin, async (req, res) => {
   try {
     archive = openZip(res, 'task_records_and_works.zip');
     const rows = [];
-    const revisionRows = [];
-    const eventRows = [];
     let imageCount = 0;
     for (const id of formalIds()) {
       const participant = await researchService.getParticipant(id);
       for (const s of SESSIONS) {
-        const [r, revisions, events] = await Promise.all([
-          researchService.getSessionRecord(id, s.id),
-          researchService.getRevisions(id, s.id),
-          researchService.getEvents(id, s.id),
-        ]);
+        const r = await researchService.getSessionRecord(id, s.id);
         const fieldLabel = Object.fromEntries((s.fields || []).map(f => [f.key, f.label]));
         const taskText = Object.entries(r.text_fields || {})
           .filter(([, value]) => String(value || '').trim())
@@ -495,43 +625,11 @@ router.get('/export/task-package.zip', requireAdmin, async (req, res) => {
           submitted_at: r.submitted_at,
           completed_at: r.completed_at,
         });
-        for (const rev of revisions) revisionRows.push({
-          participant_id:id,
-          grade:participant.grade,
-          condition:participant.condition,
-          session_id:s.id,
-          session_title:s.title,
-          revision_index:rev.revision_index,
-          field_key:rev.field_key,
-          field_revision_no:rev.field_revision_no,
-          previous_text:rev.previous_text,
-          text:rev.text,
-          created_at:rev.created_at,
-          save_reason:rev.save_reason,
-          last_ai_message_id:rev.last_ai_message_id,
-          last_ai_message_at:rev.last_ai_message_at,
-          seconds_since_last_ai_reply:rev.seconds_since_last_ai_reply,
-        });
-        for (const ev of events) eventRows.push({
-          participant_id:id,
-          grade:participant.grade,
-          condition:participant.condition,
-          session_id:s.id,
-          session_title:s.title,
-          event_index:ev.event_index,
-          type:ev.type,
-          at:ev.at,
-          data:ev.data,
-        });
       }
     }
     const headers = ['participant_id','grade','condition_current','session_id','session_title','date','research_role','condition_at_time','ai_variant','started_at','first_ai_open_at','first_ai_open_latency_seconds','first_user_message_at','first_user_message_latency_seconds','ai_open_count','ai_used','task_text','text_fields_json','work_file_names','work_zip_paths','submitted_at','completed_at'];
     archive.append(csvText(headers, rows), { name: 'task_records.csv' });
-    const revisionHeaders = ['participant_id','grade','condition','session_id','session_title','revision_index','field_key','field_revision_no','previous_text','text','created_at','save_reason','last_ai_message_id','last_ai_message_at','seconds_since_last_ai_reply'];
-    archive.append(csvText(revisionHeaders, revisionRows), { name: 'task_revisions.csv' });
-    const eventHeaders = ['participant_id','grade','condition','session_id','session_title','event_index','type','at','data'];
-    archive.append(csvText(eventHeaders, eventRows), { name: 'behavior_events.csv' });
-    archive.append(`正式数据仅含 S01-S30，自动排除 S00。\ntask_records.csv：每个学生每个课次的当前/最终任务记录。\ntask_revisions.csv：任务文本框的版本历史，可与 last_ai_message_id / last_ai_message_at 对齐，观察AI回复前后的任务修改。\nbehavior_events.csv：AI输入草稿、删除未发送、离开未发送、回看旧回复、查看新反馈等时间事件。\nworks/：W1及W3以后需要上传的作品/证据图片；W2不要求最终图片。\n共 ${rows.length} 条课次记录、${revisionRows.length} 条版本记录、${eventRows.length} 条行为事件、${imageCount} 张任务图片。\n`, { name: 'README.txt' });
+    archive.append(`正式数据仅含 S01-S30，自动排除 S00。\ntask_records.csv：每个学生每个课次的当前/最终任务记录。\nworks/：W1及W3以后需要上传的草图、原型、测试证据和最终作品原图；W2不要求最终图片。\n求助过程相关的 behavior_events.csv、task_revisions.csv 与 process_timeline.csv 已统一放入“AI求助过程数据 ZIP”，避免两个工作包重复。\n共 ${rows.length} 条课次记录、${imageCount} 张任务图片。\n`, { name: 'README.txt' });
     await archive.finalize();
   } catch (e) {
     console.error('task package export', e);
@@ -544,24 +642,23 @@ router.get('/export/questionnaire.csv', requireAdmin, async (req, res) => {
   const rows = [];
   for (const id of formalIds()) {
     const p = await researchService.getParticipant(id);
-    for (const slot of ['pre','post']) {
-      const q = await researchService.getQuestionnaire(id, slot);
-      const row = {
-        participant_id:id,
-        grade:p.grade,
-        condition:p.condition,
-        slot,
-        questionnaire_version:q?.questionnaire_version||'',
-        submitted_at:q?.submitted_at||'',
-        instrumental_mean:q?.scores?.instrumental_mean??'',
-        executive_mean:q?.scores?.executive_mean??'',
-        avoidance_mean:q?.scores?.avoidance_mean??'',
-      };
-      for (const item of QUESTIONNAIRE_ITEMS) row[item.id] = q?.responses?.[item.id] ?? '';
-      rows.push(row);
-    }
+    const slot = 'post';
+    const q = await researchService.getQuestionnaire(id, slot);
+    const row = {
+      participant_id:id,
+      grade:p.grade,
+      condition:p.condition,
+      slot,
+      questionnaire_version:q?.questionnaire_version||'',
+      submitted_at:q?.submitted_at||'',
+      instrumental_mean:q?.scores?.instrumental_mean??'',
+      executive_mean:q?.scores?.executive_mean??'',
+      avoidance_mean:q?.scores?.avoidance_mean??'',
+    };
+    for (const item of QUESTIONNAIRE_ITEMS) row[item.id] = q?.responses?.[item.id] ?? '';
+    rows.push(row);
   }
-  sendCsv(res, 'questionnaire_raw.csv', ['participant_id','grade','condition','slot','questionnaire_version','submitted_at','instrumental_mean','executive_mean','avoidance_mean',...QUESTIONNAIRE_ITEMS.map(x=>x.id)], rows);
+  sendCsv(res, 'questionnaire_posttest_raw.csv', ['participant_id','grade','condition','slot','questionnaire_version','submitted_at','instrumental_mean','executive_mean','avoidance_mean',...QUESTIONNAIRE_ITEMS.map(x=>x.id)], rows);
 });
 
 router.get('/export/all.json', requireAdmin, async (req, res) => sendJson(res, 'course_research_all.json', await formalData()));

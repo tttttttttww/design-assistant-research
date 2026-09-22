@@ -1,4 +1,4 @@
-# Design Thinking + GenAI Help-Seeking Research Platform v11.21
+# Design Thinking + GenAI Help-Seeking Research Platform v11.22
 
 ## 当前研究/课程安排
 - W1：椅子快速设计热身，普通AI；旧数据继续保留。
@@ -39,7 +39,7 @@ W2定位为**平台/编码试用课**，不是“学生是否会自然求助”�
 
 平台不会提示“最不确定时问AI”“需要比较时问AI”等求助策略。为了防止AI接口故障阻塞课堂，后台不会因未成功使用AI而禁止最终提交；若未使用，会记录 `ai_required_not_used_at_submit` 事件供课后检查。
 
-## v11.21 新增研究数据
+## v11.22 新增研究数据
 ### 1. AI输入草稿事件（不保存被删除的具体文字）
 - `ai_draft_started`：开始在AI输入框输入；
 - `ai_draft_deleted_unsent`：输入后全部删除且未发送；
@@ -75,7 +75,18 @@ W2定位为**平台/编码试用课**，不是“学生是否会自然求助”�
 平台保留14题学业求助意图情境适配稿，但 **W2不弹前测**。当前计划只在W8正式主项目结束后做项目结束测量。
 
 ## 旧数据保留
-重新部署 v11.21 不会因为代码更新清空 W1。存储根路径仍为：
+重新部署 v11.22 不会因为代码更新清空 W1。存储根路径仍为：
 `runs/<EXPERIMENT_RUN_ID>/course-v11-enhanced/`
 
 必须继续使用同一个项目、同一 `BLOB_STORE_NAME` 和同一 `EXPERIMENT_RUN_ID`。不要点击“整批更换学生名单”，也不要重置 W1/W2，除非确实要清空。
+
+
+## v11.22 求助过程证据导出补强
+
+- “AI求助过程数据 ZIP”一次导出 `chat_messages.csv`、`behavior_events.csv`、`task_revisions.csv`、`process_timeline.csv` 和允许课次中的聊天图片。
+- 每轮学生—AI交互新增 `interaction_id`，并记录 `client_sent_at`、`server_received_at`、`ai_request_started_at`、`ai_response_received_at`、`ai_latency_ms`。
+- 学生发送AI消息时同步记录最近正在编辑的任务字段 `task_field_key / label / stage`，用于判断“该请求发生在任务哪个步骤”，平台不自动做 IHS/EHS 编码。
+- 任务文本版本历史新增字段标签与阶段；统一时间线仅合并原始证据，不做心理状态推断。
+- W2关闭聊天图片，只用文字；W1、W3及以后仍可按课程需要上传聊天图片。
+- 两种AI共用事实约束：不得把任务材料中没有的具体数字、比例、时长、调查结果或效果量编造成事实。
+- 当前问卷路线为 W8 posttest-only；正式问卷CSV只导出后测。历史前测若曾测试，只保留在完整JSON/后台，不进入当前正式分析。

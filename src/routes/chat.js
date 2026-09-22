@@ -45,6 +45,25 @@ function imageUrl(req, id, sid, fileName) {
   return `${base}/express/api/chat-image/${encodeURIComponent(id)}/${encodeURIComponent(sid)}/${encodeURIComponent(fileName)}`;
 }
 
+function safeTaskContext(raw, config) {
+  let parsed = {};
+  try { parsed = raw ? JSON.parse(String(raw)) : {}; } catch { parsed = {}; }
+  const key = String(parsed?.field_key || '').slice(0, 120);
+  const field = (config?.fields || []).find(f => f.key === key);
+  const completed = Array.isArray(parsed?.completed_field_keys)
+    ? parsed.completed_field_keys.map(x => String(x)).filter(x => (config?.fields || []).some(f => f.key === x)).slice(0, 30)
+    : [];
+  return {
+    field_key: field?.key || '',
+    field_label: field?.label || '',
+    field_stage: field?.stage || '',
+    main_update_revealed: Boolean(parsed?.main_update_revealed),
+    bonus_task_revealed: Boolean(parsed?.bonus_task_revealed),
+    bonus_update_revealed: Boolean(parsed?.bonus_update_revealed),
+    completed_field_keys: completed,
+  };
+}
+
 router.get('/chat/state', async (req, res) => {
   try {
     const id = normalizeParticipantId(req.query.participantId);
@@ -75,6 +94,7 @@ router.post('/chat/open', async (req, res) => {
 router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
   let uploadedPath = '';
   let committed = false;
+  const serverReceivedAt = new Date().toISOString();
   try {
     const id = normalizeParticipantId(req.body?.participantId);
     const sid = String(req.body?.sessionId || '').toUpperCase();
@@ -82,6 +102,10 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
     if (!isAllowedParticipant(id)) return res.status(403).json({ error: '编号无效' });
     if (!validateMessage(message)) return res.status(400).json({ error: '请用文字告诉AI你想让它帮你看什么。' });
     const state = await access(req, id, sid);
+    const config = getSessionConfig(sid);
+    const taskContext = safeTaskContext(req.body?.taskContext, config);
+    const clientSentAt = String(req.body?.clientSentAt || '').trim();
+    if (req.file && config?.chat_image_enabled === false) return res.status(400).json({ error: '本节任务不使用聊天图片，请直接用文字与AI交流。' });
     let s = await researchService.ensureChatSession(id, sid);
     if (s.locked) return res.status(409).json({ error: '本节AI记录已经结束。' });
 
@@ -101,6 +125,8 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
     const updatedRecord = await researchService.markFirstUserMessage(id, sid);
     const firstStudentTurn = (s.user_turn_count || 0) === 0;
     const hidden = firstStudentTurn ? `${await researchService.hiddenContextForChat(sid)}\n\n【学生实际输入】\n${message}` : message;
+    const interactionId = uuidv4();
+    const aiRequestStartedAt = new Date().toISOString();
     const ai = await cozeService.sendMessage({
       participantId: id,
       sessionId: s.session_id,
@@ -111,6 +137,8 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
       imageUrl: publicImageUrl,
       variant: state.ai_variant,
     });
+    const aiResponseReceivedAt = new Date().toISOString();
+    const aiLatencyMs = Math.max(0, Date.parse(aiResponseReceivedAt) - Date.parse(aiRequestStartedAt));
 
     if (attachment && ai.coze_file_id) attachment.coze_file_id = ai.coze_file_id;
 
@@ -119,6 +147,10 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
       message_has_image: Boolean(attachment), attachments: attachment ? [attachment] : [],
       message_id: uuidv4(), conversation_id: ai.conversation_id, chat_id: ai.chat_id,
       bot_id: ai.bot_id, model: ai.model, ai_variant: state.ai_variant, prompt_version: s.prompt_version,
+      interaction_id: interactionId, created_at: serverReceivedAt,
+      client_sent_at: clientSentAt, server_received_at: serverReceivedAt,
+      ai_request_started_at: aiRequestStartedAt, ai_response_received_at: aiResponseReceivedAt, ai_latency_ms: aiLatencyMs,
+      task_field_key: taskContext.field_key, task_field_label: taskContext.field_label, task_field_stage: taskContext.field_stage, task_context: taskContext,
     });
     committed = true;
     s.user_turn_count = (s.user_turn_count || 0) + 1;
@@ -131,11 +163,24 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
       role: 'assistant', content: ai.assistant_message, content_type: 'text', message_has_image: false, attachments: [],
       message_id: ai.message_id || uuidv4(), conversation_id: ai.conversation_id, chat_id: ai.chat_id,
       bot_id: ai.bot_id, model: ai.model, ai_variant: state.ai_variant, prompt_version: s.prompt_version,
+      interaction_id: interactionId, created_at: aiResponseReceivedAt,
+      client_sent_at: clientSentAt, server_received_at: serverReceivedAt,
+      ai_request_started_at: aiRequestStartedAt, ai_response_received_at: aiResponseReceivedAt, ai_latency_ms: aiLatencyMs,
+      task_field_key: taskContext.field_key, task_field_label: taskContext.field_label, task_field_stage: taskContext.field_stage, task_context: taskContext,
     });
     await researchService.appendEvent(id, sid, 'ai_message_sent', {
+      interaction_id: interactionId,
       user_turn_count: s.user_turn_count,
       message_has_image: Boolean(attachment),
       image_file_name: attachment?.file_name || '',
+      client_sent_at: clientSentAt,
+      server_received_at: serverReceivedAt,
+      ai_request_started_at: aiRequestStartedAt,
+      ai_response_received_at: aiResponseReceivedAt,
+      ai_latency_ms: aiLatencyMs,
+      task_field_key: taskContext.field_key,
+      task_field_label: taskContext.field_label,
+      task_field_stage: taskContext.field_stage,
     });
     res.json({ message: ai.assistant_message, session: s, attachment, record: updatedRecord, user_message: userMessageRow, assistant_message_row: assistantMessageRow });
   } catch (e) {
