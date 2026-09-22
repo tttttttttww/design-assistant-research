@@ -78,5 +78,13 @@ class StorageService {
     await walk(rootDir); return results;
   }
   async deletePrefix(prefix) { for (const row of await this.listObjects(prefix)) await this.deleteObject(row.key); }
+  describe() {
+    return {
+      run_id: this.runId,
+      root_prefix: this.rootPrefix,
+      blob_store_name: process.env.BLOB_STORE_NAME || '',
+      storage_mode: this.forceLocal ? 'local' : 'blob',
+    };
+  }
 }
 export const storageService = new StorageService();

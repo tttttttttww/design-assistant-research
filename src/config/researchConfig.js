@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 17;
 export const PROMPT_VERSION_FREE = 'free-ai-v4-grounded-evidence';
 export const PROMPT_VERSION_SUPPORTED = 'help-seeking-support-v5-help-tutor-grounded-evidence';
 export const QUESTIONNAIRE_VERSION = 'li-help-seeking-intention-genai-v2-minimal-adaptation';

@@ -451,6 +451,15 @@ class ResearchService {
     return out;
   }
 
+  async updateMessage(id, sid, messageIndex, patch = {}) {
+    const key = mKey(id, sid, messageIndex);
+    const current = parse(await storageService.getObject(key), null);
+    if (!current) return null;
+    const next = { ...current, ...patch };
+    await storageService.putObject(key, JSON.stringify(next));
+    return next;
+  }
+
   async endChat(id, sid, { submitted = false } = {}) {
     const s = await this.getChatSession(id, sid);
     if (!s) return null;
@@ -568,6 +577,45 @@ class ResearchService {
       if (raw) out.push({ key: row.key, data: parse(raw, {}) });
     }
     return out;
+  }
+
+  async restoreResetArchive(archiveKey) {
+    const key = String(archiveKey || '');
+    if (!/^reset-archives\/[A-Za-z0-9_.:-]+_S(?:00|[0-3]\d)_W\d+\.json$/.test(key)) {
+      throw Object.assign(new Error('归档标识无效'), { status: 400 });
+    }
+    const snapshot = parse(await storageService.getObject(key), null);
+    if (!snapshot?.participant?.participant_id || !snapshot?.session_config?.id) {
+      throw Object.assign(new Error('归档内容不完整'), { status: 400 });
+    }
+    const id = snapshot.participant.participant_id;
+    const sid = snapshot.session_config.id;
+    const current = await this.getSessionRecord(id, sid);
+    const currentMessages = await this.getMessages(id, sid);
+    const currentEvents = await this.getEvents(id, sid);
+    const currentRevisions = await this.getRevisions(id, sid);
+    const hasCurrent = Boolean(current.started_at || current.saved_at || current.submitted_at || currentMessages.length || currentEvents.length || currentRevisions.length || Object.keys(current.text_fields || {}).length || Object.keys(current.artifacts || {}).length);
+    if (hasCurrent) throw Object.assign(new Error(`${id} ${sid} 当前已有活动数据，为避免覆盖，未执行恢复。`), { status: 409 });
+
+    if (snapshot.record) await storageService.putObject(rKey(id, sid), JSON.stringify(snapshot.record));
+    if (snapshot.chat_session) await storageService.putObject(cKey(id, sid), JSON.stringify(snapshot.chat_session));
+    for (let i = 0; i < (snapshot.chat_messages || []).length; i++) {
+      const row = snapshot.chat_messages[i];
+      const index = Number(row.message_index || i + 1);
+      await storageService.putObject(mKey(id, sid, index), JSON.stringify(row));
+    }
+    for (let i = 0; i < (snapshot.events || []).length; i++) {
+      const row = snapshot.events[i];
+      const index = Number(row.event_index || i + 1);
+      await storageService.putObject(eKey(id, sid, index), JSON.stringify(row));
+    }
+    for (let i = 0; i < (snapshot.revisions || []).length; i++) {
+      const row = snapshot.revisions[i];
+      const index = Number(row.revision_index || i + 1);
+      await storageService.putObject(revKey(id, sid, index), JSON.stringify(row));
+    }
+    await storageService.putObject(`restore-audit/${new Date().toISOString().replace(/[:.]/g,'-')}_${id}_${sid}.json`, JSON.stringify({ restored_at: iso(), archive_key: key, participant_id: id, session_id: sid }));
+    return { restored: true, participant_id: id, session_id: sid, archive_key: key };
   }
 
   async archiveAndResetTest() {

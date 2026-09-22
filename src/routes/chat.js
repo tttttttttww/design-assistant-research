@@ -94,10 +94,15 @@ router.post('/chat/open', async (req, res) => {
 router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
   let uploadedPath = '';
   let committed = false;
+  let activeId = '';
+  let activeSid = '';
+  let interactionId = '';
+  let userMessageRow = null;
   const serverReceivedAt = new Date().toISOString();
   try {
     const id = normalizeParticipantId(req.body?.participantId);
     const sid = String(req.body?.sessionId || '').toUpperCase();
+    activeId = id; activeSid = sid;
     const message = String(req.body?.message || '');
     if (!isAllowedParticipant(id)) return res.status(403).json({ error: '编号无效' });
     if (!validateMessage(message)) return res.status(400).json({ error: '请用文字告诉AI你想让它帮你看什么。' });
@@ -125,8 +130,36 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
     const updatedRecord = await researchService.markFirstUserMessage(id, sid);
     const firstStudentTurn = (s.user_turn_count || 0) === 0;
     const hidden = firstStudentTurn ? `${await researchService.hiddenContextForChat(sid)}\n\n【学生实际输入】\n${message}` : message;
-    const interactionId = uuidv4();
+    interactionId = uuidv4();
     const aiRequestStartedAt = new Date().toISOString();
+
+    // 先落盘学生消息，再等待AI。这样教师后台能在AI思考期间实时看到学生刚刚问了什么。
+    userMessageRow = await researchService.appendMessage(id, sid, {
+      role: 'user', content: message, content_type: attachment ? 'text+image' : 'text',
+      message_has_image: Boolean(attachment), attachments: attachment ? [attachment] : [],
+      message_id: uuidv4(), conversation_id: s.conversation_id || '', chat_id: '',
+      bot_id: s.bot_id || '', model: s.model || '', ai_variant: state.ai_variant, prompt_version: s.prompt_version,
+      interaction_id: interactionId, created_at: serverReceivedAt,
+      client_sent_at: clientSentAt, server_received_at: serverReceivedAt,
+      ai_request_started_at: aiRequestStartedAt, ai_response_received_at: '', ai_latency_ms: null,
+      task_field_key: taskContext.field_key, task_field_label: taskContext.field_label, task_field_stage: taskContext.field_stage, task_context: taskContext,
+    });
+    committed = true;
+    s.user_turn_count = (s.user_turn_count || 0) + 1;
+    s.processing = true;
+    s.processing_started_at = aiRequestStartedAt;
+    s.processing_interaction_id = interactionId;
+    s.last_student_message_at = serverReceivedAt;
+    s.last_error_at = '';
+    s.last_error_message = '';
+    await researchService.saveChatSession(id, sid, s);
+    await researchService.appendEvent(id, sid, 'ai_request_started', {
+      interaction_id: interactionId,
+      task_field_key: taskContext.field_key,
+      task_field_label: taskContext.field_label,
+      task_field_stage: taskContext.field_stage,
+    });
+
     const ai = await cozeService.sendMessage({
       participantId: id,
       sessionId: s.session_id,
@@ -139,25 +172,22 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
     });
     const aiResponseReceivedAt = new Date().toISOString();
     const aiLatencyMs = Math.max(0, Date.parse(aiResponseReceivedAt) - Date.parse(aiRequestStartedAt));
-
     if (attachment && ai.coze_file_id) attachment.coze_file_id = ai.coze_file_id;
 
-    const userMessageRow = await researchService.appendMessage(id, sid, {
-      role: 'user', content: message, content_type: attachment ? 'text+image' : 'text',
-      message_has_image: Boolean(attachment), attachments: attachment ? [attachment] : [],
-      message_id: uuidv4(), conversation_id: ai.conversation_id, chat_id: ai.chat_id,
-      bot_id: ai.bot_id, model: ai.model, ai_variant: state.ai_variant, prompt_version: s.prompt_version,
-      interaction_id: interactionId, created_at: serverReceivedAt,
-      client_sent_at: clientSentAt, server_received_at: serverReceivedAt,
-      ai_request_started_at: aiRequestStartedAt, ai_response_received_at: aiResponseReceivedAt, ai_latency_ms: aiLatencyMs,
-      task_field_key: taskContext.field_key, task_field_label: taskContext.field_label, task_field_stage: taskContext.field_stage, task_context: taskContext,
-    });
-    committed = true;
-    s.user_turn_count = (s.user_turn_count || 0) + 1;
+    userMessageRow = await researchService.updateMessage(id, sid, userMessageRow.message_index, {
+      conversation_id: ai.conversation_id, chat_id: ai.chat_id, bot_id: ai.bot_id, model: ai.model,
+      attachments: attachment ? [attachment] : [],
+      ai_response_received_at: aiResponseReceivedAt, ai_latency_ms: aiLatencyMs,
+    }) || userMessageRow;
+
     s.conversation_id = ai.conversation_id;
     s.bot_id = ai.bot_id;
     s.model = ai.model;
     s.assistant_turn_count = (s.assistant_turn_count || 0) + 1;
+    s.processing = false;
+    s.processing_started_at = '';
+    s.processing_interaction_id = '';
+    s.last_response_at = aiResponseReceivedAt;
     await researchService.saveChatSession(id, sid, s);
     const assistantMessageRow = await researchService.appendMessage(id, sid, {
       role: 'assistant', content: ai.assistant_message, content_type: 'text', message_has_image: false, attachments: [],
@@ -167,6 +197,10 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
       client_sent_at: clientSentAt, server_received_at: serverReceivedAt,
       ai_request_started_at: aiRequestStartedAt, ai_response_received_at: aiResponseReceivedAt, ai_latency_ms: aiLatencyMs,
       task_field_key: taskContext.field_key, task_field_label: taskContext.field_label, task_field_stage: taskContext.field_stage, task_context: taskContext,
+    });
+    await researchService.appendEvent(id, sid, 'ai_request_completed', {
+      interaction_id: interactionId, ai_latency_ms: aiLatencyMs,
+      task_field_key: taskContext.field_key, task_field_label: taskContext.field_label, task_field_stage: taskContext.field_stage,
     });
     await researchService.appendEvent(id, sid, 'ai_message_sent', {
       interaction_id: interactionId,
@@ -184,8 +218,23 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
     });
     res.json({ message: ai.assistant_message, session: s, attachment, record: updatedRecord, user_message: userMessageRow, assistant_message_row: assistantMessageRow });
   } catch (e) {
-    const attemptedId = normalizeParticipantId(req.body?.participantId);
-    // Keep failed S00 image locally for teacher debugging; formal-student failed uploads are cleaned as before.
+    const attemptedId = activeId || normalizeParticipantId(req.body?.participantId);
+    if (activeId && activeSid && interactionId) {
+      try {
+        const s = await researchService.getChatSession(activeId, activeSid);
+        if (s) {
+          s.processing = false;
+          s.processing_started_at = '';
+          s.processing_interaction_id = '';
+          s.last_error_at = new Date().toISOString();
+          s.last_error_message = String(e?.message || 'AI请求失败').slice(0, 300);
+          await researchService.saveChatSession(activeId, activeSid, s);
+        }
+        if (userMessageRow?.message_index) await researchService.updateMessage(activeId, activeSid, userMessageRow.message_index, { request_failed: true, request_error: String(e?.message || 'AI请求失败').slice(0, 300) });
+        await researchService.appendEvent(activeId, activeSid, 'ai_request_failed', { interaction_id: interactionId, error: String(e?.message || 'AI请求失败').slice(0, 300) });
+      } catch (_) {}
+    }
+    // 只有尚未形成正式消息的失败上传才清理；已落盘的学生消息保留为研究原始证据。
     if (uploadedPath && !committed && attemptedId !== 'S00') await storageService.deleteObject(uploadedPath).catch(() => {});
     console.error('chat send', { message: e?.message, stage: e?.stage, chat_id: e?.chat_id, coze_file_id: e?.coze_file_id, raw: e?.raw || null, stack: e?.stack });
     if (e.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: '聊天图片不能超过10MB' });

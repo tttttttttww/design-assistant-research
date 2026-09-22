@@ -117,37 +117,56 @@ async function allIds(includeTest = true) {
   if (includeTest) ids.unshift('S00');
   return ids;
 }
-async function summary(id) {
+async function summary(id, activeSessionId = '') {
   const p = await researchService.getParticipant(id);
-  const settings = await researchService.getSettings();
-  const r = await researchService.getSessionRecord(id, settings.active_session_id);
-  const c = await researchService.getChatSession(id, settings.active_session_id);
-  const messages = await researchService.getMessages(id, settings.active_session_id);
+  const sid = activeSessionId || (await researchService.getSettings()).active_session_id;
+  const [r, c, messages] = await Promise.all([
+    researchService.getSessionRecord(id, sid),
+    researchService.getChatSession(id, sid),
+    researchService.getMessages(id, sid),
+  ]);
   const chatImageCount = messages.filter(m => m.role === 'user' && m.message_has_image).length;
   const artifactCount = Object.keys(r.artifacts || {}).length;
+  const lastMessage = messages.at(-1) || null;
+  let liveStatus = 'not_started';
+  if (r.submitted_at) liveStatus = 'submitted';
+  else if (c?.processing) liveStatus = 'processing';
+  else if (c?.last_error_at && (!c?.last_response_at || Date.parse(c.last_error_at) > Date.parse(c.last_response_at))) liveStatus = 'error';
+  else if ((c?.assistant_turn_count || 0) > 0) liveStatus = 'replied';
+  else if (r.ai_open_count > 0) liveStatus = 'ai_open';
+  else if (r.started_at) liveStatus = 'working';
   return {
     participant_id: id,
     condition: p.condition,
     grade: p.grade,
     login_name_ready: Boolean(p.login_name_hash),
     is_test: p.is_test,
-    active_session_id: settings.active_session_id,
+    active_session_id: sid,
     started: Boolean(r.started_at),
     ai_used: Boolean(r.ai_used),
     first_ai_open_latency_seconds: r.first_ai_open_latency_seconds,
     first_user_message_latency_seconds: r.first_user_message_latency_seconds,
-    user_turn_count: c?.user_turn_count || 0,
+    user_turn_count: c?.user_turn_count || messages.filter(m => m.role === 'user').length,
+    assistant_turn_count: c?.assistant_turn_count || messages.filter(m => m.role === 'assistant').length,
     chat_image_count: chatImageCount,
     artifact_count: artifactCount,
     submitted: Boolean(r.submitted_at),
-    last_active_at: p.last_active_at,
+    last_active_at: lastMessage?.created_at || p.last_active_at,
+    live_status: liveStatus,
+    processing: Boolean(c?.processing),
+    processing_started_at: c?.processing_started_at || '',
+    last_response_at: c?.last_response_at || '',
+    last_error_at: c?.last_error_at || '',
+    task_field_label: lastMessage?.task_field_label || '',
+    task_field_stage: lastMessage?.task_field_stage || '',
   };
 }
 
 router.get('/participants', requireAdmin, async (req, res) => {
   try {
-    const rows = [];
-    for (const id of await allIds(true)) rows.push(await summary(id));
+    const settings = await researchService.getSettings();
+    const ids = await allIds(true);
+    const rows = await Promise.all(ids.map(id => summary(id, settings.active_session_id)));
     res.json(rows);
   } catch (e) {
     console.error(e);
@@ -199,6 +218,7 @@ router.post('/participants/roster-import', requireAdmin, async (req, res) => {
 // Replace the whole formal cohort. This is intentionally destructive for active S01-S30 data.
 router.post('/participants/roster-replace', requireAdmin, async (req, res) => {
   try {
+    if (process.env.ALLOW_DESTRUCTIVE_COHORT_REPLACE !== 'true') return res.status(403).json({ error: '为保护研究数据，当前版本已禁用整批清空名单。请使用“更新现有名单（保留数据）”。' });
     if (String(req.body?.confirm || '') !== 'REPLACE S01-S30') {
       return res.status(400).json({ error: '确认信息不匹配，未更换名单' });
     }
@@ -331,6 +351,77 @@ router.post('/participants/stratified-randomize', requireAdmin, async (req, res)
     await storageService.putObject(`group-assignments/${snapshot.created_at.replace(/[:.]/g,'-')}.json`, JSON.stringify(snapshot,null,2));
     res.json(snapshot);
   } catch (e) { res.status(e.status || 500).json({ error: e.message || '分层随机分组失败' }); }
+});
+
+
+router.get('/live/:participantId', requireAdmin, async (req, res) => {
+  try {
+    const id = normalizeParticipantId(req.params.participantId);
+    if (!validateParticipantId(id)) return res.status(400).json({ error: '编号无效' });
+    const settings = await researchService.getSettings();
+    const sid = settings.active_session_id;
+    const [participant, record, chat_session, chat_messages] = await Promise.all([
+      researchService.getParticipant(id),
+      researchService.getSessionRecord(id, sid),
+      researchService.getChatSession(id, sid),
+      researchService.getMessages(id, sid),
+    ]);
+    const row = await summary(id, sid);
+    res.json({ participant, session_id: sid, record, chat_session, chat_messages, summary: row });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message || '读取实时对话失败' }); }
+});
+
+router.get('/history-summary', requireAdmin, async (req, res) => {
+  try {
+    const ids = formalIds();
+    const data = await Promise.all(SESSIONS.map(async session => {
+      const perStudent = await Promise.all(ids.map(async id => {
+        const [record, chat, messages] = await Promise.all([
+          researchService.getSessionRecord(id, session.id),
+          researchService.getChatSession(id, session.id),
+          researchService.getMessages(id, session.id),
+        ]);
+        return { record, chat, messages };
+      }));
+      return {
+        session_id: session.id,
+        title: session.title,
+        started: perStudent.filter(x => x.record?.started_at).length,
+        ai_used: perStudent.filter(x => x.record?.ai_used || (x.chat?.user_turn_count || 0) > 0 || x.messages.some(m => m.role === 'user')).length,
+        user_messages: perStudent.reduce((n, x) => n + x.messages.filter(m => m.role === 'user').length, 0),
+        assistant_messages: perStudent.reduce((n, x) => n + x.messages.filter(m => m.role === 'assistant').length, 0),
+        submitted: perStudent.filter(x => x.record?.submitted_at).length,
+      };
+    }));
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message || '读取历史课次统计失败' }); }
+});
+
+router.get('/storage-diagnostics', requireAdmin, async (req, res) => {
+  try {
+    const all = await storageService.listObjects('', 20000);
+    const resets = await researchService.listResetArchives();
+    const bySession = Object.fromEntries(SESSIONS.map(s => [s.id, { records: 0, messages: 0, events: 0, revisions: 0 }]));
+    for (const row of all) {
+      const m = row.key.match(/^participants\/S(?:00|[0-3]\d)\/sessions\/(W\d+)\/(record\.json|chat\/messages\/|events\/|revisions\/)/);
+      if (!m || !bySession[m[1]]) continue;
+      if (m[2] === 'record.json') bySession[m[1]].records++;
+      else if (m[2] === 'chat/messages/') bySession[m[1]].messages++;
+      else if (m[2] === 'events/') bySession[m[1]].events++;
+      else if (m[2] === 'revisions/') bySession[m[1]].revisions++;
+    }
+    res.json({ storage: storageService.describe(), object_count: all.length, reset_archive_count: resets.length, by_session: bySession, recent_reset_archives: resets.slice(0, 30).map(x => ({ key: x.key, archived_at: x.data?.archived_at || '', participant_id: x.data?.participant?.participant_id || '', session_id: x.data?.session_config?.id || '', reason: x.data?.archive_reason || '' })) });
+  } catch (e) { res.status(500).json({ error: e.message || '存储诊断失败' }); }
+});
+
+router.post('/restore-reset-archive', requireAdmin, async (req, res) => {
+  try {
+    const key = String(req.body?.archive_key || '');
+    const expected = String(req.body?.confirm || '');
+    const match = key.match(/_(S(?:00|[0-3]\d))_(W\d+)\.json$/);
+    if (!match || expected !== `RESTORE ${match[1]} ${match[2]}`) return res.status(400).json({ error: '恢复确认信息不匹配' });
+    res.json(await researchService.restoreResetArchive(key));
+  } catch (e) { res.status(e.status || 500).json({ error: e.message || '恢复归档失败' }); }
 });
 
 router.get('/participant/:participantId', requireAdmin, async (req, res) => {

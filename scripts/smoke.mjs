@@ -34,8 +34,15 @@ r=await researchService.getSessionRecord('S01','W1');
 if(r.started_at||r.ai_used||Object.keys(r.artifacts||{}).length) throw new Error('session reset failed');
 const archives=await researchService.listResetArchives();
 if(!archives.length) throw new Error('reset archive list missing');
+const restoreTarget=archives.find(x=>x.data?.participant?.participant_id==='S01'&&x.data?.session_config?.id==='W1');
+if(!restoreTarget) throw new Error('restorable archive missing');
+const restored=await researchService.restoreResetArchive(restoreTarget.key);
+if(!restored.restored) throw new Error('reset archive restore failed');
+r=await researchService.getSessionRecord('S01','W1');
+if(!r.started_at) throw new Error('restored session record missing');
+await researchService.archiveAndResetSession('S01','W1',{reason:'smoke_reset_again'});
 
-// Whole-cohort replacement: clear S01-S30 active data/uploads, keep S00, close session, rotate cohort revision.
+// Service-level whole-cohort replacement still exists for exceptional maintenance, but the HTTP route is disabled by default in v11.23.
 await researchService.ensureStarted('S01','W2');
 await storageService.putObject('uploads/S01/W2/design_sketch/old.jpg', Buffer.from('old'));
 await researchService.createParticipant('S00',{grade:'',condition:'unassigned'});
@@ -51,5 +58,5 @@ const s00w1=await researchService.getSessionRecord('S00','W1');
 if(!s00w1.started_at) throw new Error('S00 should be preserved during cohort replacement');
 const newP1=await researchService.getParticipant('S01');
 if(newP1.grade!=='6'||!newP1.login_name_hash||newP1.condition!=='unassigned') throw new Error('new cohort roster meta missing');
-console.log('SMOKE OK v11.22: roster/name safety + interaction timing/task-step metadata + revision metadata + W2 text-only chat + A/B/transfer routing + safe reset + cohort replacement passed.');
+console.log('SMOKE OK v11.23: roster/name safety + interaction metadata + revision history + safe reset/restore + exceptional cohort service path.');
 

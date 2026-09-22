@@ -36,7 +36,7 @@ if (!indexHtml.includes('studentName') || !authRoute.includes('hashStudentName')
 if (!admin.includes('login_name_ready') || !adminRoute.includes('login_name_ready')) throw new Error('Roster readiness admin UI missing');
 if (!adminHtml.includes('rosterFile') || !admin.includes('roster-preview') || !adminRoute.includes('roster-import') || !rosterImport.includes('parseXlsx')) throw new Error('Excel/CSV roster import missing');
 
-if (!admin.includes('replaceRosterImport') || !adminRoute.includes('roster-replace') || !adminRoute.includes('REPLACE S01-S30')) throw new Error('Whole-cohort roster replacement controls missing');
+if (!adminRoute.includes('ALLOW_DESTRUCTIVE_COHORT_REPLACE') || !adminHtml.includes('整批清空学生数据的入口已关闭')) throw new Error('Destructive cohort replacement is not safely disabled');
 if (!authRoute.includes('cohort_revision') || !validators || !adminRoute.includes('replaceFormalCohort')) throw new Error('Cohort revision / replacement safety missing');
 if (!task.includes('questionnaireForm') || !adminRoute.includes('stratified-randomize')) throw new Error('Questionnaire/randomization flow missing');
 if (!task.includes('ai_draft_deleted_unsent') || !task.includes('chat_history_revisit') || !task.includes('bonusTaskHtml')) throw new Error('W2 trace/bonus UI missing');
@@ -46,4 +46,7 @@ if (!research.includes('getRevisions') || !research.includes('field_revision_cou
 if (task.includes('请选择一个你真正不确定') || task.includes('最想比较或最需要反馈')) throw new Error('Help-seeking strategy prompt should not appear in W2 UI');
 if (!chat.includes('taskContext') || !chat.includes('aiResponseReceivedAt') || !task.includes('chatTaskContext')) throw new Error('Task-step/timing chat context missing');
 if (!adminHtml.includes('AI求助过程数据 ZIP') || !adminHtml.includes('W8后测问卷 CSV')) throw new Error('Admin export labels not updated');
-console.log('CHECK OK v11.22: process-evidence export + task-step context + real AI timing + W2 text-only chat + grounded-evidence rule + posttest-only export.');
+if (!adminHtml.includes('实时AI对话') || !admin.includes('refreshLiveMonitor') || !adminRoute.includes('/live/:participantId')) throw new Error('Teacher live monitor missing');
+if (!adminRoute.includes('storage-diagnostics') || !adminRoute.includes('restore-reset-archive') || !research.includes('restoreResetArchive')) throw new Error('History diagnostics/restore missing');
+if (!chat.includes('s.processing = true') || !chat.includes('ai_request_started') || !research.includes('updateMessage')) throw new Error('Live processing state / early user-message persistence missing');
+console.log('CHECK OK v11.23: live teacher monitor + history diagnostics/restore + process-evidence export + data-safety guards.');
