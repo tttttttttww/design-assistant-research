@@ -112,29 +112,34 @@ async function ensureDefaultStudents() {
   for (let i = 1; i <= 30; i++) await researchService.createParticipant(`S${String(i).padStart(2, '0')}`, {});
 }
 async function allIds(includeTest = true) {
-  await ensureDefaultStudents();
+  // 不在每次实时轮询时反复 create/写入30个学生；首次 /participants 的 getParticipant 会自动补缺失账号。
   const ids = formalIds();
   if (includeTest) ids.unshift('S00');
   return ids;
 }
+function liveStatusFrom(record = {}, chat = null, draft = null) {
+  const draftAge = draft?.at ? Date.now() - Date.parse(draft.at) : Infinity;
+  let liveStatus = 'not_started';
+  if (record?.submitted_at) liveStatus = 'submitted';
+  else if (chat?.processing) liveStatus = 'processing';
+  else if (draft?.type === 'ai_draft_started' && draftAge < 120000) liveStatus = 'typing';
+  else if (draft?.type === 'ai_draft_deleted_unsent' && draftAge < 20000) liveStatus = 'draft_cancelled';
+  else if (draft?.type === 'ai_draft_left_unsent' && draftAge < 20000) liveStatus = 'draft_left';
+  else if (chat?.last_error_at && (!chat?.last_response_at || Date.parse(chat.last_error_at) > Date.parse(chat.last_response_at))) liveStatus = 'error';
+  else if ((chat?.assistant_turn_count || 0) > 0) liveStatus = 'replied';
+  else if (record?.ai_open_count > 0) liveStatus = 'ai_open';
+  else if (record?.started_at) liveStatus = 'working';
+  return liveStatus;
+}
+
 async function summary(id, activeSessionId = '') {
   const p = await researchService.getParticipant(id);
   const sid = activeSessionId || (await researchService.getSettings()).active_session_id;
-  const [r, c, messages] = await Promise.all([
+  const [r, c, live] = await Promise.all([
     researchService.getSessionRecord(id, sid),
     researchService.getChatSession(id, sid),
-    researchService.getMessages(id, sid),
+    researchService.getLiveTrace(id, sid),
   ]);
-  const chatImageCount = messages.filter(m => m.role === 'user' && m.message_has_image).length;
-  const artifactCount = Object.keys(r.artifacts || {}).length;
-  const lastMessage = messages.at(-1) || null;
-  let liveStatus = 'not_started';
-  if (r.submitted_at) liveStatus = 'submitted';
-  else if (c?.processing) liveStatus = 'processing';
-  else if (c?.last_error_at && (!c?.last_response_at || Date.parse(c.last_error_at) > Date.parse(c.last_response_at))) liveStatus = 'error';
-  else if ((c?.assistant_turn_count || 0) > 0) liveStatus = 'replied';
-  else if (r.ai_open_count > 0) liveStatus = 'ai_open';
-  else if (r.started_at) liveStatus = 'working';
   return {
     participant_id: id,
     condition: p.condition,
@@ -146,19 +151,21 @@ async function summary(id, activeSessionId = '') {
     ai_used: Boolean(r.ai_used),
     first_ai_open_latency_seconds: r.first_ai_open_latency_seconds,
     first_user_message_latency_seconds: r.first_user_message_latency_seconds,
-    user_turn_count: c?.user_turn_count || messages.filter(m => m.role === 'user').length,
-    assistant_turn_count: c?.assistant_turn_count || messages.filter(m => m.role === 'assistant').length,
-    chat_image_count: chatImageCount,
-    artifact_count: artifactCount,
+    user_turn_count: c?.user_turn_count || 0,
+    assistant_turn_count: c?.assistant_turn_count || 0,
+    chat_image_count: Number(c?.chat_image_count || 0),
+    artifact_count: Object.keys(r.artifacts || {}).length,
     submitted: Boolean(r.submitted_at),
-    last_active_at: lastMessage?.created_at || p.last_active_at,
-    live_status: liveStatus,
+    last_active_at: c?.last_student_message_at || p.last_active_at,
+    live_status: liveStatusFrom(r, c, live),
     processing: Boolean(c?.processing),
     processing_started_at: c?.processing_started_at || '',
     last_response_at: c?.last_response_at || '',
     last_error_at: c?.last_error_at || '',
-    task_field_label: lastMessage?.task_field_label || '',
-    task_field_stage: lastMessage?.task_field_stage || '',
+    task_field_label: c?.last_task_field_label || live?.task_field_label || '',
+    task_field_stage: c?.last_task_field_stage || live?.task_field_stage || '',
+    last_student_message_preview: c?.last_student_message_preview || '',
+    live_draft_state: live || null,
   };
 }
 
@@ -171,6 +178,46 @@ router.get('/participants', requireAdmin, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: '读取学生列表失败' });
+  }
+});
+
+// 实时监看只读“课次记录 + chat session”，不反复读取31名学生的全部消息历史。
+router.get('/live-statuses', requireAdmin, async (req, res) => {
+  try {
+    const settings = await researchService.getSettings();
+    const sid = settings.active_session_id;
+    const ids = await allIds(true);
+    const rows = await Promise.all(ids.map(async id => {
+      const [r, c, live] = await Promise.all([
+        researchService.getSessionRecord(id, sid),
+        researchService.getChatSession(id, sid),
+        researchService.getLiveTrace(id, sid),
+      ]);
+      return {
+        participant_id: id,
+        active_session_id: sid,
+        started: Boolean(r.started_at),
+        ai_used: Boolean(r.ai_used),
+        first_ai_open_latency_seconds: r.first_ai_open_latency_seconds,
+        first_user_message_latency_seconds: r.first_user_message_latency_seconds,
+        user_turn_count: c?.user_turn_count || 0,
+        assistant_turn_count: c?.assistant_turn_count || 0,
+        submitted: Boolean(r.submitted_at),
+        live_status: liveStatusFrom(r, c, live),
+        processing: Boolean(c?.processing),
+        processing_started_at: c?.processing_started_at || '',
+        last_response_at: c?.last_response_at || '',
+        last_error_at: c?.last_error_at || '',
+        task_field_label: c?.last_task_field_label || live?.task_field_label || '',
+        task_field_stage: c?.last_task_field_stage || live?.task_field_stage || '',
+        last_student_message_preview: c?.last_student_message_preview || '',
+        live_draft_state: live || null,
+      };
+    }));
+    res.json({ session_id: sid, rows, server_time: new Date().toISOString() });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: '读取实时状态失败' });
   }
 });
 router.post('/participants/create-default', requireAdmin, async (req, res) => {
@@ -360,14 +407,36 @@ router.get('/live/:participantId', requireAdmin, async (req, res) => {
     if (!validateParticipantId(id)) return res.status(400).json({ error: '编号无效' });
     const settings = await researchService.getSettings();
     const sid = settings.active_session_id;
-    const [participant, record, chat_session, chat_messages] = await Promise.all([
-      researchService.getParticipant(id),
+    const afterMessage = Math.max(0, Number(req.query.afterMessage || 0));
+    const afterEvent = Math.max(0, Number(req.query.afterEvent || 0));
+    const afterRevision = Math.max(0, Number(req.query.afterRevision || 0));
+    const [record, chat_session, live, chat_messages, events, revisions] = await Promise.all([
       researchService.getSessionRecord(id, sid),
       researchService.getChatSession(id, sid),
-      researchService.getMessages(id, sid),
+      researchService.getLiveTrace(id, sid),
+      researchService.getMessagesAfter(id, sid, afterMessage),
+      researchService.getEventsAfter(id, sid, afterEvent),
+      researchService.getRevisionsAfter(id, sid, afterRevision),
     ]);
-    const row = await summary(id, sid);
-    res.json({ participant, session_id: sid, record, chat_session, chat_messages, summary: row });
+    const row = {
+      participant_id: id,
+      active_session_id: sid,
+      started: Boolean(record.started_at),
+      ai_used: Boolean(record.ai_used),
+      user_turn_count: chat_session?.user_turn_count || 0,
+      assistant_turn_count: chat_session?.assistant_turn_count || 0,
+      submitted: Boolean(record.submitted_at),
+      live_status: liveStatusFrom(record, chat_session, live),
+      processing: Boolean(chat_session?.processing),
+      processing_started_at: chat_session?.processing_started_at || '',
+      last_response_at: chat_session?.last_response_at || '',
+      last_error_at: chat_session?.last_error_at || '',
+      task_field_label: chat_session?.last_task_field_label || live?.task_field_label || '',
+      task_field_stage: chat_session?.last_task_field_stage || live?.task_field_stage || '',
+      last_student_message_preview: chat_session?.last_student_message_preview || '',
+      live_draft_state: live || null,
+    };
+    res.json({ session_id: sid, record, chat_session, chat_messages, events, revisions, summary: row, server_time:new Date().toISOString() });
   } catch (e) { res.status(e.status || 500).json({ error: e.message || '读取实时对话失败' }); }
 });
 
@@ -376,20 +445,19 @@ router.get('/history-summary', requireAdmin, async (req, res) => {
     const ids = formalIds();
     const data = await Promise.all(SESSIONS.map(async session => {
       const perStudent = await Promise.all(ids.map(async id => {
-        const [record, chat, messages] = await Promise.all([
+        const [record, chat] = await Promise.all([
           researchService.getSessionRecord(id, session.id),
           researchService.getChatSession(id, session.id),
-          researchService.getMessages(id, session.id),
         ]);
-        return { record, chat, messages };
+        return { record, chat };
       }));
       return {
         session_id: session.id,
         title: session.title,
         started: perStudent.filter(x => x.record?.started_at).length,
-        ai_used: perStudent.filter(x => x.record?.ai_used || (x.chat?.user_turn_count || 0) > 0 || x.messages.some(m => m.role === 'user')).length,
-        user_messages: perStudent.reduce((n, x) => n + x.messages.filter(m => m.role === 'user').length, 0),
-        assistant_messages: perStudent.reduce((n, x) => n + x.messages.filter(m => m.role === 'assistant').length, 0),
+        ai_used: perStudent.filter(x => x.record?.ai_used || (x.chat?.user_turn_count || 0) > 0).length,
+        user_messages: perStudent.reduce((n, x) => n + Number(x.chat?.user_turn_count || 0), 0),
+        assistant_messages: perStudent.reduce((n, x) => n + Number(x.chat?.assistant_turn_count || 0), 0),
         submitted: perStudent.filter(x => x.record?.submitted_at).length,
       };
     }));

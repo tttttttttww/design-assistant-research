@@ -58,5 +58,5 @@ const s00w1=await researchService.getSessionRecord('S00','W1');
 if(!s00w1.started_at) throw new Error('S00 should be preserved during cohort replacement');
 const newP1=await researchService.getParticipant('S01');
 if(newP1.grade!=='6'||!newP1.login_name_hash||newP1.condition!=='unassigned') throw new Error('new cohort roster meta missing');
-console.log('SMOKE OK v11.24: roster/name safety + interaction metadata + revision history + safe reset/restore + exceptional cohort service path.');
+console.log('SMOKE OK v11.25: roster/name safety + interaction metadata + revision history + lightweight/incremental live monitor + safe reset/restore.');
 

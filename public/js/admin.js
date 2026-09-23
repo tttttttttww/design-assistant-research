@@ -22,6 +22,10 @@ let liveSelectedParticipantId = '';
 let liveAutoRefresh = true;
 let liveTimer = null;
 let liveRefreshing = false;
+let liveRefreshQueued = false;
+const LIVE_POLL_MS = 4000;
+let liveDetailCache = { id:'', session_id:'', messages:[], events:[], revisions:[] };
+let liveLastRefreshAt = '';
 const esc = App.escapeHtml;
 const fmtSeconds = v => v == null ? '—' : v < 60 ? `${v}s` : `${Math.floor(v / 60)}m ${v % 60}s`;
 
@@ -31,7 +35,6 @@ async function check() {
     showApp();
     await loadSettings();
     await loadParticipants();
-    await loadHistorySummary();
     startLiveTimer();
   } catch {}
 }
@@ -47,7 +50,6 @@ document.getElementById('loginForm').onsubmit = async e => {
     showApp();
     await loadSettings();
     await loadParticipants();
-    await loadHistorySummary();
     startLiveTimer();
   } catch (x) {
     const b = document.getElementById('loginError');
@@ -76,7 +78,6 @@ document.getElementById('settingsForm').onsubmit = async e => {
     alert('设置已保存');
     await loadSettings();
     await loadParticipants();
-    await loadHistorySummary();
   } catch (x) { alert(x.message); }
 };
 
@@ -258,13 +259,25 @@ async function loadParticipants() {
 
 const liveStatusMeta = status => ({
   not_started:['未进入','muted'], working:['任务中','working'], ai_open:['已打开AI','aiopen'],
+  typing:['正在输入','typing'], draft_cancelled:['取消发送','draftcancel'], draft_left:['草稿未发','draftleft'],
   processing:['AI处理中','processing'], replied:['已回复','replied'], error:['异常','error'], submitted:['已提交','submitted'],
 }[status] || ['—','muted']);
+
+function refreshClockText(iso){
+  if(!iso) return '';
+  const d=new Date(iso); if(Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('zh-CN',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+function setLiveRefreshState(text, cls=''){
+  const el=document.getElementById('liveRefreshState'); if(!el) return;
+  el.className=`live-refresh-state ${cls}`.trim();
+  el.textContent=text;
+}
 
 function renderLiveParticipantList(){
   const box=document.getElementById('liveParticipantList');
   if(!box) return;
-  // 实时监看同时显示 S00 测试账号与 S01-S30 正式学生；S00 固定在最上方。
+  const oldScroll=box.scrollTop;
   const ordered=[...rows].sort((a,b)=>{
     if(a.is_test&&!b.is_test) return -1;
     if(!a.is_test&&b.is_test) return 1;
@@ -277,8 +290,10 @@ function renderLiveParticipantList(){
     const [label,cls]=liveStatusMeta(x.live_status);
     const gradeText=x.is_test?'测试账号':`${esc(x.grade||'—')}年级`;
     const testBadge=x.is_test?' <span class="badge test-badge">测试</span>':'';
-    return `<button class="live-student ${x.is_test?'test-account ':''}${liveSelectedParticipantId===x.participant_id?'selected':''}" data-id="${x.participant_id}" type="button"><div class="live-student-top"><strong>${x.participant_id}${testBadge}</strong><span class="live-status ${cls}">${label}</span></div><div class="live-student-meta"><span>${gradeText}</span><span>${x.user_turn_count||0}轮</span><span>${x.task_field_label?esc(x.task_field_label):'—'}</span></div></button>`;
+    const preview=x.last_student_message_preview?`<div class="live-preview">${esc(x.last_student_message_preview)}</div>`:'';
+    return `<button class="live-student ${x.is_test?'test-account ':''}${liveSelectedParticipantId===x.participant_id?'selected':''}" data-id="${x.participant_id}" type="button"><div class="live-student-top"><strong>${x.participant_id}${testBadge}</strong><span class="live-status ${cls}">${label}</span></div><div class="live-student-meta"><span>${gradeText}</span><span>${x.user_turn_count||0}轮</span><span>${x.task_field_label?esc(x.task_field_label):'—'}</span></div>${preview}</button>`;
   }).join('') || '<div class="small">暂无学生</div>');
+  box.scrollTop=oldScroll;
   box.querySelectorAll('.live-student').forEach(btn=>btn.onclick=()=>selectLiveParticipant(btn.dataset.id));
 }
 
@@ -290,44 +305,148 @@ function liveMessageHtml(id,sid,m){
   return `<div class="live-bubble ${m.role==='assistant'?'assistant':'user'}"><div class="live-msg-meta"><strong>${who}</strong><span>${esc(m.created_at||'')}${stage}${latency}${failed}</span></div><div class="live-msg-text">${esc(m.content||'')}</div>${(m.attachments||[]).length?`<div class="photo-grid chat-photos">${m.attachments.map(a=>chatImage(id,sid,a)).join('')}</div>`:''}</div>`;
 }
 
-async function selectLiveParticipant(id, forceScroll=true){
-  liveSelectedParticipantId=id;
-  renderLiveParticipantList();
-  await loadLiveParticipant(id, forceScroll);
+function liveActivityRows(){
+  const rows=[];
+  const labelForEvent=(e)=>{
+    const d=e?.data||{};
+    const secs=d.duration_ms!=null?`${(Number(d.duration_ms)/1000).toFixed(1)}秒`:'';
+    const chars=d.max_chars||d.current_chars||d.initial_chars||0;
+    switch(e.type){
+      case 'ai_draft_started': return ['开始输入AI问题', chars?`当前/初始 ${chars} 字`: ''];
+      case 'ai_draft_deleted_unsent': return ['删除未发送', [chars?`最多 ${chars} 字`:'',secs,d.edit_count?`编辑 ${d.edit_count} 次`:''].filter(Boolean).join(' · ')];
+      case 'ai_draft_left_unsent': return ['草稿未发送', [chars?`${chars} 字`:'',secs,d.reason?`原因 ${d.reason}`:''].filter(Boolean).join(' · ')];
+      case 'ai_draft_sent': return ['发送AI问题', [d.final_chars?`${d.final_chars} 字`:'',secs].filter(Boolean).join(' · ')];
+      case 'chat_history_revisit': return ['回看旧AI回复', d.dwell_ms?`停留约 ${(Number(d.dwell_ms)/1000).toFixed(1)}秒`: ''];
+      case 'ai_request_started': return ['AI开始处理', d.task_field_label||''];
+      case 'ai_request_completed': return ['AI回复完成', d.ai_latency_ms!=null?`${(Number(d.ai_latency_ms)/1000).toFixed(1)}秒`:''];
+      case 'ai_request_failed': return ['AI请求异常', d.error||''];
+      case 'ai_opened': return ['打开AI助手', ''];
+      case 'session_submitted': return ['提交本课次任务', ''];
+      case 'task_started': return ['进入本课次任务', ''];
+      default: return null;
+    }
+  };
+  for(const e of liveDetailCache.events||[]){
+    const meta=labelForEvent(e); if(!meta) continue;
+    rows.push({at:e.at||'', kind:'event', title:meta[0], detail:meta[1]||'', index:Number(e.event_index||0)});
+  }
+  for(const r of liveDetailCache.revisions||[]){
+    const detail=[`V${r.field_revision_no||r.revision_index||''}`, r.seconds_since_last_ai_reply!=null&&r.last_ai_message_id?`距AI回复 ${r.seconds_since_last_ai_reply}s`: '', r.save_reason?`保存：${r.save_reason}`:''].filter(Boolean).join(' · ');
+    rows.push({at:r.created_at||'', kind:'revision', title:`修改任务字段「${r.field_label||r.field_key||'任务文字'}」`, detail, index:Number(r.revision_index||0)});
+  }
+  return rows.sort((a,b)=>Date.parse(a.at||0)-Date.parse(b.at||0)).slice(-50);
+}
+function liveActivityHtml(){
+  const list=liveActivityRows();
+  return `<div class="live-activity-head"><div><strong>实时行为轨迹</strong><div class="small">只显示可观察事件；未发送草稿正文不保存</div></div></div><div class="live-activity-list">${list.length?list.map(x=>`<div class="live-activity-item ${x.kind}"><div class="live-activity-time">${esc(refreshClockText(x.at)||'—')}</div><div><strong>${esc(x.title)}</strong>${x.detail?`<div class="small">${esc(x.detail)}</div>`:''}</div></div>`).join(''):'<div class="live-empty compact">暂无行为事件。</div>'}</div>`;
 }
 
-async function loadLiveParticipant(id=liveSelectedParticipantId, forceScroll=false){
-  if(!id) return;
-  const pane=document.getElementById('liveChatPane');
-  if(!pane) return;
+async function selectLiveParticipant(id, forceScroll=true){
+  liveSelectedParticipantId=id;
+  liveDetailCache={id,session_id:'',messages:[],events:[],revisions:[]};
+  renderLiveParticipantList();
+  await loadLiveParticipant(id, forceScroll, true);
+}
+
+const maxIdx=(arr,key)=>arr.reduce((m,x)=>Math.max(m,Number(x?.[key]||0)),0);
+function mergeByIndex(current, incoming, key){
+  const map=new Map((current||[]).map(x=>[Number(x?.[key]||0),x]));
+  for(const x of incoming||[]) map.set(Number(x?.[key]||0),x);
+  return [...map.values()].sort((a,b)=>Number(a?.[key]||0)-Number(b?.[key]||0));
+}
+
+function renderLiveParticipantPane(id,d,forceScroll=false){
+  const pane=document.getElementById('liveChatPane'); if(!pane) return;
   const oldScroll=pane.querySelector('.live-chat-messages');
   const nearBottom=oldScroll?oldScroll.scrollHeight-oldScroll.scrollTop-oldScroll.clientHeight<80:true;
+  const oldActivity=pane.querySelector('.live-activity-list');
+  const activityNearBottom=oldActivity?oldActivity.scrollHeight-oldActivity.scrollTop-oldActivity.clientHeight<60:true;
+  const x=d.summary||{};
+  const [label,cls]=liveStatusMeta(x.live_status);
+  const msgs=liveDetailCache.messages||[];
+  pane.innerHTML=`<div class="live-chat-head"><div><div class="row"><strong>${esc(id)}</strong><span class="live-status ${cls}">${label}</span></div><div class="small">${esc(d.session_id||'')} · 学生消息 ${x.user_turn_count||0} · AI回复 ${x.assistant_turn_count||0}${x.task_field_label?` · 当前/最近：${esc(x.task_field_label)}`:''}</div></div><button class="btn ghost mini open-full-detail" data-id="${esc(id)}" type="button">13周完整记录</button></div><div class="live-detail-body"><div class="live-chat-messages">${msgs.length?msgs.map(m=>liveMessageHtml(id,d.session_id,m)).join(''):'<div class="live-empty">当前课次还没有AI对话。</div>'}${x.processing?'<div class="live-thinking"><span class="spinner-inline"></span>AI正在处理学生刚刚发送的问题…</div>':''}</div><aside class="live-activity-panel">${liveActivityHtml()}</aside></div>`;
+  pane.querySelector('.open-full-detail')?.addEventListener('click',()=>detail(id,true));
+  const sc=pane.querySelector('.live-chat-messages'); if(sc&&(forceScroll||nearBottom)) sc.scrollTop=sc.scrollHeight;
+  const ac=pane.querySelector('.live-activity-list'); if(ac&&activityNearBottom) ac.scrollTop=ac.scrollHeight;
+}
+
+async function loadLiveParticipant(id=liveSelectedParticipantId, forceScroll=false, reset=false){
+  if(!id) return;
+  const pane=document.getElementById('liveChatPane'); if(!pane) return;
+  if(reset||liveDetailCache.id!==id) liveDetailCache={id,session_id:'',messages:[],events:[],revisions:[]};
+  const afterMessage=maxIdx(liveDetailCache.messages,'message_index');
+  const afterEvent=maxIdx(liveDetailCache.events,'event_index');
+  const afterRevision=maxIdx(liveDetailCache.revisions,'revision_index');
   try{
-    const d=await api(`/live/${id}`);
-    const x=d.summary||{};
-    const [label,cls]=liveStatusMeta(x.live_status);
-    const msgs=d.chat_messages||[];
-    pane.innerHTML=`<div class="live-chat-head"><div><div class="row"><strong>${esc(id)}</strong><span class="live-status ${cls}">${label}</span></div><div class="small">${esc(d.session_id||'')} · 学生消息 ${x.user_turn_count||0} · AI回复 ${x.assistant_turn_count||0}${x.task_field_label?` · 当前/最近：${esc(x.task_field_label)}`:''}</div></div><button class="btn ghost mini open-full-detail" data-id="${esc(id)}" type="button">13周完整记录</button></div><div class="live-chat-messages">${msgs.length?msgs.map(m=>liveMessageHtml(id,d.session_id,m)).join(''):'<div class="live-empty">当前课次还没有AI对话。</div>'}${x.processing?'<div class="live-thinking"><span class="spinner-inline"></span>AI正在处理学生刚刚发送的问题…</div>':''}</div>`;
-    pane.querySelector('.open-full-detail')?.addEventListener('click',()=>detail(id,true));
-    const sc=pane.querySelector('.live-chat-messages');
-    if(sc && (forceScroll||nearBottom)) sc.scrollTop=sc.scrollHeight;
+    const d=await api(`/live/${id}?afterMessage=${afterMessage}&afterEvent=${afterEvent}&afterRevision=${afterRevision}`);
+    if(liveDetailCache.session_id && liveDetailCache.session_id!==d.session_id){
+      liveDetailCache={id,session_id:d.session_id,messages:[],events:[],revisions:[]};
+      return loadLiveParticipant(id,forceScroll,true);
+    }
+    liveDetailCache.session_id=d.session_id||liveDetailCache.session_id;
+    liveDetailCache.messages=mergeByIndex(liveDetailCache.messages,d.chat_messages,'message_index');
+    liveDetailCache.events=mergeByIndex(liveDetailCache.events,d.events,'event_index');
+    liveDetailCache.revisions=mergeByIndex(liveDetailCache.revisions,d.revisions,'revision_index');
+    renderLiveParticipantPane(id,d,forceScroll);
   }catch(e){ pane.innerHTML=`<div class="notice warn">实时对话读取失败：${esc(e.message)}</div>`; }
 }
 
-async function refreshLiveMonitor(){
-  if(!liveAutoRefresh||liveRefreshing||document.hidden) return;
-  liveRefreshing=true;
-  try{
-    const fresh=await api('/participants');
-    rows=fresh;
-    renderLiveParticipantList();
-    if(liveSelectedParticipantId) await loadLiveParticipant(liveSelectedParticipantId,false);
-  }catch{} finally{liveRefreshing=false;}
+function mergeLiveStatuses(payload){
+  const map=new Map(rows.map(x=>[x.participant_id,x]));
+  for(const x of payload?.rows||[]){
+    const current=map.get(x.participant_id);
+    if(current) Object.assign(current,x); else rows.push(x);
+  }
 }
-function startLiveTimer(){ if(liveTimer) clearInterval(liveTimer); liveTimer=setInterval(refreshLiveMonitor,3000); }
 
-document.getElementById('liveRefresh')?.addEventListener('click',async()=>{ const old=liveAutoRefresh; liveAutoRefresh=true; await refreshLiveMonitor(); liveAutoRefresh=old; });
-document.getElementById('liveToggle')?.addEventListener('click',e=>{ liveAutoRefresh=!liveAutoRefresh; e.currentTarget.textContent=liveAutoRefresh?'暂停自动刷新':'继续自动刷新'; if(liveAutoRefresh) refreshLiveMonitor(); });
+async function refreshLiveMonitor(){
+  if(!liveAutoRefresh||document.hidden) return;
+  if(liveRefreshing){ liveRefreshQueued=true; setLiveRefreshState('上一轮仍在刷新，已排队下一次…','busy'); return; }
+  liveRefreshing=true;
+  const btn=document.getElementById('liveRefresh'); if(btn){btn.disabled=true;btn.textContent='刷新中…';}
+  setLiveRefreshState('正在轻量刷新…','busy');
+  try{
+    const fresh=await api('/live-statuses');
+    mergeLiveStatuses(fresh);
+    renderLiveParticipantList();
+    if(liveSelectedParticipantId) await loadLiveParticipant(liveSelectedParticipantId,false,false);
+    liveLastRefreshAt=fresh?.server_time||new Date().toISOString();
+    setLiveRefreshState(`已更新 ${refreshClockText(liveLastRefreshAt)} · 下一次约4秒后`,'ok');
+  }catch(e){
+    setLiveRefreshState(`刷新失败：${e.message}`,'error');
+  } finally {
+    liveRefreshing=false;
+    if(btn){btn.disabled=false;btn.textContent='立即刷新';}
+    if(liveRefreshQueued){ liveRefreshQueued=false; setTimeout(()=>refreshLiveMonitor(),60); }
+  }
+}
+function scheduleLiveTimer(){
+  if(liveTimer) clearTimeout(liveTimer);
+  if(!liveAutoRefresh) return;
+  liveTimer=setTimeout(async()=>{ await refreshLiveMonitor(); scheduleLiveTimer(); },LIVE_POLL_MS);
+}
+function startLiveTimer(){
+  if(liveTimer) clearTimeout(liveTimer);
+  refreshLiveMonitor().finally(scheduleLiveTimer);
+}
+
+document.getElementById('liveRefresh')?.addEventListener('click',async()=>{
+  if(liveTimer) clearTimeout(liveTimer);
+  const old=liveAutoRefresh; liveAutoRefresh=true;
+  await refreshLiveMonitor();
+  liveAutoRefresh=old;
+  if(liveAutoRefresh) scheduleLiveTimer();
+});
+document.getElementById('liveToggle')?.addEventListener('click',e=>{
+  liveAutoRefresh=!liveAutoRefresh;
+  e.currentTarget.textContent=liveAutoRefresh?'暂停自动刷新':'继续自动刷新';
+  if(liveAutoRefresh){ refreshLiveMonitor().finally(scheduleLiveTimer); }
+  else { if(liveTimer) clearTimeout(liveTimer); liveTimer=null; setLiveRefreshState('自动刷新已暂停'); }
+});
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){ if(liveTimer) clearTimeout(liveTimer); liveTimer=null; }
+  else if(liveAutoRefresh){ refreshLiveMonitor().finally(scheduleLiveTimer); }
+});
 
 async function loadHistorySummary(){
   const box=document.getElementById('historySummary'); if(!box) return;

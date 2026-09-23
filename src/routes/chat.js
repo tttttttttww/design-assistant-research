@@ -150,6 +150,11 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
     s.processing_started_at = aiRequestStartedAt;
     s.processing_interaction_id = interactionId;
     s.last_student_message_at = serverReceivedAt;
+    s.last_student_message_preview = message.replace(/\s+/g,' ').trim().slice(0,120);
+    s.last_task_field_key = taskContext.field_key || '';
+    s.last_task_field_label = taskContext.field_label || '';
+    s.last_task_field_stage = taskContext.field_stage || '';
+    s.chat_image_count = Number(s.chat_image_count || 0) + (attachment ? 1 : 0);
     s.last_error_at = '';
     s.last_error_message = '';
     await researchService.saveChatSession(id, sid, s);

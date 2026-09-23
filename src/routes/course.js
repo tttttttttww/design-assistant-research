@@ -82,7 +82,11 @@ router.post('/session/event', async (req, res) => {
     if (!settings.session_open || settings.active_session_id !== sid) return res.status(409).json({ error: '当前不是这个课次。' });
     const type = String(req.body?.type || '').trim();
     if (!type) return res.status(400).json({ error: 'event type required' });
-    res.json({ event: await researchService.appendEvent(id, sid, type, req.body?.data || {}) });
+    const data = req.body?.data || {};
+    const event = await researchService.appendEvent(id, sid, type, data);
+    // 仅把草稿的“状态元数据”同步到课次记录，绝不保存未发送草稿正文。
+    await researchService.updateLiveDraftState(id, sid, type, data);
+    res.json({ event });
   } catch (e) { res.status(e.status || 500).json({ error: e.message || '记录失败' }); }
 });
 

@@ -52,4 +52,4 @@ const css = await readFile('public/css/app.css','utf8');
 if (!css.includes('scrollbar-gutter:stable') || !css.includes('height:clamp(520px,72vh,760px)') || !css.includes('.live-list-toolbar')) throw new Error('Live monitor internal scrolling fix missing');
 if (!adminRoute.includes('storage-diagnostics') || !adminRoute.includes('restore-reset-archive') || !research.includes('restoreResetArchive')) throw new Error('History diagnostics/restore missing');
 if (!chat.includes('s.processing = true') || !chat.includes('ai_request_started') || !research.includes('updateMessage')) throw new Error('Live processing state / early user-message persistence missing');
-console.log('CHECK OK v11.24: live monitor scroll fixed + S00 test account visible + history diagnostics/restore + process-evidence export + data-safety guards.');
+console.log('CHECK OK v11.25: lightweight live statuses + incremental selected-student chat/events/revisions + live draft/behavior monitor + S00 visible + process-evidence export.');

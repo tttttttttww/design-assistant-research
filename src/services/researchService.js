@@ -20,6 +20,7 @@ const eKey = (id, sid, index) => `${ePrefix(id, sid)}${String(index).padStart(5,
 const revPrefix = (id, sid) => `${sBase(id, sid)}/revisions/`;
 const revKey = (id, sid, index) => `${revPrefix(id, sid)}${String(index).padStart(5, '0')}.json`;
 const qKey = (id, slot) => `participants/${id}/questionnaires/${slot}.json`;
+const liveKey = (id, sid) => `${sBase(id, sid)}/live-trace.json`;
 
 function blankRecord(id, sid) {
   return {
@@ -271,6 +272,20 @@ class ResearchService {
     return out;
   }
 
+  async getRevisionsAfter(id, sid, afterIndex = 0, limit = 120) {
+    const rows = await storageService.listObjects(revPrefix(id, sid));
+    const pick = rows
+      .map(row => ({ ...row, index: Number((row.key.match(/(\d+)\.json$/) || [])[1] || 0) }))
+      .filter(row => row.index > Number(afterIndex || 0))
+      .sort((a,b) => a.index - b.index)
+      .slice(-Math.max(1, Number(limit || 120)));
+    const out = await Promise.all(pick.map(async row => {
+      const raw = await storageService.getObject(row.key);
+      return raw ? JSON.parse(raw) : null;
+    }));
+    return out.filter(Boolean).sort((a,b) => Number(a.revision_index||0)-Number(b.revision_index||0));
+  }
+
   async saveFields(id, sid, textFields = {}, saveContext = {}) {
     const r = await this.ensureStarted(id, sid);
     if (r.submitted_at) throw Object.assign(new Error('本节任务已经提交，不能再修改。'), { status: 409 });
@@ -418,7 +433,8 @@ class ResearchService {
   }
 
   async appendMessage(id, sid, data) {
-    const existing = await this.getMessages(id, sid);
+    // 仅列出消息键来分配序号，不再为了 append 读取全部历史消息正文。
+    const existing = await storageService.listObjects(mPrefix(id, sid));
     const message_index = existing.length + 1;
     const row = {
       participant_id: id, course_session_id: sid, message_index,
@@ -449,6 +465,20 @@ class ResearchService {
       if (raw) out.push(JSON.parse(raw));
     }
     return out;
+  }
+
+  async getMessagesAfter(id, sid, afterIndex = 0, limit = 200) {
+    const rows = await storageService.listObjects(mPrefix(id, sid));
+    const pick = rows
+      .map(row => ({ ...row, index: Number((row.key.match(/(\d+)\.json$/) || [])[1] || 0) }))
+      .filter(row => row.index > Number(afterIndex || 0))
+      .sort((a,b) => a.index - b.index)
+      .slice(-Math.max(1, Number(limit || 200)));
+    const out = await Promise.all(pick.map(async row => {
+      const raw = await storageService.getObject(row.key);
+      return raw ? JSON.parse(raw) : null;
+    }));
+    return out.filter(Boolean).sort((a,b) => Number(a.message_index||0)-Number(b.message_index||0));
   }
 
   async updateMessage(id, sid, messageIndex, patch = {}) {
@@ -485,6 +515,41 @@ class ResearchService {
       if (raw) out.push(JSON.parse(raw));
     }
     return out;
+  }
+
+  async getEventsAfter(id, sid, afterIndex = 0, limit = 160) {
+    const rows = await storageService.listObjects(ePrefix(id, sid));
+    const pick = rows
+      .map(row => ({ ...row, index: Number((row.key.match(/(\d+)\.json$/) || [])[1] || 0) }))
+      .filter(row => row.index > Number(afterIndex || 0))
+      .sort((a,b) => a.index - b.index)
+      .slice(-Math.max(1, Number(limit || 160)));
+    const out = await Promise.all(pick.map(async row => {
+      const raw = await storageService.getObject(row.key);
+      return raw ? JSON.parse(raw) : null;
+    }));
+    return out.filter(Boolean).sort((a,b) => Number(a.event_index||0)-Number(b.event_index||0));
+  }
+
+  async getLiveTrace(id, sid) {
+    return parse(await storageService.getObject(liveKey(id, sid)), null);
+  }
+
+  async updateLiveDraftState(id, sid, type, data = {}) {
+    const relevant = new Set(['ai_draft_started','ai_draft_deleted_unsent','ai_draft_left_unsent','ai_draft_sent']);
+    if (!relevant.has(type)) return null;
+    // 单独保存实时草稿状态，避免与任务record并发写入造成覆盖。未发送正文从不写入。
+    const state = {
+      type, at: iso(),
+      max_chars: Number(data?.max_chars || data?.initial_chars || data?.current_chars || 0),
+      duration_ms: Number(data?.duration_ms || 0),
+      edit_count: Number(data?.edit_count || 0),
+      task_field_key: String(data?.task_field_key || ''),
+      task_field_label: String(data?.task_field_label || ''),
+      task_field_stage: String(data?.task_field_stage || ''),
+    };
+    await storageService.putObject(liveKey(id, sid), JSON.stringify(state));
+    return state;
   }
 
   async hiddenContextForChat(sid) {
