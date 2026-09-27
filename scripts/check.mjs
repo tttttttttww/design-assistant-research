@@ -6,6 +6,8 @@ const must = [
 ];
 for (const f of must) await access(f);
 const cfg = await import('../src/config/researchConfig.js');
+if (cfg.SCHEMA_VERSION !== 19) throw new Error(`Expected schema 19, got ${cfg.SCHEMA_VERSION}`);
+if (!cfg.INTERVENTION_ORIENTATION?.supported || !cfg.INTERVENTION_ORIENTATION?.control || !cfg.INTERVENTION_SUPPORT_CARDS?.W3) throw new Error('W3 platform intervention orientation/support cards missing');
 if (cfg.SESSIONS.length !== 13) throw new Error(`Expected 13 sessions, got ${cfg.SESSIONS.length}`);
 const ids = cfg.SESSIONS.map(x=>x.id);
 if (new Set(ids).size !== 13) throw new Error('Duplicate session ids');
@@ -39,10 +41,12 @@ if (!adminHtml.includes('rosterFile') || !admin.includes('roster-preview') || !a
 if (!adminRoute.includes('ALLOW_DESTRUCTIVE_COHORT_REPLACE') || !adminHtml.includes('整批清空学生数据的入口已关闭')) throw new Error('Destructive cohort replacement is not safely disabled');
 if (!authRoute.includes('cohort_revision') || !validators || !adminRoute.includes('replaceFormalCohort')) throw new Error('Cohort revision / replacement safety missing');
 if (!task.includes('questionnaireForm') || !adminRoute.includes('stratified-randomize')) throw new Error('Questionnaire/randomization flow missing');
+if (!task.includes('orientationHtml') || !task.includes('/session/orientation/complete') || !adminRoute.includes('auto_on_W3_activation')) throw new Error('W3 automatic grouping/platform learning flow missing');
 if (!task.includes('ai_draft_deleted_unsent') || !task.includes('chat_history_revisit') || !task.includes('bonusTaskHtml')) throw new Error('W2 trace/bonus UI missing');
 if (!adminRoute.includes('task_revisions.csv') || !adminRoute.includes('behavior_events.csv') || !adminRoute.includes('process_timeline.csv') || !adminRoute.includes('interaction_id') || !adminRoute.includes('ai_latency_ms')) throw new Error('Process-evidence exports missing');
 const research = await readFile('src/services/researchService.js','utf8');
 if (!research.includes('getRevisions') || !research.includes('field_revision_counts')) throw new Error('Task revision history service missing');
+if (!adminRoute.includes('protected-pre-w3.zip') || !adminRoute.includes('protected-snapshot/restore-missing') || !research.includes('createProtectedPreW3Snapshot')) throw new Error('W1/W2 protected snapshot safety missing');
 if (task.includes('请选择一个你真正不确定') || task.includes('最想比较或最需要反馈')) throw new Error('Help-seeking strategy prompt should not appear in W2 UI');
 if (!chat.includes('taskContext') || !chat.includes('aiResponseReceivedAt') || !task.includes('chatTaskContext')) throw new Error('Task-step/timing chat context missing');
 if (!adminHtml.includes('AI求助过程数据 ZIP') || !adminHtml.includes('W8后测问卷 CSV')) throw new Error('Admin export labels not updated');
@@ -52,4 +56,4 @@ const css = await readFile('public/css/app.css','utf8');
 if (!css.includes('scrollbar-gutter:stable') || !css.includes('height:clamp(520px,72vh,760px)') || !css.includes('.live-list-toolbar')) throw new Error('Live monitor internal scrolling fix missing');
 if (!adminRoute.includes('storage-diagnostics') || !adminRoute.includes('restore-reset-archive') || !research.includes('restoreResetArchive')) throw new Error('History diagnostics/restore missing');
 if (!chat.includes('s.processing = true') || !chat.includes('ai_request_started') || !research.includes('updateMessage')) throw new Error('Live processing state / early user-message persistence missing');
-console.log('CHECK OK v11.25: lightweight live statuses + incremental selected-student chat/events/revisions + live draft/behavior monitor + S00 visible + process-evidence export.');
+console.log('CHECK OK v11.29: auto stratified grouping + platform intervention learning + supported/free routing + protected W1/W2 snapshot + process-evidence export.');

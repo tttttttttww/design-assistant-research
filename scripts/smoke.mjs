@@ -26,6 +26,17 @@ await researchService.setParticipantMeta('S01',{condition:'A'});
 if(aiVariantFor({session:getSessionConfig('W4'),condition:'A',isTest:false})!=='supported') throw new Error('A routing failed');
 if(aiVariantFor({session:getSessionConfig('W4'),condition:'B',isTest:false})!=='free') throw new Error('B routing failed');
 if(aiVariantFor({session:getSessionConfig('W10'),condition:'A',isTest:false})!=='free') throw new Error('transfer routing failed');
+const orientation=await researchService.orientationPublicState('S01','W3');
+if(!orientation||orientation.mode!=='supported'||orientation.completed) throw new Error('supported W3 orientation missing');
+await researchService.startOrientation('S01','W3');
+let badOrientation=false;
+try{await researchService.completeOrientation('S01','W3',{q1:0,q2:1,q3:0});}catch(e){badOrientation=e.status===422;}
+if(!badOrientation) throw new Error('orientation correctness gate missing');
+await researchService.completeOrientation('S01','W3',{q1:1,q2:1,q3:0});
+const orientationDone=await researchService.orientationPublicState('S01','W3');
+if(!orientationDone.completed) throw new Error('orientation completion missing');
+const protectedSnapshot=await researchService.createProtectedPreW3Snapshot();
+if(!protectedSnapshot?.prefix||protectedSnapshot.copied_objects<1) throw new Error('protected pre-W3 snapshot missing');
 const mm=cozeService.buildAdditionalMessage('看看这张图',{fileId:'112233'});
 if(mm.content_type!=='object_string'||!mm.content.includes('image')) throw new Error('multimodal Coze message failed');
 const reset=await researchService.archiveAndResetSession('S01','W1',{reason:'smoke_reset'});
@@ -41,6 +52,10 @@ if(!restored.restored) throw new Error('reset archive restore failed');
 r=await researchService.getSessionRecord('S01','W1');
 if(!r.started_at) throw new Error('restored session record missing');
 await researchService.archiveAndResetSession('S01','W1',{reason:'smoke_reset_again'});
+const protectedRestore=await researchService.restoreProtectedPreW3SnapshotMissingOnly();
+if(protectedRestore.restored<1) throw new Error('protected snapshot restore-missing failed');
+r=await researchService.getSessionRecord('S01','W1');
+if(!r.started_at) throw new Error('protected snapshot did not restore W1');
 
 // Service-level whole-cohort replacement still exists for exceptional maintenance, but the HTTP route is disabled by default in v11.23.
 await researchService.ensureStarted('S01','W2');
@@ -58,5 +73,5 @@ const s00w1=await researchService.getSessionRecord('S00','W1');
 if(!s00w1.started_at) throw new Error('S00 should be preserved during cohort replacement');
 const newP1=await researchService.getParticipant('S01');
 if(newP1.grade!=='6'||!newP1.login_name_hash||newP1.condition!=='unassigned') throw new Error('new cohort roster meta missing');
-console.log('SMOKE OK v11.25: roster/name safety + interaction metadata + revision history + lightweight/incremental live monitor + safe reset/restore.');
+console.log('SMOKE OK v11.29: orientation gate + protected W1/W2 snapshot/restore + routing + roster/data safety.');
 

@@ -74,8 +74,13 @@ document.getElementById('settingsForm').onsubmit = async e => {
   e.preventDefault();
   const f = e.target;
   try {
-    await api('/settings', { method: 'POST', body: JSON.stringify({ active_session_id: f.active_session_id.value, session_open: f.session_open.checked, questionnaire_enabled: f.questionnaire_enabled.checked }) });
-    alert('设置已保存');
+    if(f.active_session_id.value==='W3' && f.session_open.checked && settings?.active_session_id!=='W3'){
+      if(!confirm('正式开放 W3 会先自动创建 W1/W2 安全快照，并按年级随机 A/B。确认继续吗？')) return;
+    }
+    const r = await api('/settings', { method: 'POST', body: JSON.stringify({ active_session_id: f.active_session_id.value, session_open: f.session_open.checked, questionnaire_enabled: f.questionnaire_enabled.checked }) });
+    if(r?.auto_randomization?.already_assigned) alert(`设置已保存。正式组别已存在：A组 ${r.auto_randomization.totals.A} 人，B组 ${r.auto_randomization.totals.B} 人，系统未重新分组。`);
+    else if(r?.auto_randomization?.totals) alert(`设置已保存。已自动按年级分层随机分组：A组 ${r.auto_randomization.totals.A} 人，B组 ${r.auto_randomization.totals.B} 人；同时已创建W1/W2安全快照。`);
+    else alert('设置已保存');
     await loadSettings();
     await loadParticipants();
   } catch (x) { alert(x.message); }
@@ -84,7 +89,11 @@ document.getElementById('settingsForm').onsubmit = async e => {
 function renderSessionCards() {
   document.getElementById('sessionCards').innerHTML = sessions.map(s => `<div class="session-card ${s.id === settings.active_session_id ? 'current' : ''}"><div class="row between"><strong>${s.id} · ${s.date}</strong><span class="badge">${s.ai_mode === 'condition' ? '按组AI' : s.ai_mode === 'free' ? '自由AI' : '无AI'}</span></div><h3>${esc(s.title)}</h3><p>${esc(s.subtitle)}</p><p class="small">${esc(s.brief.join(' '))}</p>${s.candidate ? '<div class="notice"><strong>教师说明：</strong>候选任务，正式实施前仍可替换。</div>' : ''}<button class="btn ghost set-current" data-id="${s.id}">设为当前课次</button></div>`).join('');
   document.querySelectorAll('.set-current').forEach(b => b.onclick = async () => {
-    await api('/settings', { method: 'POST', body: JSON.stringify({ active_session_id: b.dataset.id, session_open: settings.session_open, questionnaire_enabled: settings.questionnaire_enabled }) });
+    if(b.dataset.id==='W3' && settings.session_open && settings.active_session_id!=='W3'){
+      if(!confirm('切换到 W3 且保持“向学生开放”会立即：\n1）创建 W1/W2 安全快照；\n2）按年级自动随机 A/B。\n\n确认现在正式进入 W3 吗？')) return;
+    }
+    const r = await api('/settings', { method: 'POST', body: JSON.stringify({ active_session_id: b.dataset.id, session_open: settings.session_open, questionnaire_enabled: settings.questionnaire_enabled }) });
+    if(r?.auto_randomization?.totals && !r.auto_randomization.already_assigned) alert(`已切换到W3，并自动按年级分层随机：A组 ${r.auto_randomization.totals.A} 人，B组 ${r.auto_randomization.totals.B} 人。W1/W2安全快照也已创建。`);
     await loadSettings();
     await loadParticipants();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -203,12 +212,12 @@ document.getElementById('bulkBtn').onclick = async () => {
 
 const randomBtn=document.getElementById('stratifiedRandomize');
 if(randomBtn) randomBtn.onclick=async()=>{
-  const formalRows=rows.filter(x=>!x.is_test);
+  const formalRows=rows.filter(x=>!x.is_test&&x.login_name_ready);
   const missing=formalRows.filter(x=>!['6','7','8'].includes(String(x.grade||'').trim())).map(x=>x.participant_id);
   if(missing.length){ alert(`请先补全年级信息：${missing.join('、')}`); return; }
-  if(!confirm('确认按年级（6/7/8）分层随机分配A/B吗？\n\n该功能留给W3正式主项目前使用。W2共同AI试用任务不需要分组。系统会保存本次分组快照。')) return;
-  const typed=prompt('为防止误操作，请输入：RANDOMIZE W2','');
-  if(typed!=='RANDOMIZE W2'){ alert('输入不一致，已取消。'); return; }
+  if(!confirm('确认按年级（6/7/8）分层随机分配A/B吗？\n\n切换到W3时平台会自动完成这一步；这里只保留手动补救入口。分组前会自动创建W1/W2安全快照。')) return;
+  const typed=prompt('为防止误操作，请输入：RANDOMIZE W3','');
+  if(typed!=='RANDOMIZE W3'){ alert('输入不一致，已取消。'); return; }
   try{
     randomBtn.disabled=true; randomBtn.textContent='正在随机分组…';
     const r=await api('/participants/stratified-randomize',{method:'POST',body:JSON.stringify({confirm:typed})});
@@ -464,7 +473,11 @@ async function runDiagnostics(){
     const d=await api('/storage-diagnostics');
     const sessions=Object.entries(d.by_session||{}).map(([sid,x])=>`<tr><td>${sid}</td><td>${x.records}</td><td>${x.messages}</td><td>${x.events}</td><td>${x.revisions}</td></tr>`).join('');
     const archives=(d.recent_reset_archives||[]).map(a=>`<div class="archive-row"><div><strong>${esc(a.participant_id)} ${esc(a.session_id)}</strong><div class="small">${esc(a.archived_at||'')} · ${esc(a.reason||'')}</div></div><button class="btn ghost mini restore-archive" data-key="${esc(a.key)}" data-id="${esc(a.participant_id)}" data-sid="${esc(a.session_id)}" type="button">恢复到空课次</button></div>`).join('');
-    box.innerHTML=`<div class="notice"><strong>当前存储：</strong><code>${esc(d.storage?.root_prefix||'')}</code><br><span class="small">Blob：${esc(d.storage?.blob_store_name||'—')} · 对象总数 ${d.object_count} · 可恢复重置归档 ${d.reset_archive_count}</span></div><div class="table-wrap"><table class="admin-table"><thead><tr><th>课次</th><th>record</th><th>messages</th><th>events</th><th>revisions</th></tr></thead><tbody>${sessions}</tbody></table></div>${archives?`<h4>最近可恢复归档</h4><div class="archive-list">${archives}</div>`:'<p class="small">当前没有通过后台“重置”产生的可恢复归档。</p>'}`;
+    const snap=d.protected_pre_w3_snapshot;
+    const snapHtml=snap?`<div class="notice safe-snapshot"><strong>W1/W2安全快照已存在</strong><br><span class="small">${esc(snap.created_at||'')} · ${Number(snap.copied_objects||0)} 个原始对象 · 前缀 <code>${esc(snap.prefix||'')}</code></span><div class="row" style="margin-top:10px"><a class="btn ghost mini" href="/express/api/admin/export/protected-pre-w3.zip">下载安全快照ZIP</a><button class="btn ghost mini" id="restoreProtectedSnapshot" type="button">仅恢复缺失的W1/W2数据</button></div></div>`:`<div class="notice warn"><strong>尚未创建W1/W2安全快照。</strong><br><span class="small">切换到W3时会自动创建；也可以现在手动创建。</span><div class="row" style="margin-top:10px"><button class="btn ghost mini" id="createProtectedSnapshot" type="button">立即创建W1/W2安全快照</button></div></div>`;
+    box.innerHTML=`<div class="notice"><strong>当前存储：</strong><code>${esc(d.storage?.root_prefix||'')}</code><br><span class="small">Blob：${esc(d.storage?.blob_store_name||'—')} · 对象总数 ${d.object_count} · 可恢复重置归档 ${d.reset_archive_count}</span></div>${snapHtml}<div class="table-wrap"><table class="admin-table"><thead><tr><th>课次</th><th>record</th><th>messages</th><th>events</th><th>revisions</th></tr></thead><tbody>${sessions}</tbody></table></div>${archives?`<h4>最近可恢复归档</h4><div class="archive-list">${archives}</div>`:'<p class="small">当前没有通过后台“重置”产生的可恢复归档。</p>'}`;
+    document.getElementById('createProtectedSnapshot')?.addEventListener('click',async()=>{try{const r=await api('/protected-snapshot/create',{method:'POST'});alert(`安全快照已创建：${r.copied_objects||0} 个对象`);await runDiagnostics();}catch(e){alert(e.message);}});
+    document.getElementById('restoreProtectedSnapshot')?.addEventListener('click',async()=>{const typed=prompt('只恢复当前缺失的W1/W2对象，不覆盖现有数据。请输入：RESTORE W1 W2','');if(typed!=='RESTORE W1 W2')return;try{const r=await api('/protected-snapshot/restore-missing',{method:'POST',body:JSON.stringify({confirm:typed})});alert(`恢复完成：补回 ${r.restored} 个对象，已有 ${r.skipped} 个保持不动。`);await loadHistorySummary();await runDiagnostics();}catch(e){alert(e.message);}});
     box.querySelectorAll('.restore-archive').forEach(btn=>btn.onclick=async()=>{
       const id=btn.dataset.id,sid=btn.dataset.sid;
       const typed=prompt(`只会在 ${id} ${sid} 当前为空时恢复。请输入：RESTORE ${id} ${sid}`,'');

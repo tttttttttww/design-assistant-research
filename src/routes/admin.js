@@ -7,7 +7,7 @@ import * as XLSX from 'xlsx';
 import { requireAdmin } from '../middleware/auth.js';
 import { storageService } from '../services/storageService.js';
 import { researchService } from '../services/researchService.js';
-import { SESSIONS, QUESTIONNAIRE_ITEMS, QUESTIONNAIRE_META, QUESTIONNAIRE_VERSION } from '../config/researchConfig.js';
+import { SESSIONS, QUESTIONNAIRE_ITEMS, QUESTIONNAIRE_META, QUESTIONNAIRE_VERSION, PROTECTED_SESSION_IDS } from '../config/researchConfig.js';
 import { normalizeParticipantId, validateParticipantId } from '../utils/validators.js';
 import { parseRosterBuffer, validateRosterRows } from '../utils/rosterImport.js';
 
@@ -42,6 +42,61 @@ const shuffle = arr => {
   }
   return out;
 };
+
+async function stratifiedRandomizeRostered({ force = false, reason = 'manual' } = {}) {
+  const participants = [];
+  for (const id of formalIds()) participants.push(await researchService.getParticipant(id));
+  const enrolled = participants.filter(p => Boolean(p.login_name_hash));
+  if (!enrolled.length) throw Object.assign(new Error('还没有已录入姓名的正式学生，无法随机分组。'), { status: 400 });
+
+  const missing = enrolled.filter(p => !['6','7','8'].includes(String(p.grade || '').trim())).map(p => p.participant_id);
+  if (missing.length) throw Object.assign(new Error(`以下已录入学生缺少6/7/8年级信息：${missing.join(', ')}`), { status: 400 });
+
+  const already = enrolled.filter(p => ['A','B'].includes(p.condition));
+  if (already.length === enrolled.length && !force) {
+    const preW3Snapshot = await researchService.createProtectedPreW3Snapshot();
+    return {
+      method:'stratified_randomization_by_grade',
+      already_assigned:true,
+      reason,
+      totals:{ A: enrolled.filter(p=>p.condition==='A').length, B: enrolled.filter(p=>p.condition==='B').length },
+      assignments: enrolled.map(p=>({participant_id:p.participant_id,grade:p.grade,condition:p.condition})),
+      pre_w3_snapshot: preW3Snapshot,
+    };
+  }
+  if (already.length && !force) {
+    throw Object.assign(new Error('当前只有部分学生已经A/B分组。为避免混合旧分组，系统没有自动重分；请先检查名单。'), { status: 409 });
+  }
+
+  const preW3Snapshot = await researchService.createProtectedPreW3Snapshot();
+  const groups = new Map();
+  for (const p of enrolled) {
+    const g=String(p.grade);
+    if(!groups.has(g)) groups.set(g,[]);
+    groups.get(g).push(p.participant_id);
+  }
+  const assignments=[]; let totalA=0,totalB=0;
+  for (const grade of ['6','7','8']) {
+    const ids=shuffle(groups.get(grade)||[]);
+    let start=totalA<=totalB?'A':'B';
+    for(let i=0;i<ids.length;i++){
+      const condition=i%2===0?start:(start==='A'?'B':'A');
+      await researchService.setParticipantMeta(ids[i],{condition});
+      if(condition==='A')totalA++;else totalB++;
+      assignments.push({participant_id:ids[i],grade,condition});
+    }
+  }
+  const result={
+    method:'stratified_randomization_by_grade',
+    created_at:new Date().toISOString(),
+    reason,
+    totals:{A:totalA,B:totalB},
+    assignments,
+    pre_w3_snapshot:preW3Snapshot,
+  };
+  await storageService.putObject(`group-assignments/${result.created_at.replace(/[:.]/g,'-')}.json`,JSON.stringify(result,null,2));
+  return result;
+}
 const setWidths = (ws, widths) => { ws['!cols'] = widths.map(w => ({ wch: w })); return ws; };
 
 const rosterUpload = multer({
@@ -104,7 +159,15 @@ router.post('/logout', requireAdmin, async (req, res) => {
 
 router.get('/settings', requireAdmin, async (req, res) => res.json({ ...(await researchService.getSettings()), sessions: SESSIONS }));
 router.post('/settings', requireAdmin, async (req, res) => {
-  try { res.json(await researchService.saveSettings(req.body || {})); }
+  try {
+    const input = req.body || {};
+    let auto_randomization = null;
+    if (String(input.active_session_id || '').toUpperCase() === 'W3' && input.session_open === true) {
+      auto_randomization = await stratifiedRandomizeRostered({ reason:'auto_on_W3_activation' });
+    }
+    const settings = await researchService.saveSettings(input);
+    res.json({ ...settings, auto_randomization });
+  }
   catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
@@ -373,30 +436,8 @@ router.post('/participants/bulk-meta', requireAdmin, async (req, res) => {
 
 router.post('/participants/stratified-randomize', requireAdmin, async (req, res) => {
   try {
-    if (String(req.body?.confirm || '').trim() !== 'RANDOMIZE W2') return res.status(400).json({ error: '请输入 RANDOMIZE W2 才能执行分层随机分组' });
-    const participants = [];
-    for (const id of formalIds()) participants.push(await researchService.getParticipant(id));
-    const missing = participants.filter(p => !['6','7','8'].includes(String(p.grade || '').trim())).map(p => p.participant_id);
-    if (missing.length) return res.status(400).json({ error: `以下编号缺少6/7/8年级信息：${missing.join(', ')}` });
-    const already = participants.filter(p => ['A','B'].includes(p.condition));
-    if (already.length && !req.body?.force) return res.status(409).json({ error: '已有正式学生被分到A/B。为避免误重分，系统已停止；如确需重分请使用force并重新确认。' });
-
-    const groups = new Map();
-    for (const p of participants) { const g=String(p.grade); if(!groups.has(g)) groups.set(g,[]); groups.get(g).push(p.participant_id); }
-    const assignments = []; let totalA=0,totalB=0;
-    for (const grade of ['6','7','8']) {
-      const ids = shuffle(groups.get(grade) || []);
-      let start = totalA <= totalB ? 'A' : 'B';
-      for (let i=0;i<ids.length;i++) {
-        const condition = i % 2 === 0 ? start : (start === 'A' ? 'B' : 'A');
-        await researchService.setParticipantMeta(ids[i], { condition });
-        if (condition==='A') totalA++; else totalB++;
-        assignments.push({ participant_id:ids[i], grade, condition });
-      }
-    }
-    const snapshot = { method:'stratified_randomization_by_grade', created_at:new Date().toISOString(), totals:{A:totalA,B:totalB}, assignments };
-    await storageService.putObject(`group-assignments/${snapshot.created_at.replace(/[:.]/g,'-')}.json`, JSON.stringify(snapshot,null,2));
-    res.json(snapshot);
+    if (String(req.body?.confirm || '').trim() !== 'RANDOMIZE W3') return res.status(400).json({ error: '请输入 RANDOMIZE W3 才能执行分层随机分组' });
+    res.json(await stratifiedRandomizeRostered({ force:Boolean(req.body?.force), reason:'manual_admin' }));
   } catch (e) { res.status(e.status || 500).json({ error: e.message || '分层随机分组失败' }); }
 });
 
@@ -467,8 +508,9 @@ router.get('/history-summary', requireAdmin, async (req, res) => {
 
 router.get('/storage-diagnostics', requireAdmin, async (req, res) => {
   try {
-    const all = await storageService.listObjects('', 20000);
+    const all = await storageService.listObjects('', 30000);
     const resets = await researchService.listResetArchives();
+    const protectedSnapshot = await researchService.protectedPreW3SnapshotInfo();
     const bySession = Object.fromEntries(SESSIONS.map(s => [s.id, { records: 0, messages: 0, events: 0, revisions: 0 }]));
     for (const row of all) {
       const m = row.key.match(/^participants\/S(?:00|[0-3]\d)\/sessions\/(W\d+)\/(record\.json|chat\/messages\/|events\/|revisions\/)/);
@@ -478,7 +520,7 @@ router.get('/storage-diagnostics', requireAdmin, async (req, res) => {
       else if (m[2] === 'events/') bySession[m[1]].events++;
       else if (m[2] === 'revisions/') bySession[m[1]].revisions++;
     }
-    res.json({ storage: storageService.describe(), object_count: all.length, reset_archive_count: resets.length, by_session: bySession, recent_reset_archives: resets.slice(0, 30).map(x => ({ key: x.key, archived_at: x.data?.archived_at || '', participant_id: x.data?.participant?.participant_id || '', session_id: x.data?.session_config?.id || '', reason: x.data?.archive_reason || '' })) });
+    res.json({ storage: storageService.describe(), object_count: all.length, reset_archive_count: resets.length, protected_pre_w3_snapshot: protectedSnapshot, by_session: bySession, recent_reset_archives: resets.slice(0, 30).map(x => ({ key: x.key, archived_at: x.data?.archived_at || '', participant_id: x.data?.participant?.participant_id || '', session_id: x.data?.session_config?.id || '', reason: x.data?.archive_reason || '' })) });
   } catch (e) { res.status(500).json({ error: e.message || '存储诊断失败' }); }
 });
 
@@ -508,6 +550,9 @@ router.post('/participant/:participantId/session/:sessionId/reset', requireAdmin
     const id = normalizeParticipantId(req.params.participantId);
     const sid = String(req.params.sessionId || '').toUpperCase();
     if (!validateParticipantId(id)) return res.status(400).json({ error: '编号无效' });
+    if (PROTECTED_SESSION_IDS.includes(sid) && process.env.ALLOW_PROTECTED_PILOT_RESET !== 'true') {
+      return res.status(403).json({ error: `${sid} 已设为受保护的前期观察数据，当前禁止重置。` });
+    }
     if (!SESSIONS.some(s => s.id === sid)) return res.status(400).json({ error: '课次无效' });
     if (String(req.body?.confirm || '') !== `${id}:${sid}`) return res.status(400).json({ error: '确认信息不匹配，未执行重置' });
     res.json(await researchService.archiveAndResetSession(id, sid, { reason: 'single_session_admin_reset' }));
@@ -518,6 +563,9 @@ router.post('/session/:sessionId/reset-all', requireAdmin, async (req, res) => {
   try {
     const sid = String(req.params.sessionId || '').toUpperCase();
     if (!SESSIONS.some(s => s.id === sid)) return res.status(400).json({ error: '课次无效' });
+    if (PROTECTED_SESSION_IDS.includes(sid) && process.env.ALLOW_PROTECTED_PILOT_RESET !== 'true') {
+      return res.status(403).json({ error: `${sid} 已设为受保护的前期观察数据，当前禁止批量重置。` });
+    }
     if (String(req.body?.confirm || '').trim() !== `RESET ${sid}`) return res.status(400).json({ error: `请输入 RESET ${sid} 才能执行批量重置` });
     const result = [];
     for (const id of await allIds(true)) result.push(await researchService.archiveAndResetSession(id, sid, { reason: 'whole_session_admin_reset' }));
@@ -818,6 +866,37 @@ router.get('/export/questionnaire.csv', requireAdmin, async (req, res) => {
     rows.push(row);
   }
   sendCsv(res, 'questionnaire_posttest_raw.csv', ['participant_id','grade','condition','slot','questionnaire_version','submitted_at','instrumental_mean','executive_mean','avoidance_mean',...QUESTIONNAIRE_ITEMS.map(x=>x.id)], rows);
+});
+
+
+router.post('/protected-snapshot/create', requireAdmin, async (req, res) => {
+  try { res.json(await researchService.createProtectedPreW3Snapshot()); }
+  catch (e) { res.status(e.status || 500).json({ error: e.message || '创建W1/W2安全快照失败' }); }
+});
+
+router.post('/protected-snapshot/restore-missing', requireAdmin, async (req, res) => {
+  try {
+    if (String(req.body?.confirm || '') !== 'RESTORE W1 W2') return res.status(400).json({ error: '请输入 RESTORE W1 W2 才会执行恢复。' });
+    res.json(await researchService.restoreProtectedPreW3SnapshotMissingOnly());
+  } catch (e) { res.status(e.status || 500).json({ error: e.message || '恢复W1/W2安全快照失败' }); }
+});
+
+router.get('/export/protected-pre-w3.zip', requireAdmin, async (req, res) => {
+  try {
+    const meta = await researchService.protectedPreW3SnapshotInfo();
+    if (!meta?.prefix) return res.status(404).json({ error: '尚未创建W1/W2安全快照。切换到W3时会自动创建，也可在存储诊断处手动创建。' });
+    const rows = await storageService.listObjects(`${meta.prefix}/`, 30000);
+    const archive = openZip(res, 'W1_W2_protected_snapshot.zip');
+    for (const row of rows) {
+      const data = await storageService.getObjectBuffer(row.key);
+      if (data == null) continue;
+      const rel = row.key.slice(`${meta.prefix}/`.length);
+      archive.append(data, { name: rel || 'meta.json' });
+    }
+    await archive.finalize();
+  } catch (e) {
+    if (!res.headersSent) res.status(e.status || 500).json({ error: e.message || '导出W1/W2安全快照失败' });
+  }
 });
 
 router.get('/export/all.json', requireAdmin, async (req, res) => sendJson(res, 'course_research_all.json', await formalData()));

@@ -1,6 +1,6 @@
-export const SCHEMA_VERSION = 17;
-export const PROMPT_VERSION_FREE = 'free-ai-v4-grounded-evidence';
-export const PROMPT_VERSION_SUPPORTED = 'help-seeking-support-v5-help-tutor-grounded-evidence';
+export const SCHEMA_VERSION = 19;
+export const PROMPT_VERSION_FREE = 'free-ai-v5-common-base-natural-response';
+export const PROMPT_VERSION_SUPPORTED = 'help-seeking-support-v9-platform-learning';
 export const QUESTIONNAIRE_VERSION = 'li-help-seeking-intention-genai-v2-minimal-adaptation';
 
 export const CONDITIONS = ['unassigned', 'A', 'B'];
@@ -11,6 +11,137 @@ export const DEFAULT_SETTINGS = {
   questionnaire_enabled: true,
   cohort_revision: 'cohort-initial',
 };
+
+
+export const PROTECTED_SESSION_IDS = ['W1', 'W2'];
+
+export const INTERVENTION_ORIENTATION = {
+  supported: {
+    key: 'adaptive-help-seeking-learning-v1',
+    title: 'AI求助小练习',
+    intro: '先用几分钟认识一种更有利于自己继续思考的AI求助方式。这里不是教固定句式，也不会影响你的设计答案。',
+    cards: [
+      {
+        title: '1｜先弄清楚：我现在需要什么帮助？',
+        body: [
+          '问AI前，先确认自己已经做到哪一步、具体卡在哪里，以及希望AI帮哪一部分。',
+          '不需要每次写很长，但尽量让AI知道你的真实困难，而不是只丢下一句“帮我做完”。',
+        ],
+        example_bad: '例：帮我把这个辅助绘画装置完整设计好。',
+        example_good: '例：我已经想到用腕带固定画笔，但不知道怎样让画笔更稳定。你能帮我比较两种固定方式吗？',
+      },
+      {
+        title: '2｜求助中：让AI帮助你继续做',
+        body: [
+          '你可以请AI解释、提示、比较、澄清、检查已有想法，或分析测试现象。',
+          '如果第一次回答没解决问题，可以继续追问、补充条件或让AI换一种方式解释。',
+        ],
+      },
+      {
+        title: '3｜得到帮助后：自己判断怎么用',
+        body: [
+          '看看AI的帮助是否和你的问题相关、你是否真的理解、哪些部分适合你的方案。',
+          '最终选择、取舍和修改理由仍由你自己决定；AI的建议可以采用、修改，也可以不用。',
+        ],
+      },
+    ],
+    checks: [
+      {
+        id: 'q1',
+        question: '下面哪一种更符合“先明确需要什么帮助”？',
+        options: [
+          '直接让AI把整个任务完整做完',
+          '说明自己做到哪、卡在哪里，再请求某一部分帮助',
+          '不管遇到什么问题都不用AI',
+        ],
+        correct: 1,
+      },
+      {
+        id: 'q2',
+        question: 'AI给出建议后，比较合适的做法是：',
+        options: [
+          '直接照搬，不再判断',
+          '判断是否适合自己的问题，再决定采用、修改或继续追问',
+          '只要AI说得长就一定正确',
+        ],
+        correct: 1,
+      },
+      {
+        id: 'q3',
+        question: '如果AI第一次解释得不清楚，可以：',
+        options: [
+          '继续澄清、补充信息或要求换一种方式解释',
+          '立刻结束，不再处理',
+          '只要求AI给完整最终答案',
+        ],
+        correct: 0,
+      },
+    ],
+    button: '完成小练习，进入设计任务',
+  },
+  control: {
+    key: 'neutral-platform-orientation-v1',
+    title: '平台操作小练习',
+    intro: '先用几分钟确认平台的记录方式。下面只介绍页面操作，不提供AI求助策略。',
+    cards: [
+      {
+        title: '1｜任务记录会自动保存',
+        body: [
+          '你在任务文本框中的内容会自动保存，也可以随时点击“保存当前记录”。',
+          '正式提交后本节记录会锁定，因此提交前请先检查。',
+        ],
+      },
+      {
+        title: '2｜草图和原型照片要拍清楚',
+        body: [
+          '需要上传图片的课次，请让主要结构清楚可见；画功和照片美化都不是本研究重点。',
+          '低保真原型重点是能测试关键功能，不要求做成精致成品。',
+        ],
+      },
+      {
+        title: '3｜AI回复时请等待',
+        body: [
+          'AI正在处理时，页面会显示明显提示；回复完成后才能继续发送。',
+          '平台会保存已发送的聊天记录，方便你之后回看。',
+        ],
+      },
+    ],
+    acknowledgements: [
+      '我知道任务文字会自动保存，提交前还需要检查。',
+      '我知道AI正在处理时需要等待回复完成。',
+      '我知道草图/原型主要用于表达和测试，不按画功打分。',
+    ],
+    button: '我已了解，进入设计任务',
+  },
+};
+
+export const INTERVENTION_SUPPORT_CARDS = {
+  W3: {
+    title: 'AI求助提醒',
+    lines: ['先想清：我已经做到哪？具体卡在哪里？', '说清楚：我希望AI具体帮哪一部分？', '拿到帮助后：判断是否适合，再决定怎么改。'],
+  },
+  W4: {
+    title: 'AI求助提醒',
+    lines: ['带着自己的方案或具体困难去问，会更容易得到针对性帮助。', '可以请AI解释、比较、检查、澄清；最终方案由你自己判断。'],
+  },
+  W5: {
+    title: '测试后的AI求助提醒',
+    lines: ['先说清真实测试现象，再请AI帮你分析可能原因或比较修改方向。', 'AI给的是建议，不是已经发生的测试证据。'],
+  },
+  W6: {
+    title: '修改阶段提醒',
+    lines: ['把测试证据、已有判断和你最需要解决的问题说清楚。', '收到建议后，决定采用、修改还是不用，并说明自己的依据。'],
+  },
+  W7: {
+    title: '轻提示',
+    lines: ['需要AI时，尽量围绕当前具体问题求助；核心选择留给自己。'],
+  },
+  W8: {
+    title: '轻提示',
+    lines: ['需要AI时，围绕具体问题求助；最后自己判断AI帮助怎样进入最终修改。'],
+  },
+};
+
 
 // 李晓东《中小学生学业求助问卷》“学业求助意图”部分（原题17–30）
 // 本研究仅做情境适配：数学/老师同学 -> 设计任务/生成式AI；维度、题数、5点评分保持不变。
@@ -178,79 +309,151 @@ export const SESSIONS = [
   },
   {
     id:'W3', order:3, date:'9/28',
-    title:'辅助绘画装置：明确标准并进行多方案构思', subtitle:'补充研究｜建立criteria/constraints｜形成至少两个不同方案',
+    title:'辅助绘画装置：理解需求并形成多方案', subtitle:'正式主项目｜criteria / constraints｜至少两个不同方案',
     student_label:'第3课 · 正式主项目', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false,
+    source_course:'TeachEngineering: An Assistive Artistic Device（Grades 7–8）',
     brief:[
-      '正式主项目从本节开始：先阅读辅助绘画装置的使用者情境，理解手部精细动作困难可能带来的不同影响。',
-      '先区分“已经知道什么”和“还需要了解什么”，再形成初步问题定义与设计标准。',
-      '在此基础上发散构思，至少形成两个明显不同的方案，再比较它们。',
+      '正式主项目从本节开始：为一位手部精细动作控制存在困难、但希望更自主参与绘画的使用者设计辅助绘画装置。',
+      '今天先理解使用者需要，区分“已经知道什么”和“还需要了解什么”，再形成问题定义、设计标准和多个方案。',
+      '本项目后续会制作“可测试的低保真原型”，重点是验证关键功能和依据证据修改，不追求精致成品。',
+      '在开始构思前先看清“材料银行”：瓦楞纸板/卡纸、EVA或海绵、布或毛毡、木棒、纸吸管、橡皮筋、宽松紧带、魔术贴、绳、胶带/双面胶、小夹子；测试可使用铅笔、蜡笔、马克笔或小画笔。方案应在这些材料范围内可实现。',
     ],
     requirements:[
-      '项目基本限制：原型必须安全、能够在课堂条件下制作和测试，并能帮助使用者使用一种常见绘画工具。',
-      '根据本节对使用者情境的理解，提出2—4条与真实需要有关的设计标准。',
+      '项目基本限制：装置必须安全，能够在上述共同材料银行条件下制作和测试，并能帮助使用者使用画笔、蜡笔、马克笔或彩色铅笔中的一种。',
+      '每名学生独立形成自己的方案、草图、AI对话与低保真原型；材料可以共享取用，但研究记录与作品以个人为单位。',
+      '提出2—4条与使用者真实需要有关的设计标准（criteria），同时写清必须遵守的限制（constraints）。',
       '至少形成两个结构或工作方式明显不同的方案，而不是只改颜色或外观。',
-      '依据设计标准比较两个方案，并说明目前的选择依据。',
+      '依据设计标准比较方案，并说明目前的选择依据；草图用于表达结构，不评价画功。',
     ],
     fields:[
       field('evidence','关于这个使用者情境，你目前知道什么？还需要进一步了解什么？'),
-      field('criteria_constraints','根据使用者需要和项目基本限制，你认为方案应该满足哪些重要标准？'),
+      field('criteria_constraints','根据使用者需要和项目基本限制，你认为方案应该满足哪些重要标准与限制？'),
       field('idea_1','方案1：核心想法是什么？它怎样回应使用者的需要？'),
       field('idea_2','方案2：它与方案1有什么明显不同？'),
-      field('comparison','按照设计标准比较两个方案：各自的优点、问题和证据是什么？'),
+      field('comparison','按照设计标准比较两个方案：各自的优点、问题和依据是什么？'),
+      field('materials_plan','如果把方案做成低保真原型，你准备从材料银行里选哪些材料？这些材料分别承担什么作用？',{required:false}),
       field('selected_idea','目前更倾向哪个方案？为什么？',{required:false}),
     ],
     artifacts:[artifact('idea_sketch','上传至少包含两个方案的草图 / 结构示意')],
-    prompt_context:'正式主项目启动：辅助绘画装置的使用者理解、问题定义、criteria/constraints与多方案构思阶段。本节从新的主项目情境开始，不承接W2午餐体验试用任务。AI可围绕学生提供的需求、证据、标准和方案进行帮助，但不要替学生完成最终可提交方案。',
+    ai_instruction:'AI设计助手在本节全程可用。请按课堂要求使用；什么时候问、问什么、是否继续追问，不使用固定提问模板。',
+    prompt_context:'正式主项目W3：使用者理解、问题定义、criteria/constraints、多方案构思与比较。项目来源为TeachEngineering的An Assistive Artistic Device，并做了普通课堂材料与低保真原型适配。本节从新项目开始，不承接W2午餐任务。共同材料银行：瓦楞纸板/卡纸、EVA或海绵、布或毛毡、木棒、纸吸管、橡皮筋、宽松紧带、魔术贴、绳、胶带/双面胶、小夹子；测试工具为铅笔、蜡笔、马克笔或小画笔。AI提出制作建议时优先限制在这些材料内，不默认学生拥有3D打印、热熔胶、电动工具或其他特殊材料。',
   },
   {
     id:'W4', order:4, date:'10/12',
-    title:'辅助绘画装置：制作V1', subtitle:'把方案做成可以测试的第一版原型',
+    title:'辅助绘画装置：制作可测试的低保真V1', subtitle:'只做关键功能｜不追求精致成品',
     student_label:'第4课 · 正式主项目', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false, carry_from:'W3',
-    brief:['根据方案制作第一版可测试原型（V1）。','重点不是漂亮，而是让关键功能真的能测试。'],
-    requirements:['优先完成与核心需要直接相关的功能。','记录当前最难解决的制作问题。','保存V1照片。'],
-    fields:[field('build_challenge','制作过程中最难解决的问题是什么？'),field('v1_function','V1目前能实现什么核心功能？')],
-    artifacts:[artifact('v1_photo','上传V1原型照片')],
-    prompt_context:'V1制作阶段。支持应围绕学生真实制作问题、材料、结构和可行性。',
+    brief:[
+      '把选定方案转成第一版可测试原型（V1）。',
+      'V1只需要让最关键的结构或功能能够被测试。原则上使用W3已经公布的共同材料银行，不临时加入只有个别学生才有的特殊材料。',
+      '制作本身不是研究结果；重点是把想法变成可以产生测试证据的东西。',
+    ],
+    requirements:[
+      '优先完成一个最关键、真正能测试的功能，不要求外观完整。',
+      '遇到制作问题时记录“具体卡在哪里”，不要只写“做不出来”。',
+      '保存V1照片；制作过程中不需要为了和AI聊天而中断实际操作。',
+    ],
+    fields:[
+      field('build_target','这版V1最想先验证哪个关键功能？'),
+      field('build_challenge','制作过程中最难解决的具体问题是什么？'),
+      field('v1_function','V1目前已经能实现什么？还有什么暂时做不到？'),
+    ],
+    artifacts:[artifact('v1_photo','上传V1低保真原型照片')],
+    ai_instruction:'AI设计助手可用于解释材料/结构、分析具体制作困难或比较可行做法；制作时无需为了聊天停下手中的操作。',
+    prompt_context:'正式主项目W4：低保真V1制作。原型只需能测试关键功能，不要求精致成品。共同材料银行与W3一致：瓦楞纸板/卡纸、EVA或海绵、布或毛毡、木棒、纸吸管、橡皮筋、宽松紧带、魔术贴、绳、胶带/双面胶、小夹子；测试工具为铅笔、蜡笔、马克笔或小画笔。任务事实与学生实际制作情况优先；不得虚构学生没有报告的材料、结构或测试结果。',
   },
   {
     id:'W5', order:5, date:'10/19',
-    title:'辅助绘画装置：测试V1', subtitle:'用证据找出真正需要改进的地方',
+    title:'辅助绘画装置：测试V1并解释证据', subtitle:'测试不是打分｜先记录发生了什么，再判断为什么',
     student_label:'第5课 · 正式主项目', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false, carry_from:'W4',
-    brief:['测试V1，记录发生了什么，而不是只写“好/不好”。','依据原有设计条件和使用者需要判断问题。'],
-    requirements:['写清测试目标与实际结果。','至少记录1—2个关键问题。','保存测试证据。'],
-    fields:[field('test_goal','这次测试主要想检查什么？'),field('test_result','测试中实际发生了什么？'),field('key_problems','下一步最需要解决的1—2个问题')],
-    artifacts:[artifact('test_evidence','上传测试记录 / 关键现象照片')],
-    prompt_context:'V1测试阶段。AI应帮助学生基于实际测试证据判断问题，不虚构测试结果。',
+    brief:[
+      '用同一套功能测试逻辑检查V1：装置能否稳定固定绘画工具、安装/取下是否方便、使用时是否出现明显滑动/松脱，以及是否存在安全或结构问题。不要用捆手、限制手指等方式“模拟残障”。',
+      '先记录真实现象，再根据原有criteria/constraints判断哪个问题最值得修改。',
+      '测试产生的新证据，是后续继续向AI提问和修改方案的依据。',
+    ],
+    requirements:[
+      '写清测试目标、操作方式和实际结果。',
+      '至少记录1—2个可观察的关键问题，区分“看到的现象”和“你的解释”。',
+      '保存测试证据；AI可以帮助分析证据，但不能替你编造没有发生的结果。',
+    ],
+    fields:[
+      field('test_goal','这次测试主要想检查什么？'),
+      field('test_result','测试中实际发生了什么？请先写可观察事实。'),
+      field('test_interpretation','你认为这些现象说明了什么？哪些解释还不能确定？'),
+      field('key_problems','下一步最需要解决的1—2个问题是什么？为什么？'),
+    ],
+    artifacts:[artifact('test_evidence','上传V1测试记录 / 关键现象照片')],
+    ai_instruction:'AI设计助手可用于分析你已经记录的测试现象、比较可能原因和修改方向；不要把AI生成的假设当成真实测试结果。',
+    prompt_context:'正式主项目W5：V1测试与证据解释。只依据学生提供的实际测试现象帮助分析，不得虚构测试结果；需要区分观察事实、解释和待验证假设。',
   },
   {
     id:'W6', order:6, date:'10/26',
-    title:'辅助绘画装置：制定修改计划', subtitle:'从测试证据出发决定V2怎么改',
+    title:'辅助绘画装置：基于证据制定V2修改计划', subtitle:'证据 → 判断 → 修改决定',
     student_label:'第6课 · 正式主项目', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false, carry_from:'W5',
-    brief:['重新查看V1测试证据。','决定保留什么、修改什么，以及修改依据。'],
-    requirements:['每个重要修改尽量对应测试证据或使用者需要。','形成清楚的V2修改计划。'],
-    fields:[field('keep','哪些部分准备保留？为什么？'),field('revise','哪些部分准备修改？依据是什么？'),field('revision_plan','V2修改计划')],
+    brief:[
+      '重新查看V1的测试证据和原有设计标准。',
+      '决定哪些部分保留、哪些部分修改，并解释每一个重要修改为什么值得做。',
+      '这是本项目最重要的“依据证据做决定”阶段之一。',
+    ],
+    requirements:[
+      '每个重要修改尽量对应一条测试证据、使用者需要或设计标准。',
+      '不要一次改掉所有东西；优先处理最影响核心功能的问题。',
+      '形成清楚、下一节能够直接实施的V2修改计划。',
+    ],
+    fields:[
+      field('keep','哪些部分准备保留？对应什么证据或标准？'),
+      field('revise','哪些部分准备修改？对应什么测试问题？'),
+      field('revision_options','至少比较两种可能的修改办法：各自有什么优点和风险？'),
+      field('revision_plan','最终决定怎样改成V2？为什么选这个办法？'),
+    ],
     artifacts:[artifact('revision_plan_image','上传修改计划草图 / 标注图',{required:false})],
-    prompt_context:'根据V1测试证据制定V2修改计划。支持应促进“证据—判断—修改决定”的联系。',
+    ai_instruction:'AI设计助手可用于解释证据、比较修改方案、检查理由是否充分；最终修改选择由你完成。',
+    prompt_context:'正式主项目W6：基于V1证据制定V2修改计划。重点是把测试证据、设计判断和修改决定连接起来；修改方案仍应优先在共同材料银行内可实现。',
   },
   {
     id:'W7', order:7, date:'11/16',
-    title:'辅助绘画装置：制作V2', subtitle:'按修改计划实施关键改进',
+    title:'辅助绘画装置：制作V2关键改进', subtitle:'按修改计划做实质变化｜仍以可测试为目标',
     student_label:'第7课 · 正式主项目', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false, carry_from:'W6',
-    brief:['根据修改计划完成第二版原型（V2）。','制作过程中可以调整计划，但要说明为什么。'],
-    requirements:['至少完成一个基于测试证据的实质修改。','记录与V1相比最重要的变化。','保存V2照片。'],
-    fields:[field('major_change','V2相较V1最重要的变化是什么？'),field('change_reason','为什么这样改？')],
-    artifacts:[artifact('v2_photo','上传V2原型照片')],
-    prompt_context:'V2制作阶段。AI应围绕学生已有修改计划和实际制作困难回应。',
+    brief:[
+      '根据W6的修改计划完成第二版原型（V2）。',
+      '只要关键改进能够实施和再次测试即可，不需要把时间花在装饰和精加工上。',
+    ],
+    requirements:[
+      '至少完成一个基于V1测试证据的实质修改。',
+      '如果制作过程中改变原计划，要说明出现了什么新情况。',
+      '保存V2照片；制作时AI是可用资源，但不要求为了聊天打断实际制作。',
+    ],
+    fields:[
+      field('major_change','V2相较V1最重要的变化是什么？'),
+      field('change_reason','这项变化对应哪条证据、需要或限制？'),
+      field('plan_change','制作中有没有改变W6计划？如果有，为什么？',{required:false}),
+    ],
+    artifacts:[artifact('v2_photo','上传V2低保真原型照片')],
+    ai_instruction:'AI设计助手可用于解决具体材料/结构问题或检查修改是否对应证据；制作时无需持续与AI交流。',
+    prompt_context:'正式主项目W7：V2制作。以落实关键修改并保持可测试性为目标，不追求成品化。',
   },
   {
     id:'W8', order:8, date:'11/23',
-    title:'辅助绘画装置：V2测试与正式完成', subtitle:'正式项目结束｜提交作品后完成后测',
+    title:'辅助绘画装置：V2再测试与项目总结', subtitle:'比较V1→V2证据｜提交后完成后测',
     student_label:'第8课 · 正式主项目', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false, carry_from:'W7', questionnaire_slot:'post', questionnaire_after_submit:true,
-    brief:['重新测试V2，并与V1比较。','根据证据说明修改解决了什么、还留下什么问题。','提交正式主项目作品后完成同一份学业求助意图后测。'],
-    requirements:['记录V2测试结果。','说明V1→V2发生了什么变化。','上传最终原型和必要测试证据。'],
-    fields:[field('v2_test_result','V2测试结果是什么？'),field('comparison','与V1相比，发生了什么变化？'),field('remaining_problem','如果还能继续改，你最想解决什么？',{required:false})],
-    artifacts:[artifact('final_prototype','上传最终原型 / V2测试照片')],
-    prompt_context:'正式主项目完成阶段。帮助应基于学生提供的实际测试证据，不能替学生虚构改善结果。',
+    brief:[
+      '使用与V1尽量一致的测试逻辑重新检查V2，并比较两版的证据。',
+      '说明哪些问题确实改善了、哪些仍然存在，以及证据是否足够支持你的判断。',
+      '提交正式主项目记录后完成学业求助意图后测。',
+    ],
+    requirements:[
+      '记录V2的实际测试结果。',
+      '用证据说明V1→V2发生了什么变化，不把“我觉得更好”当作唯一依据。',
+      '上传最终低保真原型和必要测试证据；不以外观精致程度作为研究重点。',
+    ],
+    fields:[
+      field('v2_test_result','V2测试中实际发生了什么？'),
+      field('comparison','与V1相比，哪些方面改善、没有改善或仍不能确定？请写依据。'),
+      field('remaining_problem','如果还能继续改，你最想解决什么？为什么？',{required:false}),
+      field('project_reflection','回看整个项目，哪一次证据或反馈最改变你的设计判断？',{required:false}),
+    ],
+    artifacts:[artifact('final_prototype','上传最终低保真原型 / V2测试照片')],
+    ai_instruction:'AI设计助手可用于比较V1/V2证据和梳理判断；AI不能替你虚构改进效果。',
+    prompt_context:'正式主项目W8：V2再测试、V1/V2证据比较与项目总结。只依据真实记录帮助判断，不得虚构改善结果。',
   },
   {
     id:'W9', order:9, date:'11/30',
@@ -328,6 +531,7 @@ export function hiddenAiContext(session) {
     `任务要求：${session.requirements.join(' ')}`,
     session.prompt_context || '',
     '共同事实约束：不得把课堂任务资料中未提供的具体数字、比例、时长、调查结果、效果量或研究结论当作已知事实编造。若资料不足，应明确说明“当前资料无法确认”，可以建议需要补充什么证据；如果只是提出假设或示例，必须明确标成假设/示例。实验组与对照组都遵守这一基础规则。',
-    '学生可以自主决定是否、何时使用AI。不要主动要求学生采用固定求助模板。',
+    session.ai_instruction ? `本节AI使用安排：${session.ai_instruction}` : 'AI使用安排以学生端本节要求为准。',
+    '不要主动诱导学生求助，也不要要求学生采用固定提问模板。',
   ].filter(Boolean).join('\n');
 }

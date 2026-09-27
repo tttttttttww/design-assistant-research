@@ -4,6 +4,7 @@ import {
   DEFAULT_SETTINGS, CONDITIONS, SCHEMA_VERSION, SESSIONS, getSessionConfig,
   aiVariantFor, hiddenAiContext, PROMPT_VERSION_FREE, PROMPT_VERSION_SUPPORTED,
   QUESTIONNAIRE_ITEMS, QUESTIONNAIRE_META, QUESTIONNAIRE_VERSION,
+  INTERVENTION_ORIENTATION, INTERVENTION_SUPPORT_CARDS,
 } from '../config/researchConfig.js';
 import { isTestParticipant, hashStudentName } from '../utils/validators.js';
 
@@ -21,6 +22,7 @@ const revPrefix = (id, sid) => `${sBase(id, sid)}/revisions/`;
 const revKey = (id, sid, index) => `${revPrefix(id, sid)}${String(index).padStart(5, '0')}.json`;
 const qKey = (id, slot) => `participants/${id}/questionnaires/${slot}.json`;
 const liveKey = (id, sid) => `${sBase(id, sid)}/live-trace.json`;
+const orientationKey = (id, sid) => `${sBase(id, sid)}/orientation.json`;
 
 function blankRecord(id, sid) {
   return {
@@ -169,6 +171,157 @@ class ResearchService {
   }
 
 
+  async getOrientation(id, sid) {
+    return parse(await storageService.getObject(orientationKey(id, sid)), null);
+  }
+
+  async orientationPublicState(id, sid) {
+    const session = getSessionConfig(sid);
+    if (!session || sid !== 'W3') return null;
+    const participant = await this.getParticipant(id);
+    const variant = aiVariantFor({ session, condition: participant.condition, isTest: participant.is_test });
+    if (!['supported','free'].includes(variant)) return null;
+    const mode = variant === 'supported' ? 'supported' : 'control';
+    const config = INTERVENTION_ORIENTATION[mode];
+    const stored = await this.getOrientation(id, sid);
+    return {
+      mode,
+      key: config.key,
+      title: config.title,
+      intro: config.intro,
+      cards: config.cards,
+      checks: config.checks || [],
+      acknowledgements: config.acknowledgements || [],
+      button: config.button,
+      started_at: stored?.started_at || null,
+      completed_at: stored?.completed_at || null,
+      duration_seconds: stored?.duration_seconds ?? null,
+      completed: Boolean(stored?.completed_at),
+    };
+  }
+
+  async startOrientation(id, sid) {
+    if (sid !== 'W3') throw Object.assign(new Error('当前课次没有平台学习环节。'), { status: 409 });
+    const participant = await this.getParticipant(id);
+    const session = getSessionConfig(sid);
+    const variant = aiVariantFor({ session, condition: participant.condition, isTest: participant.is_test });
+    if (!['supported','free'].includes(variant)) throw Object.assign(new Error('尚未完成分组，暂不能开始。'), { status: 409 });
+    const mode = variant === 'supported' ? 'supported' : 'control';
+    const config = INTERVENTION_ORIENTATION[mode];
+    const old = await this.getOrientation(id, sid);
+    const row = old || {
+      participant_id: id,
+      session_id: sid,
+      mode,
+      orientation_key: config.key,
+      started_at: iso(),
+      completed_at: null,
+      duration_seconds: null,
+      answers: {},
+      schema_version: SCHEMA_VERSION,
+    };
+    if (!row.started_at) row.started_at = iso();
+    await storageService.putObject(orientationKey(id, sid), JSON.stringify(row));
+    return row;
+  }
+
+  async completeOrientation(id, sid, answers = {}) {
+    const row = await this.startOrientation(id, sid);
+    if (row.completed_at) return row;
+    const config = INTERVENTION_ORIENTATION[row.mode];
+    const clean = {};
+    if (row.mode === 'supported') {
+      for (const item of config.checks || []) {
+        const v = Number(answers[item.id]);
+        if (!Number.isInteger(v) || v < 0 || v >= item.options.length) {
+          throw Object.assign(new Error('请先完成全部小练习。'), { status: 400 });
+        }
+        clean[item.id] = v;
+      }
+      const wrong = (config.checks || []).find(item => clean[item.id] !== Number(item.correct));
+      if (wrong) {
+        throw Object.assign(new Error('还有一题需要重新判断，请看完提示后再试一次。'), { status: 422 });
+      }
+    } else {
+      const ack = Array.isArray(answers.acknowledged) ? answers.acknowledged.map(Boolean) : [];
+      if (ack.length !== (config.acknowledgements || []).length || ack.some(v => !v)) {
+        throw Object.assign(new Error('请确认已经阅读全部平台操作说明。'), { status: 400 });
+      }
+      clean.acknowledged = ack;
+    }
+    row.answers = clean;
+    row.completed_at = iso();
+    row.duration_seconds = Math.max(0, Math.floor((Date.parse(row.completed_at) - Date.parse(row.started_at)) / 1000));
+    await storageService.putObject(orientationKey(id, sid), JSON.stringify(row));
+    await this.appendEvent(id, sid, 'orientation_completed', {
+      orientation_mode: row.mode,
+      orientation_key: row.orientation_key,
+      duration_seconds: row.duration_seconds,
+    });
+    return row;
+  }
+
+  async createProtectedPreW3Snapshot() {
+    const latestKey = 'protected-snapshots/pre-w3-latest.json';
+    const existing = parse(await storageService.getObject(latestKey), null);
+    if (existing?.prefix) return { ...existing, reused: true };
+
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const prefix = `protected-snapshots/pre-w3-${stamp}`;
+    const all = await storageService.listObjects('', 30000);
+    const keep = all.filter(row => {
+      const k = String(row.key || '');
+      return /^participants\/S(?:0[1-9]|[12]\d|30)\/sessions\/W[12]\//.test(k)
+        || /^uploads\/S(?:0[1-9]|[12]\d|30)\/W[12]\//.test(k);
+    });
+    let copied = 0;
+    for (const row of keep) {
+      const buf = await storageService.getObjectBuffer(row.key);
+      if (buf == null) continue;
+      await storageService.putObject(`${prefix}/raw/${row.key}`, buf);
+      copied += 1;
+    }
+    const meta = {
+      created_at: iso(),
+      prefix,
+      copied_objects: copied,
+      source_storage: storageService.describe(),
+      sessions: ['W1','W2'],
+      note: 'W1/W2 immutable pre-W3 safety snapshot. Raw object paths are preserved under raw/.',
+    };
+    await storageService.putObject(`${prefix}/meta.json`, JSON.stringify(meta, null, 2));
+    await storageService.putObject(latestKey, JSON.stringify(meta, null, 2));
+    return meta;
+  }
+
+  async protectedPreW3SnapshotInfo() {
+    return parse(await storageService.getObject('protected-snapshots/pre-w3-latest.json'), null);
+  }
+
+  async restoreProtectedPreW3SnapshotMissingOnly() {
+    const meta = await this.protectedPreW3SnapshotInfo();
+    if (!meta?.prefix) throw Object.assign(new Error('尚未创建W1/W2安全快照。'), { status: 404 });
+    const rows = await storageService.listObjects(`${meta.prefix}/raw/`, 30000);
+    let restored = 0, skipped = 0;
+    const rawPrefix = `${meta.prefix}/raw/`;
+    for (const row of rows) {
+      const originalKey = String(row.key || '').slice(rawPrefix.length);
+      if (!originalKey) continue;
+      const current = await storageService.getObjectBuffer(originalKey);
+      if (current != null) { skipped += 1; continue; }
+      const buf = await storageService.getObjectBuffer(row.key);
+      if (buf == null) continue;
+      await storageService.putObject(originalKey, buf);
+      restored += 1;
+    }
+    await storageService.putObject(
+      `protected-snapshots/restore-audit/${new Date().toISOString().replace(/[:.]/g,'-')}.json`,
+      JSON.stringify({ restored_at: iso(), source_prefix: meta.prefix, restored, skipped }, null, 2)
+    );
+    return { restored, skipped, source_prefix: meta.prefix };
+  }
+
+
   async getQuestionnaire(id, slot) {
     if (!['pre','post'].includes(slot)) throw Object.assign(new Error('问卷阶段无效'), { status: 400 });
     return parse(await storageService.getObject(qKey(id, slot)), null);
@@ -226,6 +379,15 @@ class ResearchService {
     const participant = await this.getParticipant(id);
     const session = getSessionConfig(sid);
     if (!session) throw Object.assign(new Error('课次不存在'), { status: 404 });
+    if (session.ai_mode === 'condition' && !participant.is_test && participant.condition === 'unassigned') {
+      throw Object.assign(new Error('正式课次尚未完成随机分组，请联系老师。'), { status: 409 });
+    }
+    if (sid === 'W3') {
+      const orientation = await this.orientationPublicState(id, sid);
+      if (orientation && !orientation.completed) {
+        throw Object.assign(new Error('请先完成进入正式任务前的平台小练习。'), { status: 409 });
+      }
+    }
     if (session.require_questionnaire_before_task) {
       const pre = await this.getQuestionnaire(id, 'pre');
       if (!pre?.submitted_at) throw Object.assign(new Error('请先完成前测问卷。'), { status: 409 });
@@ -564,20 +726,25 @@ class ResearchService {
       pre: await this.questionnairePublicState(id, 'pre'),
       post: await this.questionnairePublicState(id, 'post'),
     };
+    const ai_variant = aiVariantFor({ session, condition: participant.condition, isTest: participant.is_test });
+    const orientation = await this.orientationPublicState(id, session.id);
     let task_gate = '';
+    let learning_gate = '';
     if (session.require_questionnaire_before_task && !questionnaire.pre.submitted) task_gate = 'questionnaire_pre';
-    else if (session.require_questionnaire_before_task && !participant.is_test && participant.condition === 'unassigned') task_gate = 'awaiting_assignment';
-    const record = task_gate ? await this.getSessionRecord(id, session.id) : await this.ensureStarted(id, session.id);
-    if (session.questionnaire_after_submit && record.submitted_at && !questionnaire.post.submitted) task_gate = 'questionnaire_post';
-    const chat = session.ai_mode === 'none' || task_gate ? null : await this.getChatSession(id, session.id);
-    const messages = session.ai_mode === 'none' || task_gate ? [] : await this.getMessages(id, session.id);
+    else if (session.ai_mode === 'condition' && !participant.is_test && participant.condition === 'unassigned') task_gate = 'awaiting_assignment';
+    if (!task_gate && orientation && !orientation.completed) learning_gate = 'orientation';
+    const record = (task_gate || learning_gate) ? await this.getSessionRecord(id, session.id) : await this.ensureStarted(id, session.id);
+    if (!learning_gate && session.questionnaire_after_submit && record.submitted_at && !questionnaire.post.submitted) task_gate = 'questionnaire_post';
+    const chat = session.ai_mode === 'none' || task_gate || learning_gate ? null : await this.getChatSession(id, session.id);
+    const messages = session.ai_mode === 'none' || task_gate || learning_gate ? [] : await this.getMessages(id, session.id);
     let carry = null;
     if (session.carry_from) carry = await this.getSessionRecord(id, session.carry_from);
     const publicParticipant = { ...participant };
     delete publicParticipant.login_name_hash;
     return {
-      settings, participant: publicParticipant, session, record, questionnaire, task_gate,
-      ai_variant: aiVariantFor({ session, condition: participant.condition, isTest: participant.is_test }),
+      settings, participant: publicParticipant, session, record, questionnaire, task_gate, learning_gate, orientation,
+      support_card: ai_variant === 'supported' ? (INTERVENTION_SUPPORT_CARDS[session.id] || null) : null,
+      ai_variant,
       chat_session: chat, chat_messages: messages,
       carry_from: session.carry_from ? { session: getSessionConfig(session.carry_from), record: carry } : null,
     };

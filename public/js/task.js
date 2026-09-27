@@ -190,14 +190,20 @@ function artifactHtml(a, meta){
   return `<div class="upload-card"><strong>${esc(a.label)} ${req}</strong><p class="small">${esc(a.helper)}</p>${src?`<div class="upload-preview"><img src="${src}" alt="已上传"></div>`:''}<div class="row" style="margin-top:12px"><input type="file" data-artifact="${esc(a.key)}" accept="image/jpeg,image/png,image/webp" ${state.record.submitted_at?'disabled':''}><span class="small" data-upload-status="${esc(a.key)}">${src?'已上传 ✓':''}</span></div></div>`;
 }
 
+function supportCardHtml(){
+  const c=state?.support_card;
+  if(!c) return '';
+  return `<section class="card support-reminder-card"><span class="eyebrow">任务中的小提醒</span><h3>${esc(c.title||'AI求助提醒')}</h3><ul>${(c.lines||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section>`;
+}
 function chatPanel(){
-  if(state.session.ai_mode==='none') return `<section class="card sticky-card"><span class="eyebrow">本节无需AI</span><h2>专注整理与反思</h2><p class="small">本节没有AI对话入口。</p></section>`;
+  const reminder=supportCardHtml();
+  if(state.session.ai_mode==='none') return `${reminder}<section class="card sticky-card"><span class="eyebrow">本节无需AI</span><h2>专注整理与反思</h2><p class="small">本节没有AI对话入口。</p></section>`;
   const variantBlocked=state.ai_variant==='unassigned';
   const variantLabel=state.participant.is_test ? `S00测试预览：${state.ai_variant}` : 'AI设计助手';
   const requiredOnce=Boolean(state.session.ai_use_required_once);
   const policyText=state.session.ai_instruction || '本节任务中可以使用AI设计助手，也可以不使用。';
   const chatImageEnabled=state.session.chat_image_enabled!==false;
-  return `<section class="card sticky-card ai-card"><div class="row between"><div><span class="eyebrow">${esc(variantLabel)}</span><h2>AI设计助手</h2></div><span class="badge">${requiredOnce?'本节至少使用1次':'可选'}</span></div>
+  return `${reminder}<section class="card sticky-card ai-card"><div class="row between"><div><span class="eyebrow">${esc(variantLabel)}</span><h2>AI设计助手</h2></div><span class="badge">${requiredOnce?'本节至少使用1次':'可选'}</span></div>
     ${variantBlocked?'<div class="notice warn">本课已进入分组阶段，但当前编号还没有分组。请老师先在后台设置 A/B。</div>':`<p class="small">${esc(policyText)}</p>
     <button class="btn secondary" id="openAi">${state.record.first_ai_open_at?'继续使用AI':'打开AI助手'}</button>
     <div id="chatBox" class="chat-embed ${chatOpened?'':'hidden'}">
@@ -208,6 +214,56 @@ function chatPanel(){
       <div class="composer-tools"><label class="attach-btn ${state.record.submitted_at?'disabled':''}">＋ 添加草图 / 原型照片<input id="chatImage" type="file" accept="image/jpeg,image/png,image/webp" ${state.record.submitted_at?'disabled':''}></label><span class="small">每次最多1张，≤10MB</span></div>`:'<p class="small">本节不需要上传图片，请直接使用文字与AI交流。</p>'}
       <div class="composer-wrap"><textarea id="message" placeholder="输入你现在想问AI的内容……" ${state.record.submitted_at?'disabled':''}></textarea><button class="btn" id="send" ${state.record.submitted_at?'disabled':''}>发送</button></div>
     </div>`}</section>`;
+}
+
+
+function orientationHtml(){
+  const o=state?.orientation;
+  if(!o) return '<div class="notice warn">平台小练习暂时无法读取，请刷新页面。</div>';
+  const cards=(o.cards||[]).map(c=>`<article class="orientation-card"><h3>${esc(c.title||'')}</h3>${(c.body||[]).map(x=>`<p>${esc(x)}</p>`).join('')}${c.example_bad?`<div class="orientation-example muted-example">${esc(c.example_bad)}</div>`:''}${c.example_good?`<div class="orientation-example good-example">${esc(c.example_good)}</div>`:''}</article>`).join('');
+  let activity='';
+  if(o.mode==='supported'){
+    activity=`<div class="orientation-checks"><h3>快速判断</h3><p class="small">选完后再进入正式设计任务。</p>${(o.checks||[]).map((q,idx)=>`<fieldset class="orientation-question"><legend>${idx+1}. ${esc(q.question)}</legend>${(q.options||[]).map((opt,i)=>`<label><input type="radio" name="orientation_${esc(q.id)}" value="${i}"><span>${esc(opt)}</span></label>`).join('')}</fieldset>`).join('')}</div>`;
+  }else{
+    activity=`<div class="orientation-checks"><h3>确认一下</h3>${(o.acknowledgements||[]).map((x,i)=>`<label class="orientation-ack"><input type="checkbox" name="orientation_ack_${i}"><span>${esc(x)}</span></label>`).join('')}</div>`;
+  }
+  return `<div class="single-column-page"><section class="card orientation-shell"><span class="eyebrow">正式任务开始前</span><h1>${esc(o.title||'平台小练习')}</h1><p class="lead">${esc(o.intro||'')}</p><div class="orientation-grid">${cards}</div>${activity}<div id="orientationError" class="notice warn hidden"></div><button class="btn orange" id="completeOrientation" type="button">${esc(o.button||'进入设计任务')}</button></section></div>`;
+}
+async function startOrientationIfNeeded(){
+  if(!state?.learning_gate || state?.orientation?.started_at) return;
+  try{
+    const r=await App.api('/session/orientation/start',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id})});
+    if(r?.orientation) state.orientation={...state.orientation,started_at:r.orientation.started_at||state.orientation.started_at};
+  }catch(e){
+    const box=document.getElementById('orientationError'); if(box){box.textContent=e.message;box.classList.remove('hidden');}
+  }
+}
+async function completeOrientation(){
+  const o=state?.orientation; if(!o) return;
+  const answers={};
+  if(o.mode==='supported'){
+    for(const q of o.checks||[]){
+      const checked=document.querySelector(`input[name="orientation_${q.id}"]:checked`);
+      if(!checked){ const box=document.getElementById('orientationError'); box.textContent='请先完成全部快速判断。'; box.classList.remove('hidden'); return; }
+      answers[q.id]=Number(checked.value);
+    }
+  }else{
+    answers.acknowledged=(o.acknowledgements||[]).map((_,i)=>Boolean(document.querySelector(`input[name="orientation_ack_${i}"]`)?.checked));
+    if(answers.acknowledged.some(v=>!v)){ const box=document.getElementById('orientationError'); box.textContent='请先确认已经阅读全部平台操作说明。'; box.classList.remove('hidden'); return; }
+  }
+  const btn=document.getElementById('completeOrientation');
+  try{
+    btn.disabled=true; btn.textContent='正在进入任务…';
+    await App.api('/session/orientation/complete',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,answers})});
+    await load();
+  }catch(e){
+    const box=document.getElementById('orientationError'); box.textContent=e.message; box.classList.remove('hidden');
+    btn.disabled=false; btn.textContent=o.button||'进入设计任务';
+  }
+}
+function wireOrientation(){
+  document.getElementById('completeOrientation')?.addEventListener('click',completeOrientation);
+  startOrientationIfNeeded();
 }
 
 
@@ -237,7 +293,7 @@ async function submitQuestionnaire(slot){
 function gateHtml(){
   if(state.task_gate==='questionnaire_pre') return `<div class="single-column-page">${questionnaireHtml('pre')}</div>`;
   if(state.task_gate==='questionnaire_post') return `<div class="single-column-page"><section class="card"><span class="eyebrow">W8正式项目已提交</span><h2>最后一步：完成后测问卷</h2><p>完成后测后，本阶段数据才完整。</p></section>${questionnaireHtml('post')}</div>`;
-  if(state.task_gate==='awaiting_assignment') return `<div class="single-column-page"><section class="card"><span class="eyebrow">前测已完成</span><h1>等待老师完成随机分组</h1><p class="lead">请先不要使用其他AI。老师完成分组后，点击下面按钮进入正式任务。</p><button class="btn" id="refreshAssignment">刷新分组状态</button></section></div>`;
+  if(state.task_gate==='awaiting_assignment') return `<div class="single-column-page"><section class="card"><span class="eyebrow">正式任务尚未开放</span><h1>等待系统完成随机分组</h1><p class="lead">老师切换到W3后，平台会自动按年级完成分组。完成后点击下面按钮进入正式任务。</p><button class="btn" id="refreshAssignment">刷新分组状态</button></section></div>`;
   return '';
 }
 
@@ -327,6 +383,11 @@ async function revealBonusUpdate(){
 function render(){
   const s=state.session,r=state.record;
   document.title=`${s.id} ${s.title}`;
+  if(state.learning_gate==='orientation'){
+    document.getElementById('app').innerHTML=`<div class="course-header"><span class="eyebrow">${esc(s.id)} · ${esc(s.date)}</span><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div></div>${orientationHtml()}`;
+    wireOrientation();
+    return;
+  }
   if(state.task_gate){
     document.getElementById('app').innerHTML=`<div class="course-header"><span class="eyebrow">${esc(s.id)} · ${esc(s.date)}</span><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div></div>${gateHtml()}`;
     if(document.getElementById('questionnaireForm')) document.getElementById('questionnaireForm').onsubmit=e=>{e.preventDefault();submitQuestionnaire(state.task_gate==='questionnaire_post'?'post':'pre');};

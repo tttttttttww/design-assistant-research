@@ -30,6 +30,27 @@ router.get('/session/current', async (req, res) => {
   } catch (e) { res.status(e.status || 500).json({ error: e.message || '读取任务失败' }); }
 });
 
+
+router.post('/session/orientation/start', async (req, res) => {
+  try {
+    const id = pid(req); if (!guard(id, res)) return;
+    const sid = String(req.body?.sessionId || '').toUpperCase();
+    const settings = await cohortGuard(req, id, res); if (!settings) return;
+    if (!settings.session_open || settings.active_session_id !== sid) return res.status(409).json({ error: '当前不是这个课次。' });
+    res.json({ orientation: await researchService.startOrientation(id, sid) });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message || '开始平台小练习失败' }); }
+});
+
+router.post('/session/orientation/complete', async (req, res) => {
+  try {
+    const id = pid(req); if (!guard(id, res)) return;
+    const sid = String(req.body?.sessionId || '').toUpperCase();
+    const settings = await cohortGuard(req, id, res); if (!settings) return;
+    if (!settings.session_open || settings.active_session_id !== sid) return res.status(409).json({ error: '当前不是这个课次。' });
+    res.json({ orientation: await researchService.completeOrientation(id, sid, req.body?.answers || {}) });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message || '提交平台小练习失败' }); }
+});
+
 router.post('/session/save', async (req, res) => {
   try {
     const id = pid(req); if (!guard(id, res)) return;
