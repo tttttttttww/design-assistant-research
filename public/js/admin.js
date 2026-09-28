@@ -67,6 +67,8 @@ async function loadSettings() {
   f.active_session_id.value = settings.active_session_id;
   f.session_open.checked = Boolean(settings.session_open);
   f.questionnaire_enabled.checked = Boolean(settings.questionnaire_enabled);
+  f.active_session_locked.checked = Array.isArray(settings.locked_session_ids) && settings.locked_session_ids.includes(settings.active_session_id);
+  f.active_session_id.onchange = () => { f.active_session_locked.checked = Array.isArray(settings.locked_session_ids) && settings.locked_session_ids.includes(f.active_session_id.value); };
   document.getElementById('activeSessionBadge').textContent = `当前：${settings.active_session_id} · ${sessions.find(s => s.id === settings.active_session_id)?.title || ''}`;
   renderSessionCards();
 }
@@ -77,7 +79,7 @@ document.getElementById('settingsForm').onsubmit = async e => {
     if(f.active_session_id.value==='W3' && f.session_open.checked && settings?.active_session_id!=='W3'){
       if(!confirm('正式开放 W3 会先自动创建 W1/W2 安全快照，并按年级随机 A/B。确认继续吗？')) return;
     }
-    const r = await api('/settings', { method: 'POST', body: JSON.stringify({ active_session_id: f.active_session_id.value, session_open: f.session_open.checked, questionnaire_enabled: f.questionnaire_enabled.checked }) });
+    const r = await api('/settings', { method: 'POST', body: JSON.stringify({ active_session_id: f.active_session_id.value, session_open: f.session_open.checked, questionnaire_enabled: f.questionnaire_enabled.checked, active_session_locked: f.active_session_locked.checked }) });
     if(r?.auto_randomization?.already_assigned) alert(`设置已保存。正式组别已存在：A组 ${r.auto_randomization.totals.A} 人，B组 ${r.auto_randomization.totals.B} 人，系统未重新分组。`);
     else if(r?.auto_randomization?.totals) alert(`设置已保存。已自动按年级分层随机分组：A组 ${r.auto_randomization.totals.A} 人，B组 ${r.auto_randomization.totals.B} 人；同时已创建W1/W2安全快照。`);
     else alert('设置已保存');
@@ -171,7 +173,7 @@ async function confirmRosterImport() {
 
 async function replaceRosterImport() {
   if (!rosterPreviewData?.ready_for_full_import) return;
-  const first = confirm(`这是“换一批学生”操作：会清空 S01–S30 现有任务文字、作品、AI聊天和相关图片，再导入当前30人。S00不会清空。
+  const first = confirm(`这是“换一批学生”操作：会清空 S01–S30 现有任务文字、作品、AI聊天和相关图片，再导入当前30人。S00/S99测试号不会清空。
 
 如果旧数据需要保留，请先到“数据导出”下载备份。
 
@@ -190,7 +192,7 @@ async function replaceRosterImport() {
       condition: r.condition,
     }));
     const r = await api('/participants/roster-replace', { method: 'POST', body: JSON.stringify({ rows: payloadRows, confirm: 'REPLACE S01-S30' }) });
-    rosterPreviewBox.innerHTML = `<div class="notice roster-ready"><strong>整批学生更换完成：</strong>${r.imported_count} 人。旧 S01–S30 活跃任务/作品/聊天/图片已清空，S00 保留；为防止旧页面继续写入，当前课次已自动关闭，请确认无误后再到“课堂设置”重新开放。</div>`;
+    rosterPreviewBox.innerHTML = `<div class="notice roster-ready"><strong>整批学生更换完成：</strong>${r.imported_count} 人。旧 S01–S30 活跃任务/作品/聊天/图片已清空，S00/S99 保留；为防止旧页面继续写入，当前课次已自动关闭，请确认无误后再到“课堂设置”重新开放。</div>`;
     rosterPreviewData = null;
     rosterFile.value = '';
     document.getElementById('rosterFileName').textContent = '已完成整批更换';
@@ -247,7 +249,7 @@ async function loadParticipants() {
   const rosterNotice = rosterReady === formal.length
     ? `<div class="notice roster-ready"><strong>姓名校验名单已就绪：</strong>${rosterReady}/${formal.length}。学生需要“编号 + 姓名”同时匹配才能进入。</div>`
     : `<div class="notice warn roster-warning"><strong>上课前还要完成姓名校验名单：</strong>目前 ${rosterReady}/${formal.length} 已设置。未设置姓名的正式编号将无法登录。</div>`;
-  document.getElementById('participantTable').innerHTML = `${rosterNotice}<div class="table-wrap"><table class="admin-table"><thead><tr><th>编号</th><th>姓名校验</th><th>年级</th><th>condition</th><th>进入任务</th><th>首次打开AI</th><th>首次发消息</th><th>学生消息</th><th>聊天图片</th><th>任务图片</th><th>提交</th><th>操作</th></tr></thead><tbody>${rows.map(x => `<tr data-id="${x.participant_id}" class="p-row ${selectedParticipantId === x.participant_id ? 'selected-row' : ''}"><td><button class="participant-link view-detail" data-id="${x.participant_id}" type="button"><strong>${x.participant_id}</strong></button>${x.is_test ? ' <span class="badge">测试</span>' : ''}</td><td>${x.is_test ? '<span class="small">S00免校验</span>' : (x.login_name_ready ? '<span class="badge">已设置</span>' : '<span class="small warn-text">未设置</span>')}</td><td>${esc(x.grade || '')}</td><td>${esc(x.condition)}</td><td>${badge(x.started)}</td><td>${fmtSeconds(x.first_ai_open_latency_seconds)}</td><td>${fmtSeconds(x.first_user_message_latency_seconds)}</td><td>${x.user_turn_count}</td><td>${x.chat_image_count || 0}</td><td>${x.artifact_count || 0}</td><td>${badge(x.submitted)}</td><td class="reset-cell"><div class="row action-row"><button class="btn ghost mini view-detail" data-id="${x.participant_id}" type="button">查看记录</button><button class="btn danger ghost mini reset-current" data-id="${x.participant_id}" type="button">重置本课次</button></div></td></tr>`).join('')}</tbody></table></div>`;
+  document.getElementById('participantTable').innerHTML = `${rosterNotice}<div class="table-wrap"><table class="admin-table"><thead><tr><th>编号</th><th>姓名校验</th><th>年级</th><th>condition</th><th>进入任务</th><th>首次打开AI</th><th>首次发消息</th><th>学生消息</th><th>聊天图片</th><th>任务图片</th><th>提交</th><th>操作</th></tr></thead><tbody>${rows.map(x => `<tr data-id="${x.participant_id}" class="p-row ${selectedParticipantId === x.participant_id ? 'selected-row' : ''}"><td><button class="participant-link view-detail" data-id="${x.participant_id}" type="button"><strong>${x.participant_id}</strong></button>${x.is_test ? ' <span class="badge">测试</span>' : ''}</td><td>${x.is_test ? '<span class="small">教师测试号 · 免校验</span>' : (x.login_name_ready ? '<span class="badge">已设置</span>' : '<span class="small warn-text">未设置</span>')}</td><td>${esc(x.grade || '')}</td><td>${esc(x.condition)}</td><td>${badge(x.started)}</td><td>${fmtSeconds(x.first_ai_open_latency_seconds)}</td><td>${fmtSeconds(x.first_user_message_latency_seconds)}</td><td>${x.user_turn_count}</td><td>${x.chat_image_count || 0}</td><td>${x.artifact_count || 0}</td><td>${badge(x.submitted)}</td><td class="reset-cell"><div class="row action-row"><button class="btn ghost mini view-detail" data-id="${x.participant_id}" type="button">查看记录</button><button class="btn danger ghost mini reset-current" data-id="${x.participant_id}" type="button">重置本课次</button></div></td></tr>`).join('')}</tbody></table></div>`;
   document.querySelectorAll('.p-row').forEach(tr => tr.onclick = e => {
     if (e.target.closest('button')) return;
     selectLiveParticipant(tr.dataset.id, true);
@@ -294,7 +296,7 @@ function renderLiveParticipantList(){
   });
   const formalCount=ordered.filter(x=>!x.is_test).length;
   const testCount=ordered.filter(x=>x.is_test).length;
-  const toolbar=`<div class="live-list-toolbar"><strong>${formalCount}名正式学生${testCount?` + S00测试`:''}</strong><span class="small">上下滚动查看全部账号</span></div>`;
+  const toolbar=`<div class="live-list-toolbar"><strong>${formalCount}名正式学生${testCount?` + ${testCount}个测试号`:''}</strong><span class="small">上下滚动查看全部账号</span></div>`;
   box.innerHTML=toolbar+(ordered.map(x=>{
     const [label,cls]=liveStatusMeta(x.live_status);
     const gradeText=x.is_test?'测试账号':`${esc(x.grade||'—')}年级`;
@@ -503,7 +505,7 @@ async function resetOne(id, sid) {
 async function resetAllCurrent() {
   const sid = settings?.active_session_id;
   if (!sid) return;
-  const first = confirm(`这是批量操作：将重置 ${sid} 的 S00–S30 当前课次记录。\n\n适合正式上课前清除测试/误触数据。每个有活动的数据都会先自动归档。是否继续？`);
+  const first = confirm(`这是批量操作：将重置 ${sid} 的 S00、S99及S01–S30当前课次记录。\n\n适合正式上课前清除测试/误触数据。每个有活动的数据都会先自动归档。是否继续？`);
   if (!first) return;
   const typed = prompt(`为防止误删，请输入：RESET ${sid}`, '');
   if (typed !== `RESET ${sid}`) { alert('输入不一致，已取消。'); return; }
@@ -562,8 +564,8 @@ async function detail(id, scroll = false) {
       return `<details class="answer-block session-detail ${hasData ? 'has-data' : 'no-data'}" ${shouldOpen ? 'open' : ''}><summary><strong>${s.id} ${esc(s.title)}</strong> ${hasData ? '<span class="badge">有记录</span>' : '<span class="small">暂无记录</span>'} ${r.submitted_at ? '<span class="badge">已提交</span>' : ''}</summary><p class="small">AI变体：${esc(r.ai_variant || x.chat_session?.ai_variant || '—')} ｜首次打开：${fmtSeconds(r.first_ai_open_latency_seconds)} ｜首次发消息：${fmtSeconds(r.first_user_message_latency_seconds)} ｜打开次数：${r.ai_open_count || 0} ｜聊天图片：${chatImages} ｜文本版本：${(x.revisions||[]).length}</p><h4>任务文字记录</h4>${textEntries.length ? textEntries.map(([k, v]) => `<div class="record-field"><strong>${esc(fieldLabels[k] || k)}</strong><div class="record-text">${esc(v)}</div></div>`).join('') : '<p class="small empty-record">暂无任务文字记录</p>'}<h4>任务作品 / 证据图片</h4>${arts.length ? `<div class="photo-grid">${arts.map(([k, p]) => taskImage(id, s.id, k, p, artifactLabels[k] || k)).join('')}</div>` : '<p class="small empty-record">暂无任务作品图片</p>'}<h4>AI聊天</h4>${messages(id, s.id, x.chat_messages)}${revisions(x.revisions||[])}${events(x.events)}<div class="row" style="margin-top:12px"><button class="btn danger ghost mini reset-session-detail" data-id="${id}" data-sid="${s.id}" type="button">重置这一课次</button></div></details>`;
     }).join('');
 
-    detailBox.innerHTML = `<div class="row between detail-heading"><div><span class="eyebrow">学生完整数据</span><h2>${id}${d.participant.is_test ? ' · S00测试号' : ''}</h2><p class="small">已读取该编号13周的任务文字、作品图片、问卷、AI完整对话、聊天图片、任务文本版本历史和时间戳。有数据的课次会自动展开。</p></div><button class="btn ghost mini" id="refreshDetail" type="button">刷新此学生记录</button></div>
-      <div class="section"><h3>基本信息</h3><div class="grid two"><label>年级<input id="grade" value="${esc(d.participant.grade || '')}"></label><label>condition<select id="condition"><option value="unassigned">unassigned</option><option value="A">A · 支持型AI</option><option value="B">B · 自由AI</option></select></label></div>${d.participant.is_test ? '<p class="small">S00 是教师测试号，不要求姓名校验。</p>' : `<label class="name-reset-label">登录姓名校验 <span class="small">${d.participant.login_name_hash ? '已设置。出于隐私，系统不保存也不显示姓名明文；如需更正，在下框重新输入。' : '尚未设置，学生现在无法用该编号登录。'}</span><input id="loginName" placeholder="输入姓名后保存；留空表示不修改" autocomplete="off"></label>`}<button class="btn secondary" id="saveMeta">保存</button></div>
+    detailBox.innerHTML = `<div class="row between detail-heading"><div><span class="eyebrow">学生完整数据</span><h2>${id}${d.participant.is_test ? ' · 教师测试号' : ''}</h2><p class="small">已读取该编号13周的任务文字、作品图片、问卷、AI完整对话、聊天图片、任务文本版本历史和时间戳。有数据的课次会自动展开。</p></div><button class="btn ghost mini" id="refreshDetail" type="button">刷新此学生记录</button></div>
+      <div class="section"><h3>基本信息</h3><div class="grid two"><label>年级<input id="grade" value="${esc(d.participant.grade || '')}"></label><label>condition<select id="condition"><option value="unassigned">unassigned</option><option value="A">A · 支持型AI</option><option value="B">B · 自由AI</option></select></label></div>${d.participant.is_test ? '<p class="small">该编号是教师测试号，不要求姓名校验。S00=实验组，S99=对照组。</p>' : `<label class="name-reset-label">登录姓名校验 <span class="small">${d.participant.login_name_hash ? '已设置。出于隐私，系统不保存也不显示姓名明文；如需更正，在下框重新输入。' : '尚未设置，学生现在无法用该编号登录。'}</span><input id="loginName" placeholder="输入姓名后保存；留空表示不修改" autocomplete="off"></label>`}<button class="btn secondary" id="saveMeta">保存</button></div>
       <div class="section"><h3>问卷</h3><div class="grid two"><div class="answer-block"><strong>W8后测（当前正式分析）</strong><p class="small">${d.questionnaires?.post?.submitted_at?`已提交：${esc(d.questionnaires.post.submitted_at)}｜IHS=${esc(d.questionnaires.post.scores?.instrumental_mean??'')} EHS=${esc(d.questionnaires.post.scores?.executive_mean??'')} AHS=${esc(d.questionnaires.post.scores?.avoidance_mean??'')}`:'未提交'}</p></div><div class="answer-block"><strong>历史前测（如曾测试）</strong><p class="small">${d.questionnaires?.pre?.submitted_at?`保留但不进入当前正式分析：${esc(d.questionnaires.pre.submitted_at)}`:'无'}</p></div></div></div><div class="section"><h3>13周完整记录</h3>${sessionHtml}</div>`;
     document.getElementById('condition').value = d.participant.condition || 'unassigned';
     document.getElementById('refreshDetail').onclick = () => detail(id, false);

@@ -1,0 +1,1 @@
+CHECK OK v11.29: auto stratified grouping + platform intervention learning + supported/free routing + protected W1/W2 snapshot + process-evidence export.

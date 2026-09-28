@@ -1,15 +1,24 @@
-export const SCHEMA_VERSION = 19;
-export const PROMPT_VERSION_FREE = 'free-ai-v5-common-base-natural-response';
-export const PROMPT_VERSION_SUPPORTED = 'help-seeking-support-v9-platform-learning';
+export const SCHEMA_VERSION = 20;
+export const PROMPT_VERSION_FREE = 'free-ai-v7-natural-general-llm';
+export const PROMPT_VERSION_SUPPORTED = 'help-seeking-support-v11-natural-response';
 export const QUESTIONNAIRE_VERSION = 'li-help-seeking-intention-genai-v2-minimal-adaptation';
 
 export const CONDITIONS = ['unassigned', 'A', 'B'];
+
+export const COMMON_AI_RESPONSE_RULES = [
+  '面向初中生回答，语言清楚、自然、准确，避免无关的长篇铺陈和重复任务说明。',
+  '回答长度由学生当前问题决定：简单问题可以很短，复杂问题可以适当展开；不强制80—160字、不固定3点、不为了格式而拆分。',
+  '实验组与对照组共享同一任务资料、事实边界、图片能力和基础语气；共同规则不教授任何学业求助策略。',
+  '前期学生访谈/试用反馈仅用于改进可读性与平台体验，不把“固定短回复”作为实验处理。',
+];
+
 
 export const DEFAULT_SETTINGS = {
   active_session_id: 'W2',
   session_open: true,
   questionnaire_enabled: true,
   cohort_revision: 'cohort-initial',
+  locked_session_ids: [],
 };
 
 
@@ -516,7 +525,7 @@ export function aiVariantFor({ session, condition, isTest = false }) {
   if (session.ai_mode === 'condition') {
     if (condition === 'A') return 'supported';
     if (condition === 'B') return 'free';
-    if (isTest) return 'free';
+    if (isTest) return condition === 'A' ? 'supported' : 'free';
     return 'unassigned';
   }
   return 'free';

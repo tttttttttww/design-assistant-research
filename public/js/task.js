@@ -10,6 +10,8 @@ let autoSaveTimer = null;
 let saveChain = Promise.resolve();
 let aiDraftTrace = { active:false, startedAt:0, maxChars:0, editCount:0, leftLogged:false };
 let revisitTimer = null, revisitLogged = false;
+let taskFieldTrace = null;
+let aiOpenTrace = { active:false, openedAt:0, messageCountAtOpen:0, sent:false, leftLogged:false };
 
 const esc = App.escapeHtml;
 const fmtLatency = v => v == null ? '—' : `${Math.floor(v/60)}分${v%60}秒`;
@@ -20,10 +22,13 @@ function postTraceEvent(type, data={}, {keepalive=false}={}){
   const rev=App.cohortRevision(); if(rev) headers['X-Cohort-Revision']=rev;
   const context=chatTaskContext();
   const field=(state?.session?.fields||[]).find(f=>f.key===context.field_key);
+  const lastAi=lastAssistantMessage();
   const traceData={
     task_field_key:context.field_key||'',
     task_field_label:field?.label||'',
     task_field_stage:field?.stage||'',
+    last_ai_message_id:lastAi?.message_id||'',
+    last_ai_message_at:lastAi?.created_at||'',
     ...data,
   };
   return fetch(`${App.apiBase}/session/event`,{
@@ -103,6 +108,43 @@ function markAiDraftLeft(reason='page_hidden', keepalive=false){
   aiDraftTrace.leftLogged=true;
   postTraceEvent('ai_draft_left_unsent',draftTraceData({current_chars:text.length,reason}),{keepalive});
 }
+
+function startTaskFieldTrace(el){
+  if(!el) return;
+  taskFieldTrace={key:String(el.dataset.field||''),startedAt:Date.now(),startChars:String(el.value||'').length,editCount:0};
+}
+function bumpTaskFieldTrace(el){
+  if(!el) return;
+  if(!taskFieldTrace || taskFieldTrace.key!==String(el.dataset.field||'')) startTaskFieldTrace(el);
+  taskFieldTrace.editCount=(taskFieldTrace.editCount||0)+1;
+}
+function endTaskFieldTrace(el, reason='blur'){
+  if(!el || !taskFieldTrace || taskFieldTrace.key!==String(el.dataset.field||'')) return;
+  const endChars=String(el.value||'').length;
+  postTraceEvent('task_field_interaction',{
+    field_key:taskFieldTrace.key,
+    duration_ms:Math.max(0,Date.now()-taskFieldTrace.startedAt),
+    start_chars:taskFieldTrace.startChars,
+    end_chars:endChars,
+    edit_count:taskFieldTrace.editCount||0,
+    changed:endChars!==taskFieldTrace.startChars || (taskFieldTrace.editCount||0)>0,
+    reason,
+  });
+  taskFieldTrace=null;
+}
+function markAiOpenStart(){
+  aiOpenTrace={active:true,openedAt:Date.now(),messageCountAtOpen:(state?.chat_messages||[]).length,sent:false,leftLogged:false};
+}
+function markAiOpenSent(){
+  if(!aiOpenTrace.active) return;
+  aiOpenTrace.sent=true;
+  postTraceEvent('ai_open_to_send',{duration_ms:Math.max(0,Date.now()-aiOpenTrace.openedAt),message_count_at_open:aiOpenTrace.messageCountAtOpen});
+}
+function markAiOpenLeft(reason='page_hidden', keepalive=false){
+  if(!aiOpenTrace.active || aiOpenTrace.sent || aiOpenTrace.leftLogged) return;
+  aiOpenTrace.leftLogged=true;
+  postTraceEvent('ai_open_no_send',{duration_ms:Math.max(0,Date.now()-aiOpenTrace.openedAt),message_count_at_open:aiOpenTrace.messageCountAtOpen,reason},{keepalive});
+}
 function wireChatRevisit(){
   const box=document.getElementById('messages');
   if(!box || box.dataset.revisitWired==='1') return;
@@ -138,7 +180,7 @@ function displayTextFields(){ return { ...(state?.record?.text_fields||{}), ...r
 function updateChatMeta(){
   const meta=document.getElementById('chatMeta');
   if(meta && state?.participant?.is_test){
-    meta.textContent=`S00测试数据｜首次打开：${fmtLatency(state.record.first_ai_open_latency_seconds)}｜首次发送：${fmtLatency(state.record.first_user_message_latency_seconds)}`;
+    meta.textContent=`${id}测试数据｜${state.ai_variant==='supported'?'实验组':'对照组'}｜首次打开：${fmtLatency(state.record.first_ai_open_latency_seconds)}｜首次发送：${fmtLatency(state.record.first_user_message_latency_seconds)}`;
   }
 }
 
@@ -166,6 +208,8 @@ function renderMessages(messages=[]) {
   box.innerHTML = messages.length ? '' : `<div class="empty-chat" id="emptyChat"><h3>${requiredOnce?'本节需要实际使用AI助手':'AI设计助手'}</h3><p>${requiredOnce?'至少使用1次即可；什么时候使用、问什么、之后是否继续使用，由你自己决定。':'本节任务中可以使用AI设计助手，也可以不使用。'}</p></div>`;
   messages.forEach(m => addMessage(m.role, m.content, m.attachments || [], m));
   wireChatRevisit();
+  const messageArea=document.getElementById('messages');
+  if(messageArea && messageArea.dataset.copyWired!=='1'){messageArea.dataset.copyWired='1';messageArea.addEventListener('copy',()=>{const n=String(window.getSelection?.()?.toString()||'').length;if(n>0)postTraceEvent('chat_text_copied',{copied_chars:n});});}
 }
 function artifactUrl(a, sid=state.session.id){ return a ? App.photoUrl(id, sid, a.artifact_key, a) : ''; }
 function taskCard(s){
@@ -182,12 +226,13 @@ function carryCard(carry){
 
 function fieldHtml(f, value=''){
   const req = f.required ? '<span class="req">必填</span>' : '<span class="optional">选填</span>';
-  if(f.type==='text') return `<label>${esc(f.label)} ${req}<input data-field="${esc(f.key)}" value="${esc(value)}" placeholder="${esc(f.placeholder)}"></label>`;
-  return `<label>${esc(f.label)} ${req}<textarea data-field="${esc(f.key)}" placeholder="${esc(f.placeholder)}">${esc(value)}</textarea>${f.helper?`<span class="small">${esc(f.helper)}</span>`:''}</label>`;
+  const disabled=(state.record.submitted_at||state.session_locked)?'disabled':'';
+  if(f.type==='text') return `<label>${esc(f.label)} ${req}<input data-field="${esc(f.key)}" value="${esc(value)}" placeholder="${esc(f.placeholder)}" ${disabled}></label>`;
+  return `<label>${esc(f.label)} ${req}<textarea data-field="${esc(f.key)}" placeholder="${esc(f.placeholder)}" ${disabled}>${esc(value)}</textarea>${f.helper?`<span class="small">${esc(f.helper)}</span>`:''}</label>`;
 }
 function artifactHtml(a, meta){
   const src=artifactUrl(meta); const req=a.required?'<span class="req">必交</span>':'<span class="optional">选交</span>';
-  return `<div class="upload-card"><strong>${esc(a.label)} ${req}</strong><p class="small">${esc(a.helper)}</p>${src?`<div class="upload-preview"><img src="${src}" alt="已上传"></div>`:''}<div class="row" style="margin-top:12px"><input type="file" data-artifact="${esc(a.key)}" accept="image/jpeg,image/png,image/webp" ${state.record.submitted_at?'disabled':''}><span class="small" data-upload-status="${esc(a.key)}">${src?'已上传 ✓':''}</span></div></div>`;
+  return `<div class="upload-card"><strong>${esc(a.label)} ${req}</strong><p class="small">${esc(a.helper)}</p>${src?`<div class="upload-preview"><img src="${src}" alt="已上传"></div>`:''}<div class="row" style="margin-top:12px"><input type="file" data-artifact="${esc(a.key)}" accept="image/jpeg,image/png,image/webp" ${(state.record.submitted_at||state.session_locked)?'disabled':''}><span class="small" data-upload-status="${esc(a.key)}">${src?'已上传 ✓':''}</span></div></div>`;
 }
 
 function supportCardHtml(){
@@ -199,7 +244,7 @@ function chatPanel(){
   const reminder=supportCardHtml();
   if(state.session.ai_mode==='none') return `${reminder}<section class="card sticky-card"><span class="eyebrow">本节无需AI</span><h2>专注整理与反思</h2><p class="small">本节没有AI对话入口。</p></section>`;
   const variantBlocked=state.ai_variant==='unassigned';
-  const variantLabel=state.participant.is_test ? `S00测试预览：${state.ai_variant}` : 'AI设计助手';
+  const variantLabel=state.participant.is_test ? `${id}测试预览｜${state.ai_variant==='supported'?'实验组':'对照组'}` : 'AI设计助手';
   const requiredOnce=Boolean(state.session.ai_use_required_once);
   const policyText=state.session.ai_instruction || '本节任务中可以使用AI设计助手，也可以不使用。';
   const chatImageEnabled=state.session.chat_image_enabled!==false;
@@ -207,12 +252,12 @@ function chatPanel(){
     ${variantBlocked?'<div class="notice warn">本课已进入分组阶段，但当前编号还没有分组。请老师先在后台设置 A/B。</div>':`<p class="small">${esc(policyText)}</p>
     <button class="btn secondary" id="openAi">${state.record.first_ai_open_at?'继续使用AI':'打开AI助手'}</button>
     <div id="chatBox" class="chat-embed ${chatOpened?'':'hidden'}">
-      ${state.participant.is_test?`<div class="chat-meta small" id="chatMeta">S00测试数据｜首次打开：${fmtLatency(state.record.first_ai_open_latency_seconds)}｜首次发送：${fmtLatency(state.record.first_user_message_latency_seconds)}</div>`:''}
+      ${state.participant.is_test?`<div class="chat-meta small" id="chatMeta">${id}测试数据｜${state.ai_variant==='supported'?'实验组':'对照组'}｜首次打开：${fmtLatency(state.record.first_ai_open_latency_seconds)}｜首次发送：${fmtLatency(state.record.first_user_message_latency_seconds)}</div>`:''}
       <div class="messages compact-messages" id="messages"></div>
       <div id="thinking" class="spinner hidden">AI正在查看并回复……</div><div id="sendError" class="notice warn hidden"></div>
       ${chatImageEnabled?`<div id="chatImagePreview" class="chat-image-preview hidden"><img id="chatImageThumb" alt="待发送图片"><div><strong>已选择图片</strong><p class="small">请用文字告诉AI你想让它帮你看什么。</p><button type="button" class="btn ghost mini" id="removeChatImage">移除图片</button></div></div>
-      <div class="composer-tools"><label class="attach-btn ${state.record.submitted_at?'disabled':''}">＋ 添加草图 / 原型照片<input id="chatImage" type="file" accept="image/jpeg,image/png,image/webp" ${state.record.submitted_at?'disabled':''}></label><span class="small">每次最多1张，≤10MB</span></div>`:'<p class="small">本节不需要上传图片，请直接使用文字与AI交流。</p>'}
-      <div class="composer-wrap"><textarea id="message" placeholder="输入你现在想问AI的内容……" ${state.record.submitted_at?'disabled':''}></textarea><button class="btn" id="send" ${state.record.submitted_at?'disabled':''}>发送</button></div>
+      <div class="composer-tools"><label class="attach-btn ${(state.record.submitted_at||state.session_locked)?'disabled':''}">＋ 添加草图 / 原型照片<input id="chatImage" type="file" accept="image/jpeg,image/png,image/webp" ${(state.record.submitted_at||state.session_locked)?'disabled':''}></label><span class="small">每次最多1张，≤10MB</span></div>`:'<p class="small">本节不需要上传图片，请直接使用文字与AI交流。</p>'}
+      <div class="composer-wrap"><textarea id="message" placeholder="输入你现在想问AI的内容……" ${(state.record.submitted_at||state.session_locked)?'disabled':''}></textarea><button class="btn" id="send" ${(state.record.submitted_at||state.session_locked)?'disabled':''}>发送</button></div>
     </div>`}</section>`;
 }
 
@@ -395,9 +440,9 @@ function render(){
     return;
   }
   document.getElementById('app').innerHTML=`
-    <div class="course-header"><span class="eyebrow">${esc(s.id)} · ${esc(s.date)}</span><div class="row between"><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div>${r.submitted_at?'<span class="badge big">已提交</span>':''}</div></div>
+    <div class="course-header"><span class="eyebrow">${esc(s.id)} · ${esc(s.date)}</span><div class="row between"><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div>${state.session_locked?'<span class="badge big">教师已结束本阶段</span>':r.submitted_at?'<span class="badge big">已标记完成</span>':''}</div></div>
     <div class="course-grid"><div class="course-main">${taskCard(s)}${carryCard(state.carry_from)}
-      <section class="card"><span class="eyebrow">我的任务记录</span><h2>边做边记录，最后统一提交</h2><form id="taskForm" class="form">${taskFieldsHtml(s)}${bonusTaskHtml(s)}<div class="artifact-list">${s.artifacts.map(a=>artifactHtml(a,r.artifacts?.[a.key])).join('')}</div><div id="saveStatus" class="small"></div><div class="row"><button type="button" class="btn secondary" id="saveDraft" ${r.submitted_at?'disabled':''}>保存当前记录</button><button type="submit" class="btn orange" ${r.submitted_at?'disabled':''}>${r.submitted_at?'本节已提交':'提交本节任务'}</button></div></form></section>
+      <section class="card"><span class="eyebrow">我的任务记录</span><h2>边做边记录，内容会及时自动保存</h2><p class="small">今天没做完就点“保存进度并退出”，下次老师继续开放本任务时，用同一编号和姓名进入即可接着做。完成按钮只是标记你认为本阶段已完成；在老师统一结束并锁定前，即使误点，也可以点击“继续修改”恢复。</p>${state.session_locked?'<div class="notice"><strong>本阶段已由老师结束并锁定。</strong>现在可以查看已有记录，但不能继续修改。</div>':r.submitted_at?'<div class="notice"><strong>你已将本阶段标记为完成。</strong>如果误点或还想继续完善，可以点击“继续修改”，之前的文字、图片和AI对话都不会丢失。</div>':''}<form id="taskForm" class="form">${taskFieldsHtml(s)}${bonusTaskHtml(s)}<div class="artifact-list">${s.artifacts.map(a=>artifactHtml(a,r.artifacts?.[a.key])).join('')}</div><div id="saveStatus" class="small"></div><div class="row">${r.submitted_at&&!state.session_locked?'<button type="button" class="btn secondary" id="reopenSession">继续修改</button>':`<button type="button" class="btn secondary" id="saveAndExit" ${state.session_locked?'disabled':''}>保存进度并退出</button><button type="submit" class="btn orange" ${(r.submitted_at||state.session_locked)?'disabled':''}>${state.session_locked?'教师已结束本阶段':'完成本阶段'}</button>`}</div></form></section>
     </div><aside class="course-side">${chatPanel()}</aside></div>`;
   wire();
 }
@@ -406,7 +451,7 @@ function collectFields(){const x={};document.querySelectorAll('[data-field]').fo
 function setSaveStatus(text=''){const b=document.getElementById('saveStatus');if(b)b.textContent=text;}
 function cancelQueuedAutoSave(){if(autoSaveTimer){clearTimeout(autoSaveTimer);autoSaveTimer=null;}}
 async function persistCurrentFields({showStatus=false,saveReason='autosave'}={}){
-  if(!state?.session || state.record?.submitted_at || !document.querySelector('[data-field]')) return state?.record;
+  if(!state?.session || state.record?.submitted_at || state.session_locked || !document.querySelector('[data-field]')) return state?.record;
   cancelQueuedAutoSave();
   // 先同步写入浏览器草稿，哪怕网络慢/AI更新，界面也不会丢字。
   const fields=collectFields();
@@ -424,16 +469,31 @@ async function persistCurrentFields({showStatus=false,saveReason='autosave'}={})
   try{return await job;}catch(e){if(showStatus)setSaveStatus(`保存失败：${e.message}`);throw e;}
 }
 function queueAutoSave(){
-  if(state?.record?.submitted_at)return;
+  if(state?.record?.submitted_at||state?.session_locked)return;
   writeLocalDraft(collectFields());
   cancelQueuedAutoSave();
   setSaveStatus('正在自动保存……');
   autoSaveTimer=setTimeout(async()=>{
     try{await persistCurrentFields();setSaveStatus('已自动保存 ✓');}
     catch(e){setSaveStatus(`自动保存失败：${e.message}`);}
-  },2500);
+  },900);
 }
-async function saveDraft(){try{await persistCurrentFields({showStatus:true,saveReason:'manual_save'});}catch{}}
+function saveFieldsOnExit(reason='page_exit'){
+  if(!state?.session || state.record?.submitted_at || state.session_locked || !document.querySelector('[data-field]')) return;
+  const fields=collectFields();
+  writeLocalDraft(fields);
+  const headers={'Content-Type':'application/json'};
+  const rev=App.cohortRevision(); if(rev) headers['X-Cohort-Revision']=rev;
+  try{fetch(`${App.apiBase}/session/save`,{method:'POST',headers,body:JSON.stringify({participantId:id,sessionId:state.session.id,textFields:fields,saveContext:saveContext(reason)}),keepalive:true}).catch(()=>{});}catch{}
+}
+async function saveAndExit(){
+  try{
+    await persistCurrentFields({showStatus:true,saveReason:'progress_exit'});
+    await postTraceEvent('progress_saved_and_exit',{saved_at:state?.record?.saved_at||new Date().toISOString()});
+    App.clearParticipant();
+    location.href='/';
+  }catch(e){setSaveStatus(`保存失败：${e.message}`);}
+}
 async function uploadArtifact(input){const key=input.dataset.artifact,status=document.querySelector(`[data-upload-status="${key}"]`),file=input.files?.[0];if(!file)return;status.textContent='正在上传……';try{await persistCurrentFields({saveReason:'before_artifact_upload'});}catch(e){status.textContent=`先保存文字失败：${e.message}`;input.value='';return;}const fd=new FormData();fd.append('participantId',id);fd.append('sessionId',state.session.id);fd.append('artifactKey',key);fd.append('image',file);try{await App.api('/upload',{method:'POST',body:fd});status.textContent='上传成功 ✓';await load(false);}catch(e){status.textContent=e.message;input.value='';}}
 async function openAi(){
   try{
@@ -443,7 +503,7 @@ async function openAi(){
     // 只更新聊天区，不再 render() 整个页面，因此任务表单不会被重建。
     document.getElementById('chatBox')?.classList.remove('hidden');
     const btn=document.getElementById('openAi'); if(btn) btn.textContent='继续使用AI';
-    renderMessages(state.chat_messages); updateChatMeta();
+    renderMessages(state.chat_messages); updateChatMeta(); markAiOpenStart();
   }catch(e){alert(e.message);}
 }
 function clearSelectedImage(){
@@ -473,7 +533,7 @@ async function send(){
     const fd=new FormData(); fd.append('participantId',id); fd.append('sessionId',state.session.id); fd.append('message',msg); fd.append('clientSentAt',new Date().toISOString()); fd.append('taskContext',JSON.stringify(chatTaskContext())); if(file) fd.append('image',file);
     const r=await App.api('/chat/send',{method:'POST',body:fd});
     if(r.record) state.record=r.record;
-    markAiDraftSent(msg);
+    markAiDraftSent(msg); markAiOpenSent();
     box.value='';
     const userRow=r.user_message||{role:'user',content:msg,attachments:r.attachment?[r.attachment]:[],created_at:new Date().toISOString()};
     const assistantRow=r.assistant_message_row||{role:'assistant',content:r.message,attachments:[],created_at:new Date().toISOString()};
@@ -491,10 +551,11 @@ async function send(){
   finally{sending=false;document.getElementById('thinking')?.classList.add('hidden');if(document.getElementById('send'))document.getElementById('send').disabled=false;}
 }
 function wire(){
-  document.querySelectorAll('[data-field]').forEach(x=>{x.addEventListener('focus',()=>rememberTaskField(x.dataset.field));x.addEventListener('input',()=>{rememberTaskField(x.dataset.field);writeLocalDraft(collectFields());queueAutoSave();});x.addEventListener('blur',()=>{rememberTaskField(x.dataset.field);if(!state.record.submitted_at)persistCurrentFields({saveReason:'blur'}).then(()=>setSaveStatus('已自动保存 ✓')).catch(e=>setSaveStatus(`自动保存失败：${e.message}`));});});
+  document.querySelectorAll('[data-field]').forEach(x=>{x.addEventListener('focus',()=>{rememberTaskField(x.dataset.field);startTaskFieldTrace(x);});x.addEventListener('input',()=>{rememberTaskField(x.dataset.field);bumpTaskFieldTrace(x);writeLocalDraft(collectFields());queueAutoSave();});x.addEventListener('paste',e=>postTraceEvent('task_field_paste',{field_key:x.dataset.field||'',pasted_chars:String(e.clipboardData?.getData('text')||'').length}));x.addEventListener('blur',()=>{rememberTaskField(x.dataset.field);endTaskFieldTrace(x,'blur');if(!state.record.submitted_at)persistCurrentFields({saveReason:'blur'}).then(()=>setSaveStatus('已自动保存 ✓')).catch(e=>setSaveStatus(`自动保存失败：${e.message}`));});});
   document.querySelectorAll('[data-artifact]').forEach(x=>x.onchange=()=>uploadArtifact(x));
-  document.getElementById('saveDraft').onclick=saveDraft;
-  document.getElementById('taskForm').onsubmit=async e=>{e.preventDefault();if(!confirm('确认提交本节任务吗？提交后本节记录将锁定。'))return;try{cancelQueuedAutoSave();await saveChain;markAiDraftLeft('session_submit');await App.api('/session/submit',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,textFields:collectFields(),saveContext:saveContext('submit')})});clearLocalDraft();await load();}catch(x){alert(x.message);}};
+  if(document.getElementById('saveAndExit'))document.getElementById('saveAndExit').onclick=saveAndExit;
+  if(document.getElementById('reopenSession'))document.getElementById('reopenSession').onclick=async()=>{try{await App.api('/session/reopen',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id})});await load();}catch(x){alert(x.message);}};
+  document.getElementById('taskForm').onsubmit=async e=>{e.preventDefault();if(state.session_locked)return;if(!confirm('确认将本阶段标记为“已完成”吗？\n\n如果今天还没做完，请选择“取消”，再点“保存进度并退出”。\n\n即使误点，在老师统一结束并锁定本阶段前，你仍可以回来点击“继续修改”。'))return;try{cancelQueuedAutoSave();await saveChain;markAiDraftLeft('session_mark_complete');await App.api('/session/submit',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,textFields:collectFields(),saveContext:saveContext('mark_complete')})});clearLocalDraft();await load();}catch(x){alert(x.message);}};
   if(document.getElementById('revealUpdate'))document.getElementById('revealUpdate').onclick=revealMidTaskUpdate;
   if(document.getElementById('revealBonus'))document.getElementById('revealBonus').onclick=revealBonusTask;
   if(document.getElementById('revealBonusUpdate'))document.getElementById('revealBonusUpdate').onclick=revealBonusUpdate;
@@ -509,9 +570,22 @@ function wire(){
     msgBox.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}};
   }
   wireChatRevisit();
+  const messageArea=document.getElementById('messages');
+  if(messageArea && messageArea.dataset.copyWired!=='1'){messageArea.dataset.copyWired='1';messageArea.addEventListener('copy',()=>{const n=String(window.getSelection?.()?.toString()||'').length;if(n>0)postTraceEvent('chat_text_copied',{copied_chars:n});});}
 }
-async function load(show=true, keepChat=false){try{const r=await App.api(`/session/current?participantId=${encodeURIComponent(id)}`);state=r;restoreTaskField();if((keepChat||state.chat_messages?.length)&&state.chat_messages?.length)chatOpened=true;render();}catch(e){document.getElementById('app').innerHTML=`<div class="notice warn">${esc(e.message)}</div>`;}}
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')markAiDraftLeft('page_hidden',true);});
-window.addEventListener('pagehide',()=>markAiDraftLeft('pagehide',true));
+function logResumeIfNeeded(){
+  if(!state?.session?.id || state?.record?.submitted_at || !state?.record?.saved_at) return;
+  const key=`resume_logged:${id}:${state.session.id}`;
+  try{ if(sessionStorage.getItem(key)==='1') return; }catch{}
+  const last=Date.parse(state.record.saved_at||'');
+  const delta=Number.isFinite(last)?Math.max(0,Math.floor((Date.now()-last)/1000)):null;
+  postTraceEvent('session_resumed',{last_saved_at:state.record.saved_at||'',seconds_since_last_save:delta});
+  try{sessionStorage.setItem(key,'1');}catch{}
+}
+async function load(show=true, keepChat=false){try{const r=await App.api(`/session/current?participantId=${encodeURIComponent(id)}`);state=r;restoreTaskField();if((keepChat||state.chat_messages?.length)&&state.chat_messages?.length)chatOpened=true;render();logResumeIfNeeded();}catch(e){document.getElementById('app').innerHTML=`<div class="notice warn">${esc(e.message)}</div>`;}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){saveFieldsOnExit('page_hidden');markAiDraftLeft('page_hidden',true);markAiOpenLeft('page_hidden',true);}});
+window.addEventListener('pagehide',()=>saveFieldsOnExit('pagehide'));
+window.addEventListener('beforeunload',()=>saveFieldsOnExit('beforeunload'));
+window.addEventListener('pagehide',()=>{markAiDraftLeft('pagehide',true);markAiOpenLeft('pagehide',true);});
 
 load();

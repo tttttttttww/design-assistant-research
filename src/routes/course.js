@@ -1,6 +1,6 @@
 import express from 'express';
 import { researchService } from '../services/researchService.js';
-import { isAllowedParticipant, normalizeParticipantId } from '../utils/validators.js';
+import { isAllowedParticipant, normalizeParticipantId, isTestParticipant } from '../utils/validators.js';
 
 const router = express.Router();
 const pid = req => normalizeParticipantId(req.body?.participantId ?? req.query?.participantId);
@@ -10,7 +10,7 @@ const guard = (id, res) => {
 };
 const cohortGuard = async (req, id, res) => {
   const settings = await researchService.getSettings();
-  if (id !== 'S00') {
+  if (!isTestParticipant(id)) {
     const revision = String(req.headers['x-cohort-revision'] || '');
     if (!revision || revision !== settings.cohort_revision) {
       res.status(409).json({ error: '学生名单已更新，请返回登录页重新输入编号和姓名。' });
@@ -71,6 +71,17 @@ router.post('/session/submit', async (req, res) => {
     await researchService.assertTaskAccess(id, sid);
     res.json({ record: await researchService.submitSession(id, sid, req.body?.textFields || {}, req.body?.saveContext || {}) });
   } catch (e) { res.status(e.status || 500).json({ error: e.message || '提交失败' }); }
+});
+
+router.post('/session/reopen', async (req, res) => {
+  try {
+    const id = pid(req); if (!guard(id, res)) return;
+    const sid = String(req.body?.sessionId || '').toUpperCase();
+    const settings = await cohortGuard(req, id, res); if (!settings) return;
+    if (!settings.session_open || settings.active_session_id !== sid) return res.status(409).json({ error: '当前不是这个课次。' });
+    await researchService.assertTaskAccess(id, sid);
+    res.json({ record: await researchService.reopenSession(id, sid) });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message || '继续修改失败' }); }
 });
 
 

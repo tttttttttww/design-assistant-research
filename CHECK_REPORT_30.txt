@@ -1,0 +1,19 @@
+v11.30 check report
+====================
+Base: v11.29.1-layout-fix
+
+Verified:
+1. JavaScript syntax checks passed for validators, research service, auth/chat/course/upload/admin routes, research config, task/admin/common/index client scripts.
+2. Existing smoke suite passed: orientation gate + protected W1/W2 snapshot/restore + routing + roster/data safety.
+3. S00 validates as a test account, fixed to condition A, and W3 routes to supported AI.
+4. S99 validates as a test account, fixed to condition B, and W3 routes to free AI.
+5. Formal roster parsing excludes both S00 and S99.
+6. W3 stratified assignment contains fixed control set S04/S05; remaining students are stratified by grade.
+7. Text autosave debounce is 900 ms; blur saves immediately; page hidden/pagehide/beforeunload issue keepalive saves.
+8. Task UI states that unfinished/finally-unsubmitted work is still retained after autosave.
+9. Uploaded artifacts save immediately; student AI messages are persisted before waiting for the AI response (existing v11.29 safety behavior retained).
+10. Common short-response instruction is injected on every AI turn for both conditions: default ~80–160 Chinese characters, max 3 short parts, max 1 clarification question.
+
+Note:
+- Final submission still performs completeness checks and marks the task completed/locked. It is not the primary persistence mechanism.
+- Formal exports continue to iterate S01-S30 only, so S00/S99 remain excluded.

@@ -1,0 +1,1 @@
+SMOKE OK v11.29: orientation gate + protected W1/W2 snapshot/restore + routing + roster/data safety.

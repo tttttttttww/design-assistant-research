@@ -1,6 +1,8 @@
+> v11.31：对照组改为同一底层模型下的“普通GenAI自然回答”，取消80—160字/最多3点硬限制；实验组仅额外接受学业求助支持。过程证据新增任务字段停留/编辑、打开AI未发送、打开到发送时长、粘贴/复制字符数等原始事件。
+
 > v11.29：在既有全过程记录基础上，新增 W3 自动分层随机、平台内差异化学习、实验组轻量求助提醒，以及 W1/W2 受保护安全快照。
 
-# Design Thinking + GenAI Help-Seeking Research Platform v11.29
+# Design Thinking + GenAI Help-Seeking Research Platform v11.31
 
 ## 当前研究/课程安排
 - W1：椅子快速设计热身，普通AI；旧数据继续保留。

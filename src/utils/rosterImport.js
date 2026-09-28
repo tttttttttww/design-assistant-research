@@ -1,5 +1,5 @@
 import { inflateRawSync } from 'node:zlib';
-import { normalizeParticipantId, validateParticipantId } from './validators.js';
+import { normalizeParticipantId, validateParticipantId, isTestParticipant } from './validators.js';
 
 const clean = v => String(v ?? '').normalize('NFKC').trim();
 const key = v => clean(v).toLowerCase().replace(/[\s_\-（）()]/g, '');
@@ -171,7 +171,7 @@ function isHeaderLikeRow(row = []) {
 
 function looksLikeId(value) {
   const id = normalizeParticipantId(value);
-  return validateParticipantId(id) && id !== 'S00';
+  return validateParticipantId(id) && !isTestParticipant(id);
 }
 
 function rowToObject(row, headerMap = null) {

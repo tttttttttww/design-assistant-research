@@ -8,7 +8,7 @@ import { requireAdmin } from '../middleware/auth.js';
 import { storageService } from '../services/storageService.js';
 import { researchService } from '../services/researchService.js';
 import { SESSIONS, QUESTIONNAIRE_ITEMS, QUESTIONNAIRE_META, QUESTIONNAIRE_VERSION, PROTECTED_SESSION_IDS } from '../config/researchConfig.js';
-import { normalizeParticipantId, validateParticipantId } from '../utils/validators.js';
+import { normalizeParticipantId, validateParticipantId, isTestParticipant } from '../utils/validators.js';
 import { parseRosterBuffer, validateRosterRows } from '../utils/rosterImport.js';
 
 const router = express.Router();
@@ -34,6 +34,8 @@ const sendCsv = (res, name, headers, rows) => {
 const safeName = value => String(value || 'file').replace(/[^a-zA-Z0-9._-]+/g, '_');
 const pad = n => String(n || 0).padStart(5, '0');
 const formalIds = () => Array.from({ length: 30 }, (_, i) => `S${String(i + 1).padStart(2, '0')}`);
+const TEST_IDS = ['S00','S99'];
+const FORCED_CONTROL_IDS = new Set(['S04','S05']);
 const shuffle = arr => {
   const out = [...arr];
   for (let i = out.length - 1; i > 0; i--) {
@@ -52,30 +54,38 @@ async function stratifiedRandomizeRostered({ force = false, reason = 'manual' } 
   const missing = enrolled.filter(p => !['6','7','8'].includes(String(p.grade || '').trim())).map(p => p.participant_id);
   if (missing.length) throw Object.assign(new Error(`以下已录入学生缺少6/7/8年级信息：${missing.join(', ')}`), { status: 400 });
 
-  const already = enrolled.filter(p => ['A','B'].includes(p.condition));
-  if (already.length === enrolled.length && !force) {
+  // S04/S05 因前两节未参与，按当前课堂安排固定进入对照组；其余学生按年级分层随机。
+  const forced = enrolled.filter(p => FORCED_CONTROL_IDS.has(p.participant_id));
+  for (const p of forced) {
+    if (p.condition !== 'B') await researchService.setParticipantMeta(p.participant_id, { condition:'B' });
+    p.condition = 'B';
+  }
+  const randomizable = enrolled.filter(p => !FORCED_CONTROL_IDS.has(p.participant_id));
+  const alreadyRandomizable = randomizable.filter(p => ['A','B'].includes(p.condition));
+  const allAssigned = enrolled.every(p => ['A','B'].includes(p.condition));
+  if (allAssigned && !force) {
     const preW3Snapshot = await researchService.createProtectedPreW3Snapshot();
     return {
-      method:'stratified_randomization_by_grade',
-      already_assigned:true,
-      reason,
+      method:'stratified_randomization_by_grade_with_fixed_control', already_assigned:true, reason,
+      fixed_control_ids:forced.map(p=>p.participant_id),
       totals:{ A: enrolled.filter(p=>p.condition==='A').length, B: enrolled.filter(p=>p.condition==='B').length },
-      assignments: enrolled.map(p=>({participant_id:p.participant_id,grade:p.grade,condition:p.condition})),
-      pre_w3_snapshot: preW3Snapshot,
+      assignments: enrolled.map(p=>({participant_id:p.participant_id,grade:p.grade,condition:p.condition,fixed:FORCED_CONTROL_IDS.has(p.participant_id)})),
+      pre_w3_snapshot:preW3Snapshot,
     };
   }
-  if (already.length && !force) {
-    throw Object.assign(new Error('当前只有部分学生已经A/B分组。为避免混合旧分组，系统没有自动重分；请先检查名单。'), { status: 409 });
+  if (alreadyRandomizable.length && !force) {
+    throw Object.assign(new Error('除S04/S05固定对照外，当前还有部分学生已经A/B分组。为避免混合旧分组，系统没有自动重分；请先检查名单。'), { status: 409 });
   }
 
   const preW3Snapshot = await researchService.createProtectedPreW3Snapshot();
   const groups = new Map();
-  for (const p of enrolled) {
+  for (const p of randomizable) {
     const g=String(p.grade);
     if(!groups.has(g)) groups.set(g,[]);
     groups.get(g).push(p.participant_id);
   }
-  const assignments=[]; let totalA=0,totalB=0;
+  const assignments=forced.map(p=>({participant_id:p.participant_id,grade:p.grade,condition:'B',fixed:true}));
+  let totalA=0,totalB=forced.length;
   for (const grade of ['6','7','8']) {
     const ids=shuffle(groups.get(grade)||[]);
     let start=totalA<=totalB?'A':'B';
@@ -83,16 +93,12 @@ async function stratifiedRandomizeRostered({ force = false, reason = 'manual' } 
       const condition=i%2===0?start:(start==='A'?'B':'A');
       await researchService.setParticipantMeta(ids[i],{condition});
       if(condition==='A')totalA++;else totalB++;
-      assignments.push({participant_id:ids[i],grade,condition});
+      assignments.push({participant_id:ids[i],grade,condition,fixed:false});
     }
   }
   const result={
-    method:'stratified_randomization_by_grade',
-    created_at:new Date().toISOString(),
-    reason,
-    totals:{A:totalA,B:totalB},
-    assignments,
-    pre_w3_snapshot:preW3Snapshot,
+    method:'stratified_randomization_by_grade_with_fixed_control', created_at:new Date().toISOString(), reason,
+    fixed_control_ids:forced.map(p=>p.participant_id), totals:{A:totalA,B:totalB}, assignments, pre_w3_snapshot:preW3Snapshot,
   };
   await storageService.putObject(`group-assignments/${result.created_at.replace(/[:.]/g,'-')}.json`,JSON.stringify(result,null,2));
   return result;
@@ -175,9 +181,8 @@ async function ensureDefaultStudents() {
   for (let i = 1; i <= 30; i++) await researchService.createParticipant(`S${String(i).padStart(2, '0')}`, {});
 }
 async function allIds(includeTest = true) {
-  // 不在每次实时轮询时反复 create/写入30个学生；首次 /participants 的 getParticipant 会自动补缺失账号。
   const ids = formalIds();
-  if (includeTest) ids.unshift('S00');
+  if (includeTest) ids.unshift(...TEST_IDS);
   return ids;
 }
 function liveStatusFrom(record = {}, chat = null, draft = null) {
@@ -378,7 +383,7 @@ router.post('/participants/bulk-meta', requireAdmin, async (req, res) => {
         ? line.split(/[\t,，]+/).map(x => x.trim()).filter(Boolean)
         : line.split(/\s+/).map(x => x.trim()).filter(Boolean);
       const id = normalizeParticipantId(parts[0]);
-      if (!validateParticipantId(id) || id === 'S00') { result.push({ line, status: 'invalid' }); continue; }
+      if (!validateParticipantId(id) || isTestParticipant(id)) { result.push({ line, status: 'invalid' }); continue; }
 
       let login_name;
       let grade;
@@ -772,7 +777,7 @@ router.get('/export/chat-package.zip', requireAdmin, async (req, res) => {
     }
     const timelineHeaders = ['participant_id','grade','condition','session_id','session_title','sequence_order','event_time','source_type','subtype','interaction_id','message_index','role','content','field_key','field_label','field_stage','previous_text','revised_text','raw_data_json'];
     archive.append(csvText(timelineHeaders, timelineRows), { name: 'process_timeline.csv' });
-    archive.append(`正式数据仅含 S01-S30，自动排除 S00。\nchat_messages.csv：学生与AI完整消息，含 interaction_id、真实AI请求/回复时间、ai_latency_ms，以及发送时所在任务步骤字段。\nbehavior_events.csv：输入草稿开始/删除未发送/离开未发送、回看旧回复、查看新反馈等可观察事件；删除草稿正文不会保存。\ntask_revisions.csv：任务文本框V1/V2/V3版本历史，可通过 last_ai_message_id / last_ai_message_at 与AI回复对齐。\nprocess_timeline.csv：把聊天、行为事件、任务修订按学生×课次合并为统一时间线，仅整理原始证据，不自动判定IHS/EHS/AHS。\nchat_images/：学生在允许上传图片的课次中发送给AI的原图；W2关闭聊天图片。\n共导出聊天消息 ${rows.length} 条、版本记录 ${revisionRows.length} 条、行为事件 ${eventRows.length} 条、聊天图片 ${imageCount} 张。\n`, { name: 'README.txt' });
+    archive.append(`正式数据仅含 S01-S30，自动排除 S00（实验组测试）与 S99（对照组测试）。\nchat_messages.csv：学生与AI完整消息，含 interaction_id、真实AI请求/回复时间、ai_latency_ms，以及发送时所在任务步骤字段。\nbehavior_events.csv：输入草稿开始/删除未发送/离开未发送、打开AI但未发送、打开到发送时长、任务字段停留与编辑、粘贴/复制字符数、回看旧回复、查看新反馈等可观察事件；未发送草稿正文和剪贴板正文不会保存。\ntask_revisions.csv：任务文本框V1/V2/V3版本历史，可通过 last_ai_message_id / last_ai_message_at 与AI回复对齐。\nprocess_timeline.csv：把聊天、行为事件、任务修订按学生×课次合并为统一时间线，仅整理原始证据，不自动判定IHS/EHS/AHS。\nchat_images/：学生在允许上传图片的课次中发送给AI的原图；W2关闭聊天图片。\n共导出聊天消息 ${rows.length} 条、版本记录 ${revisionRows.length} 条、行为事件 ${eventRows.length} 条、聊天图片 ${imageCount} 张。\n`, { name: 'README.txt' });
     await archive.finalize();
   } catch (e) {
     console.error('help-seeking process package export', e);
@@ -836,7 +841,7 @@ router.get('/export/task-package.zip', requireAdmin, async (req, res) => {
     }
     const headers = ['participant_id','grade','condition_current','session_id','session_title','date','research_role','condition_at_time','ai_variant','started_at','first_ai_open_at','first_ai_open_latency_seconds','first_user_message_at','first_user_message_latency_seconds','ai_open_count','ai_used','task_text','text_fields_json','work_file_names','work_zip_paths','submitted_at','completed_at'];
     archive.append(csvText(headers, rows), { name: 'task_records.csv' });
-    archive.append(`正式数据仅含 S01-S30，自动排除 S00。\ntask_records.csv：每个学生每个课次的当前/最终任务记录。\nworks/：W1及W3以后需要上传的草图、原型、测试证据和最终作品原图；W2不要求最终图片。\n求助过程相关的 behavior_events.csv、task_revisions.csv 与 process_timeline.csv 已统一放入“AI求助过程数据 ZIP”，避免两个工作包重复。\n共 ${rows.length} 条课次记录、${imageCount} 张任务图片。\n`, { name: 'README.txt' });
+    archive.append(`正式数据仅含 S01-S30，自动排除 S00（实验组测试）与 S99（对照组测试）。\ntask_records.csv：每个学生每个课次的当前/最终任务记录。\nworks/：W1及W3以后需要上传的草图、原型、测试证据和最终作品原图；W2不要求最终图片。\n求助过程相关的 behavior_events.csv、task_revisions.csv 与 process_timeline.csv 已统一放入“AI求助过程数据 ZIP”，避免两个工作包重复。\n共 ${rows.length} 条课次记录、${imageCount} 张任务图片。\n`, { name: 'README.txt' });
     await archive.finalize();
   } catch (e) {
     console.error('task package export', e);
@@ -935,7 +940,7 @@ router.get('/export/events.csv', requireAdmin, async (req, res) => {
   for (const id of formalIds()) for (const s of SESSIONS) for (const e of await researchService.getEvents(id, s.id)) rows.push(e);
   sendCsv(res, 'events.csv', ['participant_id','session_id','event_index','type','at','data'], rows);
 });
-router.get('/export/test-archives.json', requireAdmin, async (req, res) => sendJson(res, 'S00_test_archives.json', await researchService.listTestArchives()));
+router.get('/export/test-archives.json', requireAdmin, async (req, res) => sendJson(res, 'teacher_test_archives.json', await researchService.listTestArchives()));
 router.get('/export/reset-archives.json', requireAdmin, async (req, res) => sendJson(res, 'admin_reset_archives.json', await researchService.listResetArchives()));
 
 export default router;

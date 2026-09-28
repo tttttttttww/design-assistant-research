@@ -4,8 +4,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { cozeService } from '../services/cozeService.js';
 import { researchService } from '../services/researchService.js';
 import { storageService } from '../services/storageService.js';
-import { getSessionConfig } from '../config/researchConfig.js';
-import { isAllowedParticipant, normalizeParticipantId, validateMessage } from '../utils/validators.js';
+import { getSessionConfig, COMMON_AI_RESPONSE_RULES } from '../config/researchConfig.js';
+import { isAllowedParticipant, normalizeParticipantId, validateMessage, isTestParticipant } from '../utils/validators.js';
 
 const router = express.Router();
 const imageUpload = multer({
@@ -22,17 +22,18 @@ const ext = file => file.mimetype === 'image/png' ? 'png' : file.mimetype === 'i
 
 async function access(req, id, sid) {
   const settings = await researchService.getSettings();
-  if (id !== 'S00') {
+  if (!isTestParticipant(id)) {
     const revision = String(req.headers['x-cohort-revision'] || '');
     if (!revision || revision !== settings.cohort_revision) throw Object.assign(new Error('学生名单已更新，请返回登录页重新输入编号和姓名。'), { status: 409 });
   }
   if (!settings.session_open) throw Object.assign(new Error('当前课次还没有开放。'), { status: 409 });
   if (settings.active_session_id !== sid) throw Object.assign(new Error('当前不是这个课次。'), { status: 409 });
+  if (Array.isArray(settings.locked_session_ids) && settings.locked_session_ids.includes(sid)) throw Object.assign(new Error('老师已结束并锁定本阶段，AI记录已停止。'), { status: 409 });
   const config = getSessionConfig(sid);
   if (!config || config.ai_mode === 'none') throw Object.assign(new Error('本节课没有AI助手。'), { status: 409 });
   await researchService.assertTaskAccess(id, sid);
   const state = await researchService.currentState(id);
-  if (state.record.submitted_at) throw Object.assign(new Error('本节任务已经提交。'), { status: 409 });
+  if (state.record.submitted_at) throw Object.assign(new Error('你已将本阶段标记为完成。如需继续，请先点击“继续修改”。'), { status: 409 });
   if (state.ai_variant === 'unassigned') throw Object.assign(new Error('本课已进入分组阶段，但你的组别尚未配置，请联系老师。'), { status: 409 });
   return state;
 }
@@ -129,7 +130,9 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
 
     const updatedRecord = await researchService.markFirstUserMessage(id, sid);
     const firstStudentTurn = (s.user_turn_count || 0) === 0;
-    const hidden = firstStudentTurn ? `${await researchService.hiddenContextForChat(sid)}\n\n【学生实际输入】\n${message}` : message;
+    const commonResponseRules = `【共同回答表达规则：两组一致】\n${COMMON_AI_RESPONSE_RULES.map(x => `- ${x}`).join('\n')}`;
+    const taskContextText = firstStudentTurn ? `${await researchService.hiddenContextForChat(sid)}\n\n` : '';
+    const hidden = `${taskContextText}${commonResponseRules}\n\n【学生实际输入】\n${message}`;
     interactionId = uuidv4();
     const aiRequestStartedAt = new Date().toISOString();
 
@@ -240,10 +243,10 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
       } catch (_) {}
     }
     // 只有尚未形成正式消息的失败上传才清理；已落盘的学生消息保留为研究原始证据。
-    if (uploadedPath && !committed && attemptedId !== 'S00') await storageService.deleteObject(uploadedPath).catch(() => {});
+    if (uploadedPath && !committed && !isTestParticipant(attemptedId)) await storageService.deleteObject(uploadedPath).catch(() => {});
     console.error('chat send', { message: e?.message, stage: e?.stage, chat_id: e?.chat_id, coze_file_id: e?.coze_file_id, raw: e?.raw || null, stack: e?.stack });
     if (e.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: '聊天图片不能超过10MB' });
-    if (attemptedId === 'S00') {
+    if (isTestParticipant(attemptedId)) {
       return res.status(e.status || 500).json({
         error: e.message || 'AI暂时没有回复，请再试一次。',
         debug: { stage: e?.stage || '', chat_id: e?.chat_id || '', coze_file_id: e?.coze_file_id || '' },

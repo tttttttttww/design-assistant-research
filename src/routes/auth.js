@@ -18,7 +18,7 @@ router.post('/validate', async (req, res) => {
       return res.status(400).json({ valid: false, message: '编号或姓名不匹配，请对照老师展示的名单确认。' });
     }
 
-    // S00 只用于教师测试，不进入正式数据。正式学生必须同时通过“编号 + 姓名”核对。
+    // S00（实验组）和 S99（对照组）只用于教师测试，不进入正式数据。正式学生必须同时通过“编号 + 姓名”核对。
     if (!isTestParticipant(participantId)) {
       if (!studentName) {
         return res.status(400).json({ valid: false, message: '请输入你的姓名。' });
@@ -33,7 +33,7 @@ router.post('/validate', async (req, res) => {
     }
 
     let testInfo = null;
-    if (isTestParticipant(participantId)) testInfo = await researchService.archiveAndResetTest();
+    if (isTestParticipant(participantId)) testInfo = await researchService.archiveAndResetTest(participantId);
     await researchService.touchParticipant(participantId);
     const settings = await researchService.getSettings();
     res.json({

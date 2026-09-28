@@ -6,7 +6,7 @@ import {
   QUESTIONNAIRE_ITEMS, QUESTIONNAIRE_META, QUESTIONNAIRE_VERSION,
   INTERVENTION_ORIENTATION, INTERVENTION_SUPPORT_CARDS,
 } from '../config/researchConfig.js';
-import { isTestParticipant, hashStudentName } from '../utils/validators.js';
+import { isTestParticipant, testParticipantCondition, hashStudentName } from '../utils/validators.js';
 
 const iso = () => new Date().toISOString();
 const parse = (raw, fallback = null) => { try { return raw ? JSON.parse(raw) : fallback; } catch { return fallback; } };
@@ -57,22 +57,38 @@ class ResearchService {
   async getSettings() {
     const stored = parse(await storageService.getObject('settings.json'), {}) || {};
     const active = getSessionConfig(stored.active_session_id) ? stored.active_session_id : DEFAULT_SETTINGS.active_session_id;
-    return { ...DEFAULT_SETTINGS, ...stored, active_session_id: active };
+    return { ...DEFAULT_SETTINGS, ...stored, active_session_id: active, locked_session_ids: Array.isArray(stored.locked_session_ids) ? stored.locked_session_ids.filter(x => getSessionConfig(x)) : [] };
   }
 
   async saveSettings(input = {}) {
     const current = await this.getSettings();
     const active = getSessionConfig(input.active_session_id) ? input.active_session_id : current.active_session_id;
+    const locked = new Set(Array.isArray(current.locked_session_ids) ? current.locked_session_ids : []);
+    if (input.active_session_locked != null) {
+      if (Boolean(input.active_session_locked)) locked.add(active);
+      else locked.delete(active);
+    }
     const next = {
       ...current,
       active_session_id: active,
       session_open: input.session_open == null ? current.session_open : Boolean(input.session_open),
       questionnaire_enabled: input.questionnaire_enabled == null ? current.questionnaire_enabled : Boolean(input.questionnaire_enabled),
       cohort_revision: input.cohort_revision == null ? current.cohort_revision : String(input.cohort_revision || current.cohort_revision),
+      locked_session_ids: [...locked],
       updated_at: iso(),
     };
     await storageService.putObject('settings.json', JSON.stringify(next));
     return next;
+  }
+
+  async isSessionLocked(sid) {
+    const settings = await this.getSettings();
+    return Array.isArray(settings.locked_session_ids) && settings.locked_session_ids.includes(String(sid || '').toUpperCase());
+  }
+
+  async assertSessionWritable(sid) {
+    if (await this.isSessionLocked(sid)) throw Object.assign(new Error('老师已结束并锁定本阶段，不能再修改。'), { status: 409 });
+    return true;
   }
 
   async activeSession() {
@@ -82,7 +98,8 @@ class ResearchService {
 
   async createParticipant(id, input = {}) {
     const old = parse(await storageService.getObject(pKey(id)), {});
-    const condition = CONDITIONS.includes(input.condition) ? input.condition : (CONDITIONS.includes(old.condition) ? old.condition : 'unassigned');
+    const fixedTestCondition = testParticipantCondition(id);
+    const condition = fixedTestCondition || (CONDITIONS.includes(input.condition) ? input.condition : (CONDITIONS.includes(old.condition) ? old.condition : 'unassigned'));
     const p = {
       participant_id: id,
       condition,
@@ -113,7 +130,7 @@ class ResearchService {
     const p = await this.getParticipant(id);
     if (condition != null) {
       if (!CONDITIONS.includes(condition)) throw Object.assign(new Error('condition无效'), { status: 400 });
-      p.condition = condition;
+      p.condition = testParticipantCondition(id) || condition;
     }
     if (grade != null) p.grade = String(grade).trim();
     if (login_name != null) {
@@ -137,7 +154,7 @@ class ResearchService {
     const revision = `cohort-${Date.now()}-${randomUUID().slice(0, 8)}`;
     await this.saveSettings({ session_open: false, cohort_revision: revision });
 
-    // 彻底清空正式学生的活跃任务/聊天/图片与旧登录信息；S00 不受影响。
+    // 彻底清空正式学生的活跃任务/聊天/图片与旧登录信息；S00/S99 测试号不受影响。
     const chunks = [];
     for (let i = 0; i < expected.length; i += 5) chunks.push(expected.slice(i, i + 5));
     for (const chunk of chunks) {
@@ -449,6 +466,7 @@ class ResearchService {
   }
 
   async saveFields(id, sid, textFields = {}, saveContext = {}) {
+    await this.assertSessionWritable(sid);
     const r = await this.ensureStarted(id, sid);
     if (r.submitted_at) throw Object.assign(new Error('本节任务已经提交，不能再修改。'), { status: 409 });
     const config = getSessionConfig(sid);
@@ -505,6 +523,7 @@ class ResearchService {
   }
 
   async addArtifact(id, sid, artifactKey, meta) {
+    await this.assertSessionWritable(sid);
     const config = getSessionConfig(sid);
     if (!config.artifacts.some(a => a.key === artifactKey)) throw Object.assign(new Error('上传项目无效'), { status: 400 });
     const r = await this.ensureStarted(id, sid);
@@ -517,6 +536,7 @@ class ResearchService {
   }
 
   async submitSession(id, sid, textFields = {}, saveContext = {}) {
+    await this.assertSessionWritable(sid);
     const config = getSessionConfig(sid);
     let r = await this.saveFields(id, sid, textFields, { ...saveContext, reason: saveContext?.reason || 'submit' });
     if (r.submitted_at) return r;
@@ -530,7 +550,26 @@ class ResearchService {
     r.completed_at = iso();
     await this.saveSessionRecord(id, sid, r);
     await this.endChat(id, sid, { submitted: true });
-    await this.appendEvent(id, sid, 'session_submitted', {});
+    await this.appendEvent(id, sid, 'session_marked_complete', {});
+    return r;
+  }
+
+  async reopenSession(id, sid) {
+    await this.assertSessionWritable(sid);
+    const r = await this.getSessionRecord(id, sid);
+    if (!r.submitted_at) return r;
+    const priorSubmittedAt = r.submitted_at;
+    r.submitted_at = null;
+    r.completed_at = null;
+    r.saved_at = iso();
+    await this.saveSessionRecord(id, sid, r);
+    const s = await this.getChatSession(id, sid);
+    if (s) {
+      s.locked = false;
+      s.ended_at = null;
+      await this.saveChatSession(id, sid, s);
+    }
+    await this.appendEvent(id, sid, 'session_reopened_by_student', { prior_submitted_at: priorSubmittedAt });
     return r;
   }
 
@@ -564,6 +603,7 @@ class ResearchService {
   }
 
   async markAiOpened(id, sid) {
+    await this.assertSessionWritable(sid);
     let r = await this.ensureStarted(id, sid);
     const p = await this.getParticipant(id);
     const config = getSessionConfig(sid);
@@ -721,6 +761,7 @@ class ResearchService {
   async currentState(id) {
     const settings = await this.getSettings();
     const session = getSessionConfig(settings.active_session_id);
+    const session_locked = Array.isArray(settings.locked_session_ids) && settings.locked_session_ids.includes(session.id);
     const participant = await this.getParticipant(id);
     const questionnaire = {
       pre: await this.questionnairePublicState(id, 'pre'),
@@ -742,7 +783,7 @@ class ResearchService {
     const publicParticipant = { ...participant };
     delete publicParticipant.login_name_hash;
     return {
-      settings, participant: publicParticipant, session, record, questionnaire, task_gate, learning_gate, orientation,
+      settings, participant: publicParticipant, session, session_locked, record, questionnaire, task_gate, learning_gate, orientation,
       support_card: ai_variant === 'supported' ? (INTERVENTION_SUPPORT_CARDS[session.id] || null) : null,
       ai_variant,
       chat_session: chat, chat_messages: messages,
@@ -850,8 +891,8 @@ class ResearchService {
     return { restored: true, participant_id: id, session_id: sid, archive_key: key };
   }
 
-  async archiveAndResetTest() {
-    const id = 'S00';
+  async archiveAndResetTest(id = 'S00') {
+    if (!isTestParticipant(id)) throw Object.assign(new Error('不是测试账号'), { status: 400 });
     const current = await this.getCompleteParticipantData(id);
     const hasActivity = SESSIONS.some(s => {
       const x = current.sessions[s.id];
@@ -859,10 +900,10 @@ class ResearchService {
     });
     if (hasActivity) {
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      await storageService.putObject(`test-archives/${stamp}.json`, JSON.stringify(current, null, 2));
+      await storageService.putObject(`test-archives/${stamp}_${id}.json`, JSON.stringify(current, null, 2));
     }
     await storageService.deletePrefix(`participants/${id}/`);
-    await this.createParticipant(id, { condition: 'unassigned', grade: current.participant?.grade || '', login_name_hash: current.participant?.login_name_hash || '' });
+    await this.createParticipant(id, { condition: testParticipantCondition(id) || 'unassigned', grade: current.participant?.grade || '', login_name_hash: current.participant?.login_name_hash || '' });
     return { archived_previous: hasActivity };
   }
 
