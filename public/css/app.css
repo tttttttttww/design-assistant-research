@@ -242,3 +242,13 @@ pre{white-space:pre-wrap;word-break:break-word;background:#f6f4ef;border-radius:
   flex:1 1 auto;
   min-width:0;
 }
+
+
+.material-pack{margin:18px 0 8px;padding:18px 18px 8px;border:1px solid var(--line);border-radius:18px;background:#fbfaf7}
+.material-pack-head h3{margin:4px 0 6px;font-size:20px}
+.material-group{margin:14px 0 18px}
+.material-group h4{margin:0 0 10px;font-size:16px;color:#1f3b3a}
+.material-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:12px}
+.material-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px 8px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.03)}
+.material-thumb{font-size:32px;line-height:1;margin-bottom:8px}
+.material-name{font-size:14px;font-weight:700;color:#243444}

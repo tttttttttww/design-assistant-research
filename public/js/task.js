@@ -212,9 +212,14 @@ function renderMessages(messages=[]) {
   if(messageArea && messageArea.dataset.copyWired!=='1'){messageArea.dataset.copyWired='1';messageArea.addEventListener('copy',()=>{const n=String(window.getSelection?.()?.toString()||'').length;if(n>0)postTraceEvent('chat_text_copied',{copied_chars:n});});}
 }
 function artifactUrl(a, sid=state.session.id){ return a ? App.photoUrl(id, sid, a.artifact_key, a) : ''; }
+
+function materialBankHtml(groups=[]){
+  if(!(groups||[]).length) return '';
+  return `<div class="material-pack"><div class="material-pack-head"><span class="eyebrow">材料图示</span><h3>你可以使用的材料</h3><p class="small">先认一认材料，再开始想方案。你的设计要尽量在这些材料范围内完成。</p></div>${groups.map(g=>`<div class="material-group"><h4>${esc(g.group||'')}</h4><div class="material-grid">${(g.items||[]).map(it=>`<div class="material-card"><div class="material-thumb">${esc(it.icon||'')}</div><div class="material-name">${esc(it.label||'')}</div></div>`).join('')}</div></div>`).join('')}</div>`;
+}
 function taskCard(s){
   const resources=(s.resources||[]).length ? `<div class="resource-pack"><div class="resource-pack-head"><span class="eyebrow">任务资料包</span><h3>先看共同资料，再开始判断</h3><p class="small">所有同学看到相同资料。请根据资料完成任务；右侧AI助手全程可用。</p></div><div class="resource-grid">${s.resources.map(r=>`<article class="resource-card"><h4>${esc(r.title)}</h4><ul>${(r.items||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></article>`).join('')}</div></div>` : '';
-  return `<section class="task-box"><span class="eyebrow">${esc(s.student_label)}</span><h1>${esc(s.title)}</h1><p class="lead">${esc(s.subtitle)}</p><div class="brief-list">${s.brief.map(x=>`<p>${esc(x)}</p>`).join('')}</div>${resources}<h3>本节要求</h3><ul class="requirements">${s.requirements.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section>`;
+  return `<section class="task-box"><span class="eyebrow">${esc(s.student_label)}</span><h1>${esc(s.title)}</h1><p class="lead">${esc(s.subtitle)}</p><div class="brief-list">${s.brief.map(x=>`<p>${esc(x)}</p>`).join('')}</div>${resources}${materialBankHtml(s.materials||[])}<h3>本节你需要完成的内容</h3><ul class="requirements">${s.requirements.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section>`;
 }
 
 function carryCard(carry){
