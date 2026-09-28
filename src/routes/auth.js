@@ -32,8 +32,9 @@ router.post('/validate', async (req, res) => {
       }
     }
 
-    let testInfo = null;
-    if (isTestParticipant(participantId)) testInfo = await researchService.archiveAndResetTest(participantId);
+    // 教师测试号必须用于验证“退出 / 重新登录 / 更新部署后记录仍然存在”。
+    // 因此登录时绝不能自动归档并清空 S00/S99。需要新一轮测试时，由教师在后台显式重置。
+    const testInfo = isTestParticipant(participantId) ? { preserved: true } : null;
     await researchService.touchParticipant(participantId);
     const settings = await researchService.getSettings();
     res.json({

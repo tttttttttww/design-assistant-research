@@ -30,9 +30,9 @@ const orientation=await researchService.orientationPublicState('S01','W3');
 if(!orientation||orientation.mode!=='supported'||orientation.completed) throw new Error('supported W3 orientation missing');
 await researchService.startOrientation('S01','W3');
 let badOrientation=false;
-try{await researchService.completeOrientation('S01','W3',{q1:0,q2:1,q3:0});}catch(e){badOrientation=e.status===422;}
+try{await researchService.completeOrientation('S01','W3',{q1:0,q2:0,q3:2});}catch(e){badOrientation=e.status===422;}
 if(!badOrientation) throw new Error('orientation correctness gate missing');
-await researchService.completeOrientation('S01','W3',{q1:1,q2:1,q3:0});
+await researchService.completeOrientation('S01','W3',{q1:1,q2:0,q3:2});
 const orientationDone=await researchService.orientationPublicState('S01','W3');
 if(!orientationDone.completed) throw new Error('orientation completion missing');
 const protectedSnapshot=await researchService.createProtectedPreW3Snapshot();
@@ -56,6 +56,15 @@ const protectedRestore=await researchService.restoreProtectedPreW3SnapshotMissin
 if(protectedRestore.restored<1) throw new Error('protected snapshot restore-missing failed');
 r=await researchService.getSessionRecord('S01','W1');
 if(!r.started_at) throw new Error('protected snapshot did not restore W1');
+
+// 教师测试号的历史必须跨重新进入持续保留；登录不再自动重置。
+await researchService.createParticipant('S99',{grade:'',condition:'B'});
+await researchService.ensureStarted('S99','W3');
+await researchService.appendMessage('S99','W3',{role:'user',content:'测试号连续性消息',message_id:'test-persist-1'});
+const testMsgsBefore=await researchService.getMessages('S99','W3');
+await researchService.touchParticipant('S99');
+const testMsgsAfter=await researchService.getMessages('S99','W3');
+if(testMsgsBefore.length!==1||testMsgsAfter.length!==1||testMsgsAfter[0]?.content!=='测试号连续性消息') throw new Error('test account history persistence failed');
 
 // Service-level whole-cohort replacement still exists for exceptional maintenance, but the HTTP route is disabled by default in v11.23.
 await researchService.ensureStarted('S01','W2');
