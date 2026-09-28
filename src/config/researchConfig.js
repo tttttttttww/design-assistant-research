@@ -91,7 +91,7 @@ export const INTERVENTION_ORIENTATION = {
   control: {
     key: 'neutral-platform-orientation-v1',
     title: '平台操作小练习',
-    intro: '先用几分钟确认平台的记录方式。下面只介绍页面操作，不提供AI求助策略。',
+    intro: '先用几分钟熟悉平台的记录方式和基本操作。',
     cards: [
       {
         title: '1｜任务记录会自动保存',

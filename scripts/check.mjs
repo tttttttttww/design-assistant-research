@@ -52,8 +52,11 @@ if (!chat.includes('taskContext') || !chat.includes('aiResponseReceivedAt') || !
 if (!adminHtml.includes('AI求助过程数据 ZIP') || !adminHtml.includes('W8后测问卷 CSV')) throw new Error('Admin export labels not updated');
 if (!adminHtml.includes('实时AI对话') || !admin.includes('refreshLiveMonitor') || !adminRoute.includes('/live/:participantId')) throw new Error('Teacher live monitor missing');
 if (!admin.includes('S00') || !admin.includes('S99') || !admin.includes('test-account') || !admin.includes('const ordered=[...rows]')) throw new Error('Dual test-account live-monitor support missing');
+const configText = await readFile('src/config/researchConfig.js','utf8');
+if (configText.includes('不提供AI求助策略')) throw new Error('Control orientation exposes help-seeking condition');
 const css = await readFile('public/css/app.css','utf8');
 if (!css.includes('scrollbar-gutter:stable') || !css.includes('height:clamp(520px,72vh,760px)') || !css.includes('.live-list-toolbar')) throw new Error('Live monitor internal scrolling fix missing');
+if (!css.includes('.course-side{min-width:0;position:sticky;top:82px;align-self:start;height:calc(100vh - 96px)') || !css.includes('overflow-y:auto')) throw new Error('Student AI side-panel scrolling fix missing');
 if (!adminRoute.includes('storage-diagnostics') || !adminRoute.includes('restore-reset-archive') || !research.includes('restoreResetArchive')) throw new Error('History diagnostics/restore missing');
 if (!chat.includes('s.processing = true') || !chat.includes('ai_request_started') || !research.includes('updateMessage')) throw new Error('Live processing state / early user-message persistence missing');
 console.log('CHECK OK v11.31: ordinary-GenAI control + supported AI + dual test accounts + autosave + richer raw process traces.');
