@@ -6,7 +6,7 @@ import {
   QUESTIONNAIRE_ITEMS, QUESTIONNAIRE_META, QUESTIONNAIRE_VERSION,
   INTERVENTION_ORIENTATION, INTERVENTION_SUPPORT_CARDS,
 } from '../config/researchConfig.js';
-import { isTestParticipant, testParticipantCondition, hashStudentName } from '../utils/validators.js';
+import { isTestParticipant, testParticipantCondition, forcedParticipantCondition, hashStudentName } from '../utils/validators.js';
 
 const iso = () => new Date().toISOString();
 const parse = (raw, fallback = null) => { try { return raw ? JSON.parse(raw) : fallback; } catch { return fallback; } };
@@ -98,14 +98,16 @@ class ResearchService {
 
   async createParticipant(id, input = {}) {
     const old = parse(await storageService.getObject(pKey(id)), {});
-    const fixedTestCondition = testParticipantCondition(id);
-    const condition = fixedTestCondition || (CONDITIONS.includes(input.condition) ? input.condition : (CONDITIONS.includes(old.condition) ? old.condition : 'unassigned'));
+    const fixedCondition = forcedParticipantCondition(id);
+    const condition = fixedCondition || (CONDITIONS.includes(input.condition) ? input.condition : (CONDITIONS.includes(old.condition) ? old.condition : 'unassigned'));
     const p = {
       participant_id: id,
       condition,
       grade: input.grade ?? old.grade ?? '',
       login_name_hash: input.login_name_hash ?? old.login_name_hash ?? '',
       is_test: isTestParticipant(id),
+      condition_fixed: Boolean(fixedCondition),
+      condition_fixed_reason: fixedCondition ? (['S04','S05'].includes(id) ? 'S04/S05因前两节未参与，固定为B对照组' : '教师测试号固定组别') : '',
       created_at: old.created_at || iso(),
       last_active_at: iso(),
       schema_version: SCHEMA_VERSION,
@@ -116,7 +118,27 @@ class ResearchService {
 
   async getParticipant(id) {
     const raw = await storageService.getObject(pKey(id));
-    return raw ? JSON.parse(raw) : this.createParticipant(id);
+    if (!raw) return this.createParticipant(id);
+    const p = JSON.parse(raw);
+    const forced = forcedParticipantCondition(id);
+    if (forced && p.condition !== forced) {
+      const previous = p.condition || 'unassigned';
+      p.condition = forced;
+      p.condition_fixed = true;
+      p.condition_fixed_reason = ['S04','S05'].includes(id)
+        ? 'S04/S05因前两节未参与，固定为B对照组'
+        : '教师测试号固定组别';
+      p.condition_corrected_from = previous;
+      p.condition_corrected_at = iso();
+      p.schema_version = SCHEMA_VERSION;
+      await storageService.putObject(pKey(id), JSON.stringify(p));
+    } else if (forced) {
+      p.condition_fixed = true;
+      p.condition_fixed_reason = ['S04','S05'].includes(id)
+        ? 'S04/S05因前两节未参与，固定为B对照组'
+        : '教师测试号固定组别';
+    }
+    return p;
   }
 
   async touchParticipant(id) {
@@ -130,7 +152,7 @@ class ResearchService {
     const p = await this.getParticipant(id);
     if (condition != null) {
       if (!CONDITIONS.includes(condition)) throw Object.assign(new Error('condition无效'), { status: 400 });
-      p.condition = testParticipantCondition(id) || condition;
+      p.condition = forcedParticipantCondition(id) || condition;
     }
     if (grade != null) p.grade = String(grade).trim();
     if (login_name != null) {
@@ -593,6 +615,38 @@ class ResearchService {
         prompt_version: variant === 'supported' ? PROMPT_VERSION_SUPPORTED : PROMPT_VERSION_FREE,
       };
       await storageService.putObject(cKey(id, sid), JSON.stringify(s));
+    } else if (s.ai_variant !== variant) {
+      // 组别发生纠正时，不沿用另一条件下创建的 Coze 会话，避免跨组上下文污染。
+      s.ai_variant = variant;
+      s.bot_id = '';
+      s.model = '';
+      s.conversation_id = '';
+      s.locked = false;
+      s.ended_at = null;
+      s.processing = false;
+      s.processing_interaction_id = '';
+      s.prompt_version = variant === 'supported' ? PROMPT_VERSION_SUPPORTED : PROMPT_VERSION_FREE;
+      await storageService.putObject(cKey(id, sid), JSON.stringify(s));
+      await this.appendEvent(id, sid, 'ai_condition_reconciled', { ai_variant: variant });
+    } else {
+      const desiredPromptVersion = variant === 'supported' ? PROMPT_VERSION_SUPPORTED : PROMPT_VERSION_FREE;
+      if (s.prompt_version !== desiredPromptVersion) {
+        const previousPromptVersion = s.prompt_version || '';
+        // 上下文协议发生改变时，旧 Coze conversation 里可能已经保留了此前注入的任务背景。
+        // 平台聊天记录不删除，但AI侧开启新 conversation，避免旧隐藏上下文继续污染后续回答。
+        s.bot_id = '';
+        s.model = '';
+        s.conversation_id = '';
+        s.processing = false;
+        s.processing_interaction_id = '';
+        s.prompt_version = desiredPromptVersion;
+        await storageService.putObject(cKey(id, sid), JSON.stringify(s));
+        await this.appendEvent(id, sid, 'ai_context_policy_reset', {
+          previous_prompt_version: previousPromptVersion,
+          prompt_version: desiredPromptVersion,
+          preserved_platform_chat_history: true,
+        });
+      }
     }
     return s;
   }

@@ -20,6 +20,15 @@ export function testParticipantCondition(value) {
   return '';
 }
 
+// 系统级固定组别。S04/S05 因前两节未参与，按研究安排永久固定为 B（对照组）。
+// 这里是硬约束，而不是只在随机分组时处理，避免旧分组/名单导入/手动修改把它们重新变成 A。
+export function forcedParticipantCondition(value) {
+  const id = normalizeParticipantId(value);
+  if (id === 'S00') return 'A';
+  if (id === 'S99' || id === 'S04' || id === 'S05') return 'B';
+  return '';
+}
+
 
 export function allowedParticipantIds() {
   return (process.env.ALLOWED_PARTICIPANTS || '')

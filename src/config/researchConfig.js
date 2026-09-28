@@ -1,6 +1,6 @@
 export const SCHEMA_VERSION = 20;
-export const PROMPT_VERSION_FREE = 'free-ai-v7-natural-general-llm';
-export const PROMPT_VERSION_SUPPORTED = 'help-seeking-support-v11-natural-response';
+export const PROMPT_VERSION_FREE = 'free-ai-v8-student-supplied-context';
+export const PROMPT_VERSION_SUPPORTED = 'help-seeking-support-v12-student-supplied-context';
 export const QUESTIONNAIRE_VERSION = 'li-help-seeking-intention-genai-v2-minimal-adaptation';
 
 export const CONDITIONS = ['unassigned', 'A', 'B'];
@@ -96,15 +96,15 @@ export const INTERVENTION_ORIENTATION = {
       {
         title: '1｜任务记录会自动保存',
         body: [
-          '你在任务文本框中的内容会自动保存，也可以随时点击“保存当前记录”。',
-          '正式提交后本节记录会锁定，因此提交前请先检查。',
+          '你在任务文本框中的内容会自动保存，也可以在下课时点击“保存进度并退出”。',
+          '“完成本阶段”只是完成标记；在老师统一结束并锁定前，如果误点或还想修改，可以重新进入继续修改。',
         ],
       },
       {
         title: '2｜草图和原型照片要拍清楚',
         body: [
           '需要上传图片的课次，请让主要结构清楚可见；画功和照片美化都不是本研究重点。',
-          '低保真原型重点是能测试关键功能，不要求做成精致成品。',
+          '草图和简单模型重点是表达想法、测试关键功能，不要求做成精致成品。',
         ],
       },
       {
@@ -116,9 +116,9 @@ export const INTERVENTION_ORIENTATION = {
       },
     ],
     acknowledgements: [
-      '我知道任务文字会自动保存，提交前还需要检查。',
+      '我知道任务文字会自动保存，没做完可以保存进度，下次继续。',
       '我知道AI正在处理时需要等待回复完成。',
-      '我知道草图/原型主要用于表达和测试，不按画功打分。',
+      '我知道草图和简单模型主要用于表达和测试，不按画功或外观精致程度打分。',
     ],
     button: '我已了解，进入设计任务',
   },
@@ -559,6 +559,19 @@ export function aiVariantFor({ session, condition, isTest = false }) {
 }
 
 export function hiddenAiContext(session) {
+  const studentMustSupplyContext = ['intervention','transfer'].includes(String(session?.phase || session?.research_role || ''));
+  if (studentMustSupplyContext) {
+    return [
+      '【AI可见信息边界：学生需自行提供任务背景】',
+      '你正在帮助一名初中生完成课堂中的开放式设计任务。',
+      '不要从平台隐藏信息中获得、推断或补全具体任务主题、使用者特征、材料范围、设计要求、学生当前进展或课堂已经讲过的内容。',
+      '只有学生在聊天中明确说出的信息、学生此前在同一AI对话中已经说过的信息，以及学生主动上传且图片中真正可见的信息，才可以作为当前任务事实。',
+      '如果学生使用“这个”“这类人”“这个装置”“怎么做”等指代，但当前AI对话中没有足够前文说明对象，不要猜测其指代，也不要替学生补全课堂任务背景；应按普通对话所需程度请求必要信息。',
+      '实验组与对照组都遵守这一信息边界。区别只来自各自智能体的人设与求助支持规则，不来自额外任务背景。',
+      '共同事实约束：不得把学生未提供的材料、结构、测试结果、使用者反馈、数据或观察结果当作已知事实。信息不足时应明确说明目前无法确定。',
+      '不要主动诱导学生求助，也不要要求学生采用固定提问模板。',
+    ].join('\n');
+  }
   return [
     '【课堂任务上下文：只用于帮助AI理解当前任务，不要把这段文字原样复述给学生，也不要把它变成固定提问脚本。】',
     `课次：${session.id} ${session.title}`,

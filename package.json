@@ -1,6 +1,6 @@
 {
   "name": "design-thinking-help-seeking-platform",
-  "version": "11.33.0",
+  "version": "11.36.0",
   "type": "module",
   "description": "13周设计思维课程与生成式AI学业求助研究平台（普通GenAI对照+学业求助支持实验+双测试号+过程证据增强）",
   "main": "cloud-functions/express/[[default]].js",

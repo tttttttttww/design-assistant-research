@@ -214,6 +214,8 @@ async function summary(id, activeSessionId = '') {
     grade: p.grade,
     login_name_ready: Boolean(p.login_name_hash),
     is_test: p.is_test,
+    condition_fixed: Boolean(p.condition_fixed),
+    condition_fixed_reason: p.condition_fixed_reason || '',
     active_session_id: sid,
     started: Boolean(r.started_at),
     ai_used: Boolean(r.ai_used),
