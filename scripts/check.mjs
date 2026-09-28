@@ -59,4 +59,7 @@ if (!css.includes('scrollbar-gutter:stable') || !css.includes('height:clamp(520p
 if (!css.includes('.course-side{min-width:0;position:sticky;top:82px;align-self:start;height:calc(100vh - 96px)') || !css.includes('overflow-y:auto')) throw new Error('Student AI side-panel scrolling fix missing');
 if (!adminRoute.includes('storage-diagnostics') || !adminRoute.includes('restore-reset-archive') || !research.includes('restoreResetArchive')) throw new Error('History diagnostics/restore missing');
 if (!chat.includes('s.processing = true') || !chat.includes('ai_request_started') || !research.includes('updateMessage')) throw new Error('Live processing state / early user-message persistence missing');
-console.log('CHECK OK v11.31: ordinary-GenAI control + supported AI + dual test accounts + autosave + richer raw process traces.');
+if (!adminHtml.includes('groupAdjustTable') || !admin.includes('renderGroupAdjuster') || !admin.includes('save-condition')) throw new Error('Manual condition adjustment UI missing');
+if (!adminRoute.includes('targetA = Math.floor(enrolled.length / 2)') || !adminRoute.includes('exact_total_balance_with_fixed_control')) throw new Error('Exact-total balanced randomization missing');
+if (!research.includes('condition_change_history') || !research.includes('orientation-archives')) throw new Error('Group-change audit/orientation safety missing');
+console.log('CHECK OK v11.39: ordinary-GenAI control + supported AI + dual test accounts + autosave + richer raw process traces.');

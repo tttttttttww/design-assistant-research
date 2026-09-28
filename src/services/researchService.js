@@ -152,7 +152,16 @@ class ResearchService {
     const p = await this.getParticipant(id);
     if (condition != null) {
       if (!CONDITIONS.includes(condition)) throw Object.assign(new Error('condition无效'), { status: 400 });
-      p.condition = forcedParticipantCondition(id) || condition;
+      const previousCondition = p.condition || 'unassigned';
+      const nextCondition = forcedParticipantCondition(id) || condition;
+      p.condition = nextCondition;
+      if (previousCondition !== nextCondition) {
+        const changedAt = iso();
+        p.condition_changed_at = changedAt;
+        p.condition_change_history = Array.isArray(p.condition_change_history) ? p.condition_change_history : [];
+        p.condition_change_history.push({ from: previousCondition, to: nextCondition, at: changedAt });
+        if (p.condition_change_history.length > 50) p.condition_change_history = p.condition_change_history.slice(-50);
+      }
     }
     if (grade != null) p.grade = String(grade).trim();
     if (login_name != null) {
@@ -223,6 +232,7 @@ class ResearchService {
     const mode = variant === 'supported' ? 'supported' : 'control';
     const config = INTERVENTION_ORIENTATION[mode];
     const stored = await this.getOrientation(id, sid);
+    const compatible = stored?.mode === mode ? stored : null;
     return {
       mode,
       key: config.key,
@@ -232,10 +242,10 @@ class ResearchService {
       checks: config.checks || [],
       acknowledgements: config.acknowledgements || [],
       button: config.button,
-      started_at: stored?.started_at || null,
-      completed_at: stored?.completed_at || null,
-      duration_seconds: stored?.duration_seconds ?? null,
-      completed: Boolean(stored?.completed_at),
+      started_at: compatible?.started_at || null,
+      completed_at: compatible?.completed_at || null,
+      duration_seconds: compatible?.duration_seconds ?? null,
+      completed: Boolean(compatible?.completed_at),
     };
   }
 
@@ -248,7 +258,13 @@ class ResearchService {
     const mode = variant === 'supported' ? 'supported' : 'control';
     const config = INTERVENTION_ORIENTATION[mode];
     const old = await this.getOrientation(id, sid);
-    const row = old || {
+    if (old && old.mode !== mode) {
+      await storageService.putObject(
+        `orientation-archives/${id}/${sid}/${iso().replace(/[:.]/g,'-')}.json`,
+        JSON.stringify({ ...old, archived_reason:'condition_changed', archived_at:iso() }, null, 2),
+      );
+    }
+    const row = old?.mode === mode ? old : {
       participant_id: id,
       session_id: sid,
       mode,

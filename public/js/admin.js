@@ -217,7 +217,7 @@ if(randomBtn) randomBtn.onclick=async()=>{
   const formalRows=rows.filter(x=>!x.is_test&&x.login_name_ready);
   const missing=formalRows.filter(x=>!['6','7','8'].includes(String(x.grade||'').trim())).map(x=>x.participant_id);
   if(missing.length){ alert(`请先补全年级信息：${missing.join('、')}`); return; }
-  if(!confirm('确认按年级（6/7/8）分层随机分配A/B吗？\n\n切换到W3时平台会自动完成这一步；这里只保留手动补救入口。分组前会自动创建W1/W2安全快照。')) return;
+  if(!confirm('确认按年级（6/7/8）分层随机分配A/B吗？\n\nS04、S05固定为B；30名正式学生时总人数目标为A=15、B=15。切换到W3时平台会自动完成这一步；这里只保留手动补救入口。分组前会自动创建W1/W2安全快照。')) return;
   const typed=prompt('为防止误操作，请输入：RANDOMIZE W3','');
   if(typed!=='RANDOMIZE W3'){ alert('输入不一致，已取消。'); return; }
   try{
@@ -231,8 +231,53 @@ if(randomBtn) randomBtn.onclick=async()=>{
 
 function badge(v, t = '已完成') { return v ? `<span class="badge">${t}</span>` : '—'; }
 
+function renderGroupAdjuster() {
+  const box = document.getElementById('groupAdjustTable');
+  const counts = document.getElementById('groupCounts');
+  if (!box || !counts) return;
+  const formal = rows.filter(x => !x.is_test && x.login_name_ready);
+  const a = formal.filter(x => x.condition === 'A').length;
+  const b = formal.filter(x => x.condition === 'B').length;
+  const u = formal.filter(x => !['A','B'].includes(x.condition)).length;
+  counts.innerHTML = `<span class="badge big">实验组 A：${a}</span><span class="badge big">对照组 B：${b}</span>${u ? `<span class="badge big warn-badge">未分组：${u}</span>` : ''}`;
+  const body = formal.map(x => {
+    const fixed = Boolean(x.condition_fixed);
+    const label = x.condition === 'A' ? '实验组 A' : x.condition === 'B' ? '对照组 B' : '未分组';
+    return `<tr><td><strong>${x.participant_id}</strong>${fixed ? ' <span class="badge">固定</span>' : ''}</td><td>${esc(x.grade || '—')}年级</td><td>${fixed
+      ? `<strong>${label}</strong><div class="small">${esc(x.condition_fixed_reason || '')}</div>`
+      : `<select class="manual-condition-select" data-id="${x.participant_id}"><option value="unassigned" ${x.condition==='unassigned'?'selected':''}>未分组</option><option value="A" ${x.condition==='A'?'selected':''}>实验组 A</option><option value="B" ${x.condition==='B'?'selected':''}>对照组 B</option></select>`}</td><td>${fixed ? '—' : `<button class="btn ghost mini save-condition" data-id="${x.participant_id}" type="button">保存组别</button>`}</td></tr>`;
+  }).join('');
+  box.innerHTML = `<div class="table-wrap group-adjust-table"><table class="admin-table"><thead><tr><th>编号</th><th>年级</th><th>当前组别</th><th>操作</th></tr></thead><tbody>${body || '<tr><td colspan="4">请先导入正式学生名单。</td></tr>'}</tbody></table></div>`;
+  box.querySelectorAll('.save-condition').forEach(btn => btn.onclick = async () => {
+    const id = btn.dataset.id;
+    const select = box.querySelector(`.manual-condition-select[data-id="${id}"]`);
+    const next = select?.value || 'unassigned';
+    const row = rows.find(x => x.participant_id === id);
+    if (!row || row.condition === next) return;
+    const nextLabel = next === 'A' ? '实验组 A' : next === 'B' ? '对照组 B' : '未分组';
+    if ((row.started || row.ai_used) && !confirm(`${id} 已经进入过当前课次或使用过AI。
+
+仍要把组别改为“${nextLabel}”吗？
+已有记录不会删除，但之后AI会按新组别运行。`)) {
+      select.value = row.condition;
+      return;
+    }
+    try {
+      btn.disabled = true;
+      btn.textContent = '保存中…';
+      await api(`/participant/${id}/meta`, { method:'POST', body:JSON.stringify({ condition:next }) });
+      await loadParticipants();
+    } catch (e) {
+      alert(e.message);
+      btn.disabled = false;
+      btn.textContent = '保存组别';
+    }
+  });
+}
+
 async function loadParticipants() {
   rows = await api('/participants');
+  renderGroupAdjuster();
   const formal = rows.filter(x => !x.is_test), sid = settings?.active_session_id || '';
   document.getElementById('currentTitle').textContent = `${sid} 课堂数据总览`;
   const stats = [

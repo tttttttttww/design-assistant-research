@@ -78,27 +78,61 @@ async function stratifiedRandomizeRostered({ force = false, reason = 'manual' } 
   }
 
   const preW3Snapshot = await researchService.createProtectedPreW3Snapshot();
-  const groups = new Map();
-  for (const p of randomizable) {
-    const g=String(p.grade);
-    if(!groups.has(g)) groups.set(g,[]);
-    groups.get(g).push(p.participant_id);
+
+  // 目标：在保留 S04/S05 固定 B 的前提下，让正式学生总人数尽量等分。
+  // 30 人时最终目标为 A=15、B=15，而不是“其余28人各14人 + 两个固定B”造成 A=14、B=16。
+  const targetA = Math.floor(enrolled.length / 2);
+  const targetB = enrolled.length - targetA;
+  if (forced.length > targetB) {
+    throw Object.assign(new Error('固定对照组人数已经超过当前总人数可实现的平衡上限，请人工调整研究名单。'), { status: 409 });
   }
+
+  const gradeInfo = new Map();
+  for (const grade of ['6','7','8']) {
+    const allInGrade = enrolled.filter(p => String(p.grade) === grade);
+    const randomIds = shuffle(allInGrade.filter(p => !FORCED_CONTROL_IDS.has(p.participant_id)).map(p => p.participant_id));
+    const fixedBCount = allInGrade.filter(p => FORCED_CONTROL_IDS.has(p.participant_id)).length;
+    // 每个年级先以“该年级总人数的一半”为A组目标，再根据全体15/15目标微调奇数年级。
+    const baseA = Math.min(randomIds.length, Math.floor(allInGrade.length / 2));
+    gradeInfo.set(grade, { grade, total: allInGrade.length, randomIds, fixedBCount, targetA: baseA });
+  }
+
+  let assignedATarget = [...gradeInfo.values()].reduce((n, g) => n + g.targetA, 0);
+  let delta = targetA - assignedATarget;
+  while (delta > 0) {
+    const candidates = shuffle([...gradeInfo.values()].filter(g => g.targetA < g.randomIds.length));
+    if (!candidates.length) break;
+    for (const g of candidates) {
+      if (delta <= 0) break;
+      g.targetA += 1;
+      delta -= 1;
+    }
+  }
+  while (delta < 0) {
+    const candidates = shuffle([...gradeInfo.values()].filter(g => g.targetA > 0));
+    if (!candidates.length) break;
+    for (const g of candidates) {
+      if (delta >= 0) break;
+      g.targetA -= 1;
+      delta += 1;
+    }
+  }
+  if (delta !== 0) throw Object.assign(new Error('当前名单无法在固定组别约束下完成平衡随机分组，请使用教师后台手动调整。'), { status: 409 });
+
   const assignments=forced.map(p=>({participant_id:p.participant_id,grade:p.grade,condition:'B',fixed:true}));
   let totalA=0,totalB=forced.length;
   for (const grade of ['6','7','8']) {
-    const ids=shuffle(groups.get(grade)||[]);
-    let start=totalA<=totalB?'A':'B';
-    for(let i=0;i<ids.length;i++){
-      const condition=i%2===0?start:(start==='A'?'B':'A');
-      await researchService.setParticipantMeta(ids[i],{condition});
+    const g = gradeInfo.get(grade);
+    for(let i=0;i<g.randomIds.length;i++){
+      const condition = i < g.targetA ? 'A' : 'B';
+      await researchService.setParticipantMeta(g.randomIds[i],{condition});
       if(condition==='A')totalA++;else totalB++;
-      assignments.push({participant_id:ids[i],grade,condition,fixed:false});
+      assignments.push({participant_id:g.randomIds[i],grade,condition,fixed:false});
     }
   }
   const result={
-    method:'stratified_randomization_by_grade_with_fixed_control', created_at:new Date().toISOString(), reason,
-    fixed_control_ids:forced.map(p=>p.participant_id), totals:{A:totalA,B:totalB}, assignments, pre_w3_snapshot:preW3Snapshot,
+    method:'stratified_randomization_by_grade_exact_total_balance_with_fixed_control', created_at:new Date().toISOString(), reason,
+    fixed_control_ids:forced.map(p=>p.participant_id), target_totals:{A:targetA,B:targetB}, totals:{A:totalA,B:totalB}, assignments, pre_w3_snapshot:preW3Snapshot,
   };
   await storageService.putObject(`group-assignments/${result.created_at.replace(/[:.]/g,'-')}.json`,JSON.stringify(result,null,2));
   return result;

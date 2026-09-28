@@ -252,3 +252,6 @@ pre{white-space:pre-wrap;word-break:break-word;background:#f6f4ef;border-radius:
 .material-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px 8px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.03)}
 .material-thumb{font-size:32px;line-height:1;margin-bottom:8px}
 .material-name{font-size:14px;font-weight:700;color:#243444}
+
+/* v11.39 manual group adjustment */
+.group-adjust-box{margin:14px 0 18px;padding:18px;border:1px solid #cfded8;border-radius:16px;background:#f8fbf9}.group-adjust-box h3{margin:3px 0 5px}.group-counts{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.group-adjust-table{margin-top:12px;max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:14px;background:#fff}.manual-condition-select{min-width:138px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff}.warn-badge{background:#fff3e7;color:#8a531c;border-color:#efd3b7}@media(max-width:760px){.group-counts{justify-content:flex-start}.group-adjust-box{padding:14px}}
