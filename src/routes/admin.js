@@ -54,7 +54,8 @@ async function stratifiedRandomizeRostered({ force = false, reason = 'manual' } 
   const missing = enrolled.filter(p => !['6','7','8'].includes(String(p.grade || '').trim())).map(p => p.participant_id);
   if (missing.length) throw Object.assign(new Error(`以下已录入学生缺少6/7/8年级信息：${missing.join(', ')}`), { status: 400 });
 
-  // S04/S05 因前两节未参与，按当前课堂安排固定进入对照组；其余学生按年级分层随机。
+  // S04/S05按当前研究安排固定为对照组；其余学生仅提供“可选”的年级分层随机初始分组。
+  // 平台不再强制30人必须15/15，也不会在切换课次时自动分组；教师可在后台逐个调整。
   const forced = enrolled.filter(p => FORCED_CONTROL_IDS.has(p.participant_id));
   for (const p of forced) {
     if (p.condition !== 'B') await researchService.setParticipantMeta(p.participant_id, { condition:'B' });
@@ -64,77 +65,46 @@ async function stratifiedRandomizeRostered({ force = false, reason = 'manual' } 
   const alreadyRandomizable = randomizable.filter(p => ['A','B'].includes(p.condition));
   const allAssigned = enrolled.every(p => ['A','B'].includes(p.condition));
   if (allAssigned && !force) {
-    const preW3Snapshot = await researchService.createProtectedPreW3Snapshot();
+    const preW4Snapshot = await researchService.createProtectedPreW4Snapshot();
     return {
-      method:'stratified_randomization_by_grade_with_fixed_control', already_assigned:true, reason,
+      method:'existing_manual_or_prior_assignment', already_assigned:true, reason,
       fixed_control_ids:forced.map(p=>p.participant_id),
       totals:{ A: enrolled.filter(p=>p.condition==='A').length, B: enrolled.filter(p=>p.condition==='B').length },
       assignments: enrolled.map(p=>({participant_id:p.participant_id,grade:p.grade,condition:p.condition,fixed:FORCED_CONTROL_IDS.has(p.participant_id)})),
-      pre_w3_snapshot:preW3Snapshot,
+      pre_w4_snapshot:preW4Snapshot,
     };
   }
   if (alreadyRandomizable.length && !force) {
-    throw Object.assign(new Error('除S04/S05固定对照外，当前还有部分学生已经A/B分组。为避免混合旧分组，系统没有自动重分；请先检查名单。'), { status: 409 });
+    throw Object.assign(new Error('已有部分学生被手动设置为A/B。为避免覆盖现有分组，平台没有重新随机；请继续手动调整，或明确选择强制重分。'), { status: 409 });
   }
 
-  const preW3Snapshot = await researchService.createProtectedPreW3Snapshot();
+  const preW4Snapshot = await researchService.createProtectedPreW4Snapshot();
+  const assignments = forced.map(p=>({participant_id:p.participant_id,grade:p.grade,condition:'B',fixed:true}));
+  let totalA = 0, totalB = forced.length;
 
-  // 目标：在保留 S04/S05 固定 B 的前提下，让正式学生总人数尽量等分。
-  // 30 人时最终目标为 A=15、B=15，而不是“其余28人各14人 + 两个固定B”造成 A=14、B=16。
-  const targetA = Math.floor(enrolled.length / 2);
-  const targetB = enrolled.length - targetA;
-  if (forced.length > targetB) {
-    throw Object.assign(new Error('固定对照组人数已经超过当前总人数可实现的平衡上限，请人工调整研究名单。'), { status: 409 });
-  }
-
-  const gradeInfo = new Map();
   for (const grade of ['6','7','8']) {
     const allInGrade = enrolled.filter(p => String(p.grade) === grade);
-    const randomIds = shuffle(allInGrade.filter(p => !FORCED_CONTROL_IDS.has(p.participant_id)).map(p => p.participant_id));
+    const ids = shuffle(allInGrade.filter(p => !FORCED_CONTROL_IDS.has(p.participant_id)).map(p => p.participant_id));
     const fixedBCount = allInGrade.filter(p => FORCED_CONTROL_IDS.has(p.participant_id)).length;
-    // 每个年级先以“该年级总人数的一半”为A组目标，再根据全体15/15目标微调奇数年级。
-    const baseA = Math.min(randomIds.length, Math.floor(allInGrade.length / 2));
-    gradeInfo.set(grade, { grade, total: allInGrade.length, randomIds, fixedBCount, targetA: baseA });
+    // 每个年级尽量接近一半，但不追求全体固定15/15；固定B已计入该年级对照人数。
+    const desiredA = Math.max(0, Math.min(ids.length, Math.round(allInGrade.length / 2)));
+    for (let i=0; i<ids.length; i++) {
+      const condition = i < desiredA ? 'A' : 'B';
+      await researchService.setParticipantMeta(ids[i], { condition });
+      if (condition === 'A') totalA += 1; else totalB += 1;
+      assignments.push({ participant_id:ids[i], grade, condition, fixed:false });
+    }
   }
 
-  let assignedATarget = [...gradeInfo.values()].reduce((n, g) => n + g.targetA, 0);
-  let delta = targetA - assignedATarget;
-  while (delta > 0) {
-    const candidates = shuffle([...gradeInfo.values()].filter(g => g.targetA < g.randomIds.length));
-    if (!candidates.length) break;
-    for (const g of candidates) {
-      if (delta <= 0) break;
-      g.targetA += 1;
-      delta -= 1;
-    }
-  }
-  while (delta < 0) {
-    const candidates = shuffle([...gradeInfo.values()].filter(g => g.targetA > 0));
-    if (!candidates.length) break;
-    for (const g of candidates) {
-      if (delta >= 0) break;
-      g.targetA -= 1;
-      delta += 1;
-    }
-  }
-  if (delta !== 0) throw Object.assign(new Error('当前名单无法在固定组别约束下完成平衡随机分组，请使用教师后台手动调整。'), { status: 409 });
-
-  const assignments=forced.map(p=>({participant_id:p.participant_id,grade:p.grade,condition:'B',fixed:true}));
-  let totalA=0,totalB=forced.length;
-  for (const grade of ['6','7','8']) {
-    const g = gradeInfo.get(grade);
-    for(let i=0;i<g.randomIds.length;i++){
-      const condition = i < g.targetA ? 'A' : 'B';
-      await researchService.setParticipantMeta(g.randomIds[i],{condition});
-      if(condition==='A')totalA++;else totalB++;
-      assignments.push({participant_id:g.randomIds[i],grade,condition,fixed:false});
-    }
-  }
-  const result={
-    method:'stratified_randomization_by_grade_exact_total_balance_with_fixed_control', created_at:new Date().toISOString(), reason,
-    fixed_control_ids:forced.map(p=>p.participant_id), target_totals:{A:targetA,B:targetB}, totals:{A:totalA,B:totalB}, assignments, pre_w3_snapshot:preW3Snapshot,
+  const result = {
+    method:'optional_stratified_randomization_by_grade_with_fixed_control',
+    created_at:new Date().toISOString(), reason,
+    fixed_control_ids:forced.map(p=>p.participant_id),
+    totals:{A:totalA,B:totalB}, assignments,
+    pre_w4_snapshot:preW4Snapshot,
+    note:'Optional initial stratified randomization only; no forced global 15/15 target. Teacher may adjust individual assignments before W4.',
   };
-  await storageService.putObject(`group-assignments/${result.created_at.replace(/[:.]/g,'-')}.json`,JSON.stringify(result,null,2));
+  await storageService.putObject(`group-assignments/${result.created_at.replace(/[:.]/g,'-')}.json`, JSON.stringify(result,null,2));
   return result;
 }
 const setWidths = (ws, widths) => { ws['!cols'] = widths.map(w => ({ wch: w })); return ws; };
@@ -201,12 +171,12 @@ router.get('/settings', requireAdmin, async (req, res) => res.json({ ...(await r
 router.post('/settings', requireAdmin, async (req, res) => {
   try {
     const input = req.body || {};
-    let auto_randomization = null;
-    if (String(input.active_session_id || '').toUpperCase() === 'W3' && input.session_open === true) {
-      auto_randomization = await stratifiedRandomizeRostered({ reason:'auto_on_W3_activation' });
-    }
+    // 切换课次不自动分组。正式W4前由教师确认分组；S04/S05仍固定B。
+    // 进入W4时自动创建一次W1/W2/W3只读安全快照（若已存在则复用），确保早期真实记录不会因后续更新丢失。
+    let preW4Snapshot = null;
+    if (String(input.active_session_id || '').toUpperCase() === 'W4') preW4Snapshot = await researchService.createProtectedPreW4Snapshot();
     const settings = await researchService.saveSettings(input);
-    res.json({ ...settings, auto_randomization });
+    res.json({ ...settings, auto_randomization: null, pre_w4_snapshot: preW4Snapshot });
   }
   catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
@@ -477,7 +447,7 @@ router.post('/participants/bulk-meta', requireAdmin, async (req, res) => {
 
 router.post('/participants/stratified-randomize', requireAdmin, async (req, res) => {
   try {
-    if (String(req.body?.confirm || '').trim() !== 'RANDOMIZE W3') return res.status(400).json({ error: '请输入 RANDOMIZE W3 才能执行分层随机分组' });
+    if (String(req.body?.confirm || '').trim() !== 'RANDOMIZE W4') return res.status(400).json({ error: '请输入 RANDOMIZE W4 才能执行可选的年级分层随机分组' });
     res.json(await stratifiedRandomizeRostered({ force:Boolean(req.body?.force), reason:'manual_admin' }));
   } catch (e) { res.status(e.status || 500).json({ error: e.message || '分层随机分组失败' }); }
 });
@@ -551,7 +521,7 @@ router.get('/storage-diagnostics', requireAdmin, async (req, res) => {
   try {
     const all = await storageService.listObjects('', 30000);
     const resets = await researchService.listResetArchives();
-    const protectedSnapshot = await researchService.protectedPreW3SnapshotInfo();
+    const protectedSnapshot = await researchService.protectedPreW4SnapshotInfo();
     const bySession = Object.fromEntries(SESSIONS.map(s => [s.id, { records: 0, messages: 0, events: 0, revisions: 0 }]));
     for (const row of all) {
       const m = row.key.match(/^participants\/S(?:00|[0-3]\d)\/sessions\/(W\d+)\/(record\.json|chat\/messages\/|events\/|revisions\/)/);
@@ -626,7 +596,7 @@ async function formalData() {
   return out;
 }
 
-// ===== 推荐的正式导出：求助过程证据 + 任务作品 + W8后测 + 完整JSON =====
+// ===== 推荐的正式导出：求助过程证据 + 任务作品 + 候选后测 + 完整JSON =====
 router.get('/export/chat-package.zip', requireAdmin, async (req, res) => {
   let archive;
   try {
@@ -688,6 +658,11 @@ router.get('/export/chat-package.zip', requireAdmin, async (req, res) => {
             model: m.model,
             ai_variant: m.ai_variant,
             prompt_version: m.prompt_version,
+            agent_route: m.agent_route || '',
+            scaffold_triggered: m.scaffold_triggered == null ? '' : Boolean(m.scaffold_triggered),
+            scaffold_type: m.scaffold_type || '',
+            route_parse_status: m.route_parse_status || '',
+            route_protocol_version: m.route_protocol_version || '',
           });
         }
         for (const rev of revisions) revisionRows.push({
@@ -732,16 +707,21 @@ router.get('/export/chat-package.zip', requireAdmin, async (req, res) => {
             message_count:d.message_count ?? '',
             dwell_ms:d.dwell_ms ?? '',
             ai_latency_ms:d.ai_latency_ms ?? '',
+            potential_unsent_help_event:['ai_draft_deleted_unsent','ai_draft_left_unsent'].includes(ev.type) ? 1 : 0,
+            agent_route:d.agent_route || '',
+            scaffold_triggered:d.scaffold_triggered == null ? '' : Boolean(d.scaffold_triggered),
+            scaffold_type:d.scaffold_type || '',
+            route_parse_status:d.route_parse_status || '',
             data_json:d,
           });
         }
       }
     }
-    const headers = ['participant_id','grade','condition','course_session_id','session_title','message_index','interaction_id','role','content','content_type','message_has_image','image_file_names','image_zip_paths','client_sent_at','server_received_at','ai_request_started_at','ai_response_received_at','ai_latency_ms','task_field_key','task_field_label','task_field_stage','task_context_json','created_at','conversation_id','chat_id','bot_id','model','ai_variant','prompt_version'];
+    const headers = ['participant_id','grade','condition','course_session_id','session_title','message_index','interaction_id','role','content','content_type','message_has_image','image_file_names','image_zip_paths','client_sent_at','server_received_at','ai_request_started_at','ai_response_received_at','ai_latency_ms','task_field_key','task_field_label','task_field_stage','task_context_json','created_at','conversation_id','chat_id','bot_id','model','ai_variant','prompt_version','agent_route','scaffold_triggered','scaffold_type','route_parse_status','route_protocol_version'];
     archive.append(csvText(headers, rows), { name: 'chat_messages.csv' });
     const revisionHeaders = ['participant_id','grade','condition','session_id','session_title','revision_index','field_key','field_label','field_stage','field_revision_no','previous_text','text','created_at','save_reason','last_ai_message_id','last_ai_message_at','seconds_since_last_ai_reply'];
     archive.append(csvText(revisionHeaders, revisionRows), { name: 'task_revisions.csv' });
-    const eventHeaders = ['participant_id','grade','condition','session_id','session_title','event_index','type','at','interaction_id','task_field_key','task_field_label','task_field_stage','duration_ms','max_chars','edit_count','current_chars','reason','message_count','dwell_ms','ai_latency_ms','data_json'];
+    const eventHeaders = ['participant_id','grade','condition','session_id','session_title','event_index','type','at','interaction_id','task_field_key','task_field_label','task_field_stage','duration_ms','max_chars','edit_count','current_chars','reason','message_count','dwell_ms','ai_latency_ms','potential_unsent_help_event','agent_route','scaffold_triggered','scaffold_type','route_parse_status','data_json'];
     archive.append(csvText(eventHeaders, eventRows), { name: 'behavior_events.csv' });
 
     for (const r of rows) timelineRows.push({
@@ -762,6 +742,10 @@ router.get('/export/chat-package.zip', requireAdmin, async (req, res) => {
       field_stage:r.task_field_stage,
       previous_text:'',
       revised_text:'',
+      agent_route:r.agent_route || '',
+      scaffold_triggered:r.scaffold_triggered ?? '',
+      scaffold_type:r.scaffold_type || '',
+      potential_unsent_help_event:'',
       raw_data_json:r.task_context_json,
     });
     for (const r of revisionRows) timelineRows.push({
@@ -782,6 +766,10 @@ router.get('/export/chat-package.zip', requireAdmin, async (req, res) => {
       field_stage:r.field_stage,
       previous_text:r.previous_text,
       revised_text:r.text,
+      agent_route:'',
+      scaffold_triggered:'',
+      scaffold_type:'',
+      potential_unsent_help_event:'',
       raw_data_json:{ last_ai_message_id:r.last_ai_message_id, last_ai_message_at:r.last_ai_message_at, seconds_since_last_ai_reply:r.seconds_since_last_ai_reply },
     });
     for (const r of eventRows) timelineRows.push({
@@ -802,6 +790,10 @@ router.get('/export/chat-package.zip', requireAdmin, async (req, res) => {
       field_stage:r.task_field_stage,
       previous_text:'',
       revised_text:'',
+      agent_route:r.agent_route || '',
+      scaffold_triggered:r.scaffold_triggered ?? '',
+      scaffold_type:r.scaffold_type || '',
+      potential_unsent_help_event:r.potential_unsent_help_event || '',
       raw_data_json:r.data_json,
     });
     timelineRows.sort((a,b) => String(a.participant_id).localeCompare(String(b.participant_id)) || String(a.session_id).localeCompare(String(b.session_id)) || String(a.event_time).localeCompare(String(b.event_time)) || String(a.source_type).localeCompare(String(b.source_type)));
@@ -811,9 +803,10 @@ router.get('/export/chat-package.zip', requireAdmin, async (req, res) => {
       if (key !== seqKey) { seqKey = key; seq = 0; }
       row.sequence_order = ++seq;
     }
-    const timelineHeaders = ['participant_id','grade','condition','session_id','session_title','sequence_order','event_time','source_type','subtype','interaction_id','message_index','role','content','field_key','field_label','field_stage','previous_text','revised_text','raw_data_json'];
+    const timelineHeaders = ['participant_id','grade','condition','session_id','session_title','sequence_order','event_time','source_type','subtype','interaction_id','message_index','role','content','field_key','field_label','field_stage','previous_text','revised_text','agent_route','scaffold_triggered','scaffold_type','potential_unsent_help_event','raw_data_json'];
     archive.append(csvText(timelineHeaders, timelineRows), { name: 'process_timeline.csv' });
-    archive.append(`正式数据仅含 S01-S30，自动排除 S00（实验组测试）与 S99（对照组测试）。\nchat_messages.csv：学生与AI完整消息，含 interaction_id、真实AI请求/回复时间、ai_latency_ms，以及发送时所在任务步骤字段。\nbehavior_events.csv：输入草稿开始/删除未发送/离开未发送、打开AI但未发送、打开到发送时长、任务字段停留与编辑、粘贴/复制字符数、回看旧回复、查看新反馈等可观察事件；未发送草稿正文和剪贴板正文不会保存。\ntask_revisions.csv：任务文本框V1/V2/V3版本历史，可通过 last_ai_message_id / last_ai_message_at 与AI回复对齐。\nprocess_timeline.csv：把聊天、行为事件、任务修订按学生×课次合并为统一时间线，仅整理原始证据，不自动判定IHS/EHS/AHS。\nchat_images/：学生在允许上传图片的课次中发送给AI的原图；W2关闭聊天图片。\n共导出聊天消息 ${rows.length} 条、版本记录 ${revisionRows.length} 条、行为事件 ${eventRows.length} 条、聊天图片 ${imageCount} 张。\n`, { name: 'README.txt' });
+    archive.append(`正式数据仅含 S01-S30，自动排除 S00（实验组测试）与 S99（对照组测试）。\nchat_messages.csv：学生与AI完整消息，含 interaction_id、真实AI请求/回复时间、ai_latency_ms，以及发送时所在任务步骤字段。\nbehavior_events.csv：输入草稿开始/删除未发送/离开未发送、打开AI但未发送、打开到发送时长、任务字段停留与编辑、粘贴/复制字符数、回看旧回复、查看新反馈等可观察事件；删除/离开未发送只标记为 potential_unsent_help_event，不能自动等同AHS；未发送草稿正文和剪贴板正文不会保存。
+实验组还记录 help_seeking_route_decision：agent_route=IHS/EHS/OTHER、是否触发EHS支架、解析状态。该系统路由仅用于干预执行/fidelity，不等于正式人工编码。\ntask_revisions.csv：任务文本框V1/V2/V3版本历史，可通过 last_ai_message_id / last_ai_message_at 与AI回复对齐。\nprocess_timeline.csv：把聊天、行为事件、任务修订按学生×课次合并为统一时间线，仅整理原始证据，不自动判定IHS/EHS/AHS。\nchat_images/：学生在允许上传图片的课次中发送给AI的原图；W2关闭聊天图片。\n共导出聊天消息 ${rows.length} 条、版本记录 ${revisionRows.length} 条、行为事件 ${eventRows.length} 条、聊天图片 ${imageCount} 张。\n`, { name: 'README.txt' });
     await archive.finalize();
   } catch (e) {
     console.error('help-seeking process package export', e);
@@ -911,23 +904,23 @@ router.get('/export/questionnaire.csv', requireAdmin, async (req, res) => {
 
 
 router.post('/protected-snapshot/create', requireAdmin, async (req, res) => {
-  try { res.json(await researchService.createProtectedPreW3Snapshot()); }
-  catch (e) { res.status(e.status || 500).json({ error: e.message || '创建W1/W2安全快照失败' }); }
+  try { res.json(await researchService.createProtectedPreW4Snapshot()); }
+  catch (e) { res.status(e.status || 500).json({ error: e.message || '创建W1/W2/W3干预前安全快照失败' }); }
 });
 
 router.post('/protected-snapshot/restore-missing', requireAdmin, async (req, res) => {
   try {
-    if (String(req.body?.confirm || '') !== 'RESTORE W1 W2') return res.status(400).json({ error: '请输入 RESTORE W1 W2 才会执行恢复。' });
-    res.json(await researchService.restoreProtectedPreW3SnapshotMissingOnly());
-  } catch (e) { res.status(e.status || 500).json({ error: e.message || '恢复W1/W2安全快照失败' }); }
+    if (String(req.body?.confirm || '') !== 'RESTORE W1 W2 W3') return res.status(400).json({ error: '请输入 RESTORE W1 W2 W3 才会执行恢复。' });
+    res.json(await researchService.restoreProtectedPreW4SnapshotMissingOnly());
+  } catch (e) { res.status(e.status || 500).json({ error: e.message || '恢复W1/W2/W3干预前安全快照失败' }); }
 });
 
-router.get('/export/protected-pre-w3.zip', requireAdmin, async (req, res) => {
+router.get('/export/protected-pre-w4.zip', requireAdmin, async (req, res) => {
   try {
-    const meta = await researchService.protectedPreW3SnapshotInfo();
-    if (!meta?.prefix) return res.status(404).json({ error: '尚未创建W1/W2安全快照。切换到W3时会自动创建，也可在存储诊断处手动创建。' });
+    const meta = await researchService.protectedPreW4SnapshotInfo();
+    if (!meta?.prefix) return res.status(404).json({ error: '尚未创建W1/W2/W3干预前安全快照。可在正式W4前手动创建，或执行可选随机分组时自动创建。' });
     const rows = await storageService.listObjects(`${meta.prefix}/`, 30000);
-    const archive = openZip(res, 'W1_W2_protected_snapshot.zip');
+    const archive = openZip(res, 'W1_W2_W3_pre_W4_protected_snapshot.zip');
     for (const row of rows) {
       const data = await storageService.getObjectBuffer(row.key);
       if (data == null) continue;
@@ -936,7 +929,7 @@ router.get('/export/protected-pre-w3.zip', requireAdmin, async (req, res) => {
     }
     await archive.finalize();
   } catch (e) {
-    if (!res.headersSent) res.status(e.status || 500).json({ error: e.message || '导出W1/W2安全快照失败' });
+    if (!res.headersSent) res.status(e.status || 500).json({ error: e.message || '导出W1/W2/W3干预前安全快照失败' });
   }
 });
 
@@ -962,7 +955,7 @@ router.get('/export/sessions.csv', requireAdmin, async (req, res) => {
 router.get('/export/chat.csv', requireAdmin, async (req, res) => {
   const rows = [];
   for (const id of formalIds()) for (const s of SESSIONS) for (const m of await researchService.getMessages(id, s.id)) rows.push(m);
-  sendCsv(res, 'chat_messages.csv', ['participant_id','course_session_id','message_index','role','content','content_type','message_has_image','attachments','created_at','conversation_id','chat_id','bot_id','model','ai_variant','prompt_version'], rows);
+  sendCsv(res, 'chat_messages.csv', ['participant_id','course_session_id','message_index','role','content','content_type','message_has_image','attachments','created_at','conversation_id','chat_id','bot_id','model','ai_variant','prompt_version','agent_route','scaffold_triggered','scaffold_type','route_parse_status','route_protocol_version'], rows);
 });
 router.get('/export/chat-attachments.csv', requireAdmin, async (req, res) => {
   const rows = [];

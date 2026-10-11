@@ -4,8 +4,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { cozeService } from '../services/cozeService.js';
 import { researchService } from '../services/researchService.js';
 import { storageService } from '../services/storageService.js';
-import { getSessionConfig, COMMON_AI_RESPONSE_RULES } from '../config/researchConfig.js';
+import { getSessionConfig, COMMON_AI_RESPONSE_RULES, AI_VARIANT_RUNTIME_RULES } from '../config/researchConfig.js';
 import { isAllowedParticipant, normalizeParticipantId, validateMessage, isTestParticipant } from '../utils/validators.js';
+import { parseAgentRouting } from '../utils/agentRouting.js';
 
 const router = express.Router();
 const imageUpload = multer({
@@ -131,8 +132,10 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
     const updatedRecord = await researchService.markFirstUserMessage(id, sid);
     const firstStudentTurn = (s.user_turn_count || 0) === 0;
     const commonResponseRules = `【共同回答表达规则：两组一致】\n${COMMON_AI_RESPONSE_RULES.map(x => `- ${x}`).join('\n')}`;
+    const variantRules = AI_VARIANT_RUNTIME_RULES[state.ai_variant] || AI_VARIANT_RUNTIME_RULES.free;
+    const variantResponseRules = `【当前AI条件的运行规则】\n${variantRules.map(x => `- ${x}`).join('\n')}`;
     const taskContextText = firstStudentTurn ? `${await researchService.hiddenContextForChat(sid)}\n\n` : '';
-    const hidden = `${taskContextText}${commonResponseRules}\n\n【学生实际输入】\n${message}`;
+    const hidden = `${taskContextText}${commonResponseRules}\n\n${variantResponseRules}\n\n【学生实际输入】\n${message}`;
     interactionId = uuidv4();
     const aiRequestStartedAt = new Date().toISOString();
 
@@ -180,12 +183,18 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
     });
     const aiResponseReceivedAt = new Date().toISOString();
     const aiLatencyMs = Math.max(0, Date.parse(aiResponseReceivedAt) - Date.parse(aiRequestStartedAt));
+    const routing = parseAgentRouting(ai.assistant_message, state.ai_variant);
     if (attachment && ai.coze_file_id) attachment.coze_file_id = ai.coze_file_id;
 
     userMessageRow = await researchService.updateMessage(id, sid, userMessageRow.message_index, {
       conversation_id: ai.conversation_id, chat_id: ai.chat_id, bot_id: ai.bot_id, model: ai.model,
       attachments: attachment ? [attachment] : [],
       ai_response_received_at: aiResponseReceivedAt, ai_latency_ms: aiLatencyMs,
+      agent_route: routing.agentRoute,
+      scaffold_triggered: routing.scaffoldTriggered,
+      scaffold_type: routing.scaffoldType,
+      route_parse_status: routing.routeParseStatus,
+      route_protocol_version: routing.routeProtocolVersion,
     }) || userMessageRow;
 
     s.conversation_id = ai.conversation_id;
@@ -198,16 +207,31 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
     s.last_response_at = aiResponseReceivedAt;
     await researchService.saveChatSession(id, sid, s);
     const assistantMessageRow = await researchService.appendMessage(id, sid, {
-      role: 'assistant', content: ai.assistant_message, content_type: 'text', message_has_image: false, attachments: [],
+      role: 'assistant', content: routing.visibleText, content_type: 'text', message_has_image: false, attachments: [],
       message_id: ai.message_id || uuidv4(), conversation_id: ai.conversation_id, chat_id: ai.chat_id,
       bot_id: ai.bot_id, model: ai.model, ai_variant: state.ai_variant, prompt_version: s.prompt_version,
       interaction_id: interactionId, created_at: aiResponseReceivedAt,
       client_sent_at: clientSentAt, server_received_at: serverReceivedAt,
       ai_request_started_at: aiRequestStartedAt, ai_response_received_at: aiResponseReceivedAt, ai_latency_ms: aiLatencyMs,
       task_field_key: taskContext.field_key, task_field_label: taskContext.field_label, task_field_stage: taskContext.field_stage, task_context: taskContext,
+      agent_route: routing.agentRoute, scaffold_triggered: routing.scaffoldTriggered, scaffold_type: routing.scaffoldType,
+      route_parse_status: routing.routeParseStatus, route_protocol_version: routing.routeProtocolVersion,
     });
+    if (state.ai_variant === 'supported') {
+      await researchService.appendEvent(id, sid, 'help_seeking_route_decision', {
+        interaction_id: interactionId,
+        agent_route: routing.agentRoute,
+        scaffold_triggered: routing.scaffoldTriggered,
+        scaffold_type: routing.scaffoldType,
+        route_parse_status: routing.routeParseStatus,
+        route_protocol_version: routing.routeProtocolVersion,
+        note: '系统实时路由，仅用于干预执行记录，不等于正式人工编码',
+      });
+    }
     await researchService.appendEvent(id, sid, 'ai_request_completed', {
       interaction_id: interactionId, ai_latency_ms: aiLatencyMs,
+      agent_route: routing.agentRoute, scaffold_triggered: routing.scaffoldTriggered, scaffold_type: routing.scaffoldType,
+      route_parse_status: routing.routeParseStatus,
       task_field_key: taskContext.field_key, task_field_label: taskContext.field_label, task_field_stage: taskContext.field_stage,
     });
     await researchService.appendEvent(id, sid, 'ai_message_sent', {
@@ -224,7 +248,7 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
       task_field_label: taskContext.field_label,
       task_field_stage: taskContext.field_stage,
     });
-    res.json({ message: ai.assistant_message, session: s, attachment, record: updatedRecord, user_message: userMessageRow, assistant_message_row: assistantMessageRow });
+    res.json({ message: routing.visibleText, session: s, attachment, record: updatedRecord, user_message: userMessageRow, assistant_message_row: assistantMessageRow });
   } catch (e) {
     const attemptedId = activeId || normalizeParticipantId(req.body?.participantId);
     if (activeId && activeSid && interactionId) {

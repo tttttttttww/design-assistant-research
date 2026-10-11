@@ -1,0 +1,5 @@
+
+> design-thinking-help-seeking-platform@11.45.0 test
+> node scripts/smoke.mjs
+
+SMOKE OK v11.45: IHS/EHS/Other route parser, W7 route-informed review, pre-W4 snapshot, persistence.

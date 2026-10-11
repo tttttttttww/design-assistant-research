@@ -272,12 +272,12 @@ function orientationHtml(){
   if(!o) return '<div class="notice warn">平台小练习暂时无法读取，请刷新页面。</div>';
   const cards=(o.cards||[]).map(c=>`<article class="orientation-card"><h3>${esc(c.title||'')}</h3>${(c.body||[]).map(x=>`<p>${esc(x)}</p>`).join('')}${c.example_bad?`<div class="orientation-example muted-example">${esc(c.example_bad)}</div>`:''}${c.example_good?`<div class="orientation-example good-example">${esc(c.example_good)}</div>`:''}</article>`).join('');
   let activity='';
-  if(o.mode==='supported'){
-    activity=`<div class="orientation-checks"><h3>快速判断</h3><p class="small">选完后再进入正式设计任务。</p>${(o.checks||[]).map((q,idx)=>`<fieldset class="orientation-question"><legend>${idx+1}. ${esc(q.question)}</legend>${(q.options||[]).map((opt,i)=>`<label><input type="radio" name="orientation_${esc(q.id)}" value="${i}"><span>${esc(opt)}</span></label>`).join('')}</fieldset>`).join('')}</div>`;
-  }else{
+  if(o.mode==='supported' && (o.checks||[]).length){
+    activity=`<div class="orientation-checks"><h3>快速判断</h3><p class="small">选完后再进入本节设计任务。</p>${(o.checks||[]).map((q,idx)=>`<fieldset class="orientation-question"><legend>${idx+1}. ${esc(q.question)}</legend>${(q.options||[]).map((opt,i)=>`<label><input type="radio" name="orientation_${esc(q.id)}" value="${i}"><span>${esc(opt)}</span></label>`).join('')}</fieldset>`).join('')}</div>`;
+  }else if(o.mode==='control'){
     activity=`<div class="orientation-checks"><h3>确认一下</h3>${(o.acknowledgements||[]).map((x,i)=>`<label class="orientation-ack"><input type="checkbox" name="orientation_ack_${i}"><span>${esc(x)}</span></label>`).join('')}</div>`;
   }
-  return `<div class="single-column-page"><section class="card orientation-shell"><span class="eyebrow">正式任务开始前</span><h1>${esc(o.title||'平台小练习')}</h1><p class="lead">${esc(o.intro||'')}</p><div class="orientation-grid">${cards}</div>${activity}<div id="orientationError" class="notice warn hidden"></div><button class="btn orange" id="completeOrientation" type="button">${esc(o.button||'进入设计任务')}</button></section></div>`;
+  return `<div class="single-column-page"><section class="card orientation-shell"><span class="eyebrow">进入本节任务前</span><h1>${esc(o.title||'平台小练习')}</h1><p class="lead">${esc(o.intro||'')}</p><div class="orientation-grid">${cards}</div>${activity}<div id="orientationError" class="notice warn hidden"></div><button class="btn orange" id="completeOrientation" type="button">${esc(o.button||'进入设计任务')}</button></section></div>`;
 }
 async function startOrientationIfNeeded(){
   if(!state?.learning_gate || state?.orientation?.started_at) return;
@@ -342,8 +342,8 @@ async function submitQuestionnaire(slot){
 
 function gateHtml(){
   if(state.task_gate==='questionnaire_pre') return `<div class="single-column-page">${questionnaireHtml('pre')}</div>`;
-  if(state.task_gate==='questionnaire_post') return `<div class="single-column-page"><section class="card"><span class="eyebrow">W8正式项目已提交</span><h2>最后一步：完成后测问卷</h2><p>完成后测后，本阶段数据才完整。</p></section>${questionnaireHtml('post')}</div>`;
-  if(state.task_gate==='awaiting_assignment') return `<div class="single-column-page"><section class="card"><span class="eyebrow">正式任务尚未开放</span><h1>等待系统完成随机分组</h1><p class="lead">老师切换到W3后，平台会自动按年级完成分组。完成后点击下面按钮进入正式任务。</p><button class="btn" id="refreshAssignment">刷新分组状态</button></section></div>`;
+  if(state.task_gate==='questionnaire_post') return `<div class="single-column-page"><section class="card"><span class="eyebrow">W9正式项目已提交</span><h2>后测问卷</h2><p>教师已在后台启用候选后测问卷，请按真实情况完成。</p></section>${questionnaireHtml('post')}</div>`;
+  if(state.task_gate==='awaiting_assignment') return `<div class="single-column-page"><section class="card"><span class="eyebrow">正式干预尚未开放</span><h1>等待老师确认实验组 / 对照组</h1><p class="lead">W4开始正式干预前，老师需要在后台确认你的组别。平台不会自动强制分成固定人数。完成后点击下面按钮刷新。</p><button class="btn" id="refreshAssignment">刷新分组状态</button></section></div>`;
   return '';
 }
 

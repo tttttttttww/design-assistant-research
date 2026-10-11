@@ -1,20 +1,24 @@
-# v11.23 检查要点
+# v11.41 检查报告
 
-- 13周课程配置保留；W2统一 `free`，W3–W8 `condition`，W9–W11统一 `free`。
-- W2继续作为共同普通AI试行课：无前测/分组门槛，学生至少实际使用1次AI，但不提示求助时机或求助策略。
-- W2主任务为学校午餐体验课堂适配，储物柜为可选加练；两项均纯网页、零材料。W2聊天图片入口已关闭，只收文字对话。
-- AI输入草稿记录开始/删除未发送/离开未发送/发送等元数据，不保存未提交草稿全文；保留 `chat_history_revisit` 回看旧回复事件。
-- 任务文本版本历史保留 V1/V2/V3，并新增 `field_label`、`field_stage`，可关联最近AI回复及时间间隔。
-- 每轮成功AI交互新增 `interaction_id`，并分别保存 `client_sent_at`、`server_received_at`、`ai_request_started_at`、`ai_response_received_at`、`ai_latency_ms`。
-- 学生发送AI消息时同步保存最近正在处理的任务字段 `task_field_key / task_field_label / task_field_stage`；如果学生尚未点过某个文本框，前端会根据当前可见且尚未完成的任务字段做保守定位。
-- “AI求助过程数据 ZIP”一次导出 `chat_messages.csv`、`behavior_events.csv`、`task_revisions.csv`、`process_timeline.csv` 和允许课次的聊天原图；`process_timeline.csv` 仅按时间合并原始证据，不做 IHS/EHS/AHS 自动判定。
-- “任务记录 + 学生作品 ZIP”只保留 `task_records.csv` 和作品原图，避免和求助过程包重复。
-- 正式问卷导出改为 W8 posttest-only：`questionnaire_posttest_raw.csv`。历史前测如曾测试，只留在完整JSON/后台，不进入当前正式分析。
-- 普通AI与支持型AI共同加入事实约束：不得把任务资料未提供的数字、比例、时长、调查结果、效果量等编造成事实；缺证据必须明确说明。
-- Blob 根前缀未改，已有 W1/W2 历史数据不会因代码部署自动删除。
-- `npm run check`、`npm test`、关键 JS `node --check` 已通过。
+检查日期：2026-10-10
 
-- 后台实时监看：学生消息先落盘，AI处理中状态可见；约3秒自动刷新。
-- 历史课次统计与存储诊断为只读，不改变研究数据。
-- 破坏性的整批学生清空入口默认禁用；名单更新保留已有数据。
-- 重置归档恢复仅允许恢复到当前为空的学生×课次，避免覆盖新数据。
+已执行并通过：
+
+- `npm run check`
+- `npm test`
+- `node --check`（src / public/js / cloud-functions / scripts 全部JS/MJS）
+
+关键核对：
+
+1. W2 普通AI、自主使用；W3共同准备且不是正式干预。
+2. W4–W9实验组为支持型AI，对照组为普通AI；W10–W11两组均回到普通AI。
+3. 实验组每轮先内部路由 `IHS / EHS / OTHER`，EHS才触发 `executive_help_restructure`。
+4. 支持型AI机器标记会在服务器端剥离，学生端不显示；缺失/错误标记会记录为 `UNRESOLVED`/解析状态，不伪造分类。
+5. `agent_route / scaffold_triggered / scaffold_type / route_parse_status` 被保存在聊天与事件导出中；明确仅用于干预执行/fidelity，不等于正式人工编码。
+6. W7个人回看优先选取本人真实EHS候选和IHS候选，学生端不显示分类标签；不足时回退到最近真实query。
+7. 已有AI草稿过程记录保留：开始输入、删除未发送、离开未发送、最终发送；未发送正文不保存。
+8. 正式导出将删除/离开未发送标记为 `potential_unsent_help_event=1`，不自动等同AHS。
+9. 问卷候选模块默认关闭；S04/S05固定B对照组；教师手动分组调整机制保留。
+10. 对照组不设置固定字数/固定三点等人为输出限制。
+
+部署注意：ZIP不包含 `node_modules`。上线前需 `npm install`，配置环境变量，并把 `COZE_SYSTEM_PROMPTS_READY_TO_PASTE.md` 中最新两份系统提示词同步到对应Coze Bot。

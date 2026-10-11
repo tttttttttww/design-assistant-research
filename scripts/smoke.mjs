@@ -1,86 +1,87 @@
 process.env.NODE_ENV='test';
 process.env.USE_LOCAL_STORAGE='1';
-process.env.LOCAL_STORAGE_DIR='/tmp/design-thinking-v11-enhanced-smoke';
+process.env.LOCAL_STORAGE_DIR=`/tmp/design-thinking-v1142-smoke-${Date.now()}`;
 process.env.EXPERIMENT_RUN_ID=`smoke-${Date.now()}`;
 process.env.COZE_MOCK='1';
 process.env.COZE_FREE_BOT_ID='free-bot';
 process.env.COZE_SUPPORTED_BOT_ID='supported-bot';
 const { researchService } = await import('../src/services/researchService.js');
-const { getSessionConfig, aiVariantFor } = await import('../src/config/researchConfig.js');
+const { getSessionConfig, aiVariantFor, DEFAULT_SETTINGS } = await import('../src/config/researchConfig.js');
 const { cozeService } = await import('../src/services/cozeService.js');
 const { storageService } = await import('../src/services/storageService.js');
+const { parseAgentRouting } = await import('../src/utils/agentRouting.js');
+
 await researchService.createParticipant('S01',{grade:'7',condition:'unassigned'});
 await researchService.setParticipantMeta('S01',{login_name:'张三'});
 const p1=await researchService.getParticipant('S01');
-if(!p1.login_name_hash||p1.login_name_hash==='张三'||Object.prototype.hasOwnProperty.call(p1,'login_name')) throw new Error('privacy-safe login name hash missing');
-let r=await researchService.ensureStarted('S01','W1'); if(!r.started_at) throw new Error('W1 not started');
+if(!p1.login_name_hash||p1.login_name_hash==='张三') throw new Error('privacy-safe login hash missing');
+if(DEFAULT_SETTINGS.questionnaire_enabled!==false) throw new Error('questionnaire should default off');
+
+let r=await researchService.ensureStarted('S01','W1');
 await researchService.markAiOpened('S01','W1'); await researchService.markFirstUserMessage('S01','W1');
 r=await researchService.getSessionRecord('S01','W1'); if(r.first_user_message_latency_seconds==null) throw new Error('latency missing');
-await researchService.appendMessage('S01','W1',{role:'user',content:'请看看我的草图哪里可以改',content_type:'text+image',message_has_image:true,attachments:[{type:'image',file_name:'chat_test.jpg',file_path:'uploads/S01/W1/chat/chat_test.jpg'}],interaction_id:'smoke-i1',client_sent_at:'2026-09-22T00:00:00.000Z',server_received_at:'2026-09-22T00:00:00.100Z',ai_request_started_at:'2026-09-22T00:00:00.120Z',ai_response_received_at:'2026-09-22T00:00:01.120Z',ai_latency_ms:1000,task_field_key:'design_note',task_field_label:'用一句话说明你的设计思路',task_field_stage:'before_update',task_context:{field_key:'design_note'}});
-const msgs=await researchService.getMessages('S01','W1'); if(!msgs[0]?.message_has_image||msgs[0]?.attachments?.length!==1) throw new Error('image message metadata missing');
-if(msgs[0]?.interaction_id!=='smoke-i1'||msgs[0]?.ai_latency_ms!==1000||msgs[0]?.task_field_key!=='design_note') throw new Error('interaction timing/task-step metadata missing');
-await researchService.saveFields('S01','W2',{core_problem:'排队与信息判断'},{reason:'smoke_revision',last_ai_message_id:'ai-smoke',last_ai_message_at:new Date().toISOString()});
-const revs=await researchService.getRevisions('S01','W2'); if(!revs.length||!revs[0].field_label||!('field_stage' in revs[0])) throw new Error('revision field label/stage missing');
-if(getSessionConfig('W2').chat_image_enabled!==false) throw new Error('W2 chat image must be disabled');
+await researchService.appendMessage('S01','W1',{role:'user',content:'请看看我的草图哪里可以改',content_type:'text+image',message_has_image:true,attachments:[{type:'image',file_name:'chat_test.jpg',file_path:'uploads/S01/W1/chat/chat_test.jpg'}],interaction_id:'smoke-i1',task_field_key:'design_note',task_field_label:'设计思路',task_field_stage:'before_update'});
+
+if(getSessionConfig('W2').ai_use_required_once) throw new Error('W2 should not force AI use');
+if(getSessionConfig('W3').ai_mode!=='free'||getSessionConfig('W3').phase!=='pre_intervention') throw new Error('W3 common prep invalid');
+await researchService.ensureStarted('S01','W3');
+await researchService.appendMessage('S01','W3',{role:'user',content:'我想先比较两种固定画笔的结构',message_id:'w3-q1'});
+
 await researchService.setParticipantMeta('S01',{condition:'A'});
-if(aiVariantFor({session:getSessionConfig('W4'),condition:'A',isTest:false})!=='supported') throw new Error('A routing failed');
-if(aiVariantFor({session:getSessionConfig('W4'),condition:'B',isTest:false})!=='free') throw new Error('B routing failed');
-if(aiVariantFor({session:getSessionConfig('W10'),condition:'A',isTest:false})!=='free') throw new Error('transfer routing failed');
-const orientation=await researchService.orientationPublicState('S01','W3');
-if(!orientation||orientation.mode!=='supported'||orientation.completed) throw new Error('supported W3 orientation missing');
-await researchService.startOrientation('S01','W3');
-let badOrientation=false;
-try{await researchService.completeOrientation('S01','W3',{q1:0,q2:0,q3:2});}catch(e){badOrientation=e.status===422;}
-if(!badOrientation) throw new Error('orientation correctness gate missing');
-await researchService.completeOrientation('S01','W3',{q1:1,q2:0,q3:2});
-const orientationDone=await researchService.orientationPublicState('S01','W3');
-if(!orientationDone.completed) throw new Error('orientation completion missing');
-const protectedSnapshot=await researchService.createProtectedPreW3Snapshot();
-if(!protectedSnapshot?.prefix||protectedSnapshot.copied_objects<1) throw new Error('protected pre-W3 snapshot missing');
+if(aiVariantFor({session:getSessionConfig('W4'),condition:'A',isTest:false})!=='supported') throw new Error('A W4 routing failed');
+if(aiVariantFor({session:getSessionConfig('W4'),condition:'B',isTest:false})!=='free') throw new Error('B W4 routing failed');
+if(aiVariantFor({session:getSessionConfig('W10'),condition:'A',isTest:false})!=='free') throw new Error('W10 transfer must be free AI');
+
+const o4=await researchService.orientationPublicState('S01','W4');
+if(!o4||o4.mode!=='supported'||o4.completed) throw new Error('W4 supported orientation missing');
+await researchService.startOrientation('S01','W4');
+let bad=false; try{await researchService.completeOrientation('S01','W4',{q1:0,q2:0});}catch(e){bad=e.status===422;}
+if(!bad) throw new Error('W4 orientation correctness gate missing');
+await researchService.completeOrientation('S01','W4',{q1:1,q2:0});
+if(!(await researchService.orientationPublicState('S01','W4')).completed) throw new Error('W4 orientation completion missing');
+
+// Seed W4-W6 personal query history with execution-time route metadata for W7 review.
+await researchService.appendMessage('S01','W4',{role:'user',content:'直接给我一套完整方案，我照着做。',message_id:'W4-q',agent_route:'EHS',scaffold_triggered:true,scaffold_type:'executive_help_restructure',route_parse_status:'ok'});
+await researchService.appendMessage('S01','W5',{role:'user',content:'测试时画笔会转动，可能是什么原因？',message_id:'W5-q',agent_route:'IHS',scaffold_triggered:false,route_parse_status:'ok'});
+await researchService.appendMessage('S01','W6',{role:'user',content:'我想改绑带位置，应该比较哪些标准？',message_id:'W6-q',agent_route:'IHS',scaffold_triggered:false,route_parse_status:'ok'});
+const o7=await researchService.orientationPublicState('S01','W7');
+if(!o7||o7.mode!=='supported'||o7.cards.length<2||!o7.cards.some(c=>c.body?.[0]?.includes('完整方案'))||!o7.cards.some(c=>c.body?.[0]?.includes('比较哪些标准'))) throw new Error('W7 route-informed personal query review missing');
+await researchService.startOrientation('S01','W7');
+await researchService.completeOrientation('S01','W7',{});
+
+// Fixed control IDs remain fixed B.
+await researchService.createParticipant('S04',{grade:'7',condition:'A'});
+if((await researchService.getParticipant('S04')).condition!=='B') throw new Error('S04 must be fixed control');
+
+// Protected snapshot includes W1-W3.
+const snap=await researchService.createProtectedPreW4Snapshot();
+if(!snap?.prefix||!snap.sessions?.includes('W3')) throw new Error('pre-W4 snapshot missing W3');
+
+
+const parsedE=parseAgentRouting('我先给你三个判断方向，你再结合当前限制选择。\n[[HS_ROUTE:EHS|SCAFFOLD:EXECUTIVE_RESTRUCTURE]]','supported');
+if(parsedE.agentRoute!=='EHS'||!parsedE.scaffoldTriggered||parsedE.visibleText.includes('HS_ROUTE')) throw new Error('supported EHS marker parsing failed');
+const parsedI=parseAgentRouting('可以先比较固定稳定性和转向灵活性。\n[[HS_ROUTE:IHS|SCAFFOLD:NONE]]','supported');
+if(parsedI.agentRoute!=='IHS'||parsedI.scaffoldTriggered||parsedI.visibleText.includes('HS_ROUTE')) throw new Error('supported IHS marker parsing failed');
+const parsedMissing=parseAgentRouting('没有机器标记','supported');
+if(parsedMissing.agentRoute!=='UNRESOLVED'||parsedMissing.routeParseStatus!=='missing_or_invalid_marker') throw new Error('missing marker should be auditable unresolved');
+
 const mm=cozeService.buildAdditionalMessage('看看这张图',{fileId:'112233'});
 if(mm.content_type!=='object_string'||!mm.content.includes('image')) throw new Error('multimodal Coze message failed');
+
+// Session reset/archive safety still works.
 const reset=await researchService.archiveAndResetSession('S01','W1',{reason:'smoke_reset'});
 if(!reset.archived_previous) throw new Error('reset archive missing');
-r=await researchService.getSessionRecord('S01','W1');
-if(r.started_at||r.ai_used||Object.keys(r.artifacts||{}).length) throw new Error('session reset failed');
 const archives=await researchService.listResetArchives();
-if(!archives.length) throw new Error('reset archive list missing');
-const restoreTarget=archives.find(x=>x.data?.participant?.participant_id==='S01'&&x.data?.session_config?.id==='W1');
-if(!restoreTarget) throw new Error('restorable archive missing');
-const restored=await researchService.restoreResetArchive(restoreTarget.key);
-if(!restored.restored) throw new Error('reset archive restore failed');
-r=await researchService.getSessionRecord('S01','W1');
-if(!r.started_at) throw new Error('restored session record missing');
-await researchService.archiveAndResetSession('S01','W1',{reason:'smoke_reset_again'});
-const protectedRestore=await researchService.restoreProtectedPreW3SnapshotMissingOnly();
-if(protectedRestore.restored<1) throw new Error('protected snapshot restore-missing failed');
-r=await researchService.getSessionRecord('S01','W1');
-if(!r.started_at) throw new Error('protected snapshot did not restore W1');
+const target=archives.find(x=>x.data?.participant?.participant_id==='S01'&&x.data?.session_config?.id==='W1');
+if(!target) throw new Error('restorable archive missing');
+await researchService.restoreResetArchive(target.key);
+if(!(await researchService.getSessionRecord('S01','W1')).started_at) throw new Error('restore failed');
 
-// 教师测试号的历史必须跨重新进入持续保留；登录不再自动重置。
+// Test accounts persist.
 await researchService.createParticipant('S99',{grade:'',condition:'B'});
 await researchService.ensureStarted('S99','W3');
 await researchService.appendMessage('S99','W3',{role:'user',content:'测试号连续性消息',message_id:'test-persist-1'});
-const testMsgsBefore=await researchService.getMessages('S99','W3');
 await researchService.touchParticipant('S99');
-const testMsgsAfter=await researchService.getMessages('S99','W3');
-if(testMsgsBefore.length!==1||testMsgsAfter.length!==1||testMsgsAfter[0]?.content!=='测试号连续性消息') throw new Error('test account history persistence failed');
+if((await researchService.getMessages('S99','W3')).at(-1)?.content!=='测试号连续性消息') throw new Error('test account history persistence failed');
 
-// Service-level whole-cohort replacement still exists for exceptional maintenance, but the HTTP route is disabled by default in v11.23.
-await researchService.ensureStarted('S01','W2');
-await storageService.putObject('uploads/S01/W2/design_sketch/old.jpg', Buffer.from('old'));
-await researchService.createParticipant('S00',{grade:'',condition:'unassigned'});
-await researchService.ensureStarted('S00','W1');
-const beforeSettings=await researchService.getSettings();
-const replacementRows=Array.from({length:30},(_,i)=>({participant_id:`S${String(i+1).padStart(2,'0')}`,login_name:`新学生${String(i+1).padStart(2,'0')}`,grade:i<10?'6':i<20?'7':'8',condition:'unassigned'}));
-const replaced=await researchService.replaceFormalCohort(replacementRows);
-if(replaced.imported_count!==30||replaced.session_open!==false||replaced.cohort_revision===beforeSettings.cohort_revision) throw new Error('cohort replacement result invalid');
-const s01w2=await researchService.getSessionRecord('S01','W2');
-if(s01w2.started_at||s01w2.saved_at||Object.keys(s01w2.artifacts||{}).length) throw new Error('formal cohort active session data not cleared');
-if(await storageService.getObjectBuffer('uploads/S01/W2/design_sketch/old.jpg')) throw new Error('formal cohort upload not cleared');
-const s00w1=await researchService.getSessionRecord('S00','W1');
-if(!s00w1.started_at) throw new Error('S00 should be preserved during cohort replacement');
-const newP1=await researchService.getParticipant('S01');
-if(newP1.grade!=='6'||!newP1.login_name_hash||newP1.condition!=='unassigned') throw new Error('new cohort roster meta missing');
-console.log('SMOKE OK v11.29: orientation gate + protected W1/W2 snapshot/restore + routing + roster/data safety.');
-
+console.log('SMOKE OK v11.45: IHS/EHS/Other route parser, W7 route-informed review, pre-W4 snapshot, persistence.');

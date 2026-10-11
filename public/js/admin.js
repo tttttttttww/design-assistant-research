@@ -76,13 +76,8 @@ document.getElementById('settingsForm').onsubmit = async e => {
   e.preventDefault();
   const f = e.target;
   try {
-    if(f.active_session_id.value==='W3' && f.session_open.checked && settings?.active_session_id!=='W3'){
-      if(!confirm('正式开放 W3 会先自动创建 W1/W2 安全快照，并按年级随机 A/B。确认继续吗？')) return;
-    }
     const r = await api('/settings', { method: 'POST', body: JSON.stringify({ active_session_id: f.active_session_id.value, session_open: f.session_open.checked, questionnaire_enabled: f.questionnaire_enabled.checked, active_session_locked: f.active_session_locked.checked }) });
-    if(r?.auto_randomization?.already_assigned) alert(`设置已保存。正式组别已存在：A组 ${r.auto_randomization.totals.A} 人，B组 ${r.auto_randomization.totals.B} 人，系统未重新分组。`);
-    else if(r?.auto_randomization?.totals) alert(`设置已保存。已自动按年级分层随机分组：A组 ${r.auto_randomization.totals.A} 人，B组 ${r.auto_randomization.totals.B} 人；同时已创建W1/W2安全快照。`);
-    else alert('设置已保存');
+    alert('设置已保存');
     await loadSettings();
     await loadParticipants();
   } catch (x) { alert(x.message); }
@@ -91,11 +86,7 @@ document.getElementById('settingsForm').onsubmit = async e => {
 function renderSessionCards() {
   document.getElementById('sessionCards').innerHTML = sessions.map(s => `<div class="session-card ${s.id === settings.active_session_id ? 'current' : ''}"><div class="row between"><strong>${s.id} · ${s.date}</strong><span class="badge">${s.ai_mode === 'condition' ? '按组AI' : s.ai_mode === 'free' ? '自由AI' : '无AI'}</span></div><h3>${esc(s.title)}</h3><p>${esc(s.subtitle)}</p><p class="small">${esc(s.brief.join(' '))}</p>${s.candidate ? '<div class="notice"><strong>教师说明：</strong>候选任务，正式实施前仍可替换。</div>' : ''}<button class="btn ghost set-current" data-id="${s.id}">设为当前课次</button></div>`).join('');
   document.querySelectorAll('.set-current').forEach(b => b.onclick = async () => {
-    if(b.dataset.id==='W3' && settings.session_open && settings.active_session_id!=='W3'){
-      if(!confirm('切换到 W3 且保持“向学生开放”会立即：\n1）创建 W1/W2 安全快照；\n2）按年级自动随机 A/B。\n\n确认现在正式进入 W3 吗？')) return;
-    }
     const r = await api('/settings', { method: 'POST', body: JSON.stringify({ active_session_id: b.dataset.id, session_open: settings.session_open, questionnaire_enabled: settings.questionnaire_enabled }) });
-    if(r?.auto_randomization?.totals && !r.auto_randomization.already_assigned) alert(`已切换到W3，并自动按年级分层随机：A组 ${r.auto_randomization.totals.A} 人，B组 ${r.auto_randomization.totals.B} 人。W1/W2安全快照也已创建。`);
     await loadSettings();
     await loadParticipants();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -217,16 +208,16 @@ if(randomBtn) randomBtn.onclick=async()=>{
   const formalRows=rows.filter(x=>!x.is_test&&x.login_name_ready);
   const missing=formalRows.filter(x=>!['6','7','8'].includes(String(x.grade||'').trim())).map(x=>x.participant_id);
   if(missing.length){ alert(`请先补全年级信息：${missing.join('、')}`); return; }
-  if(!confirm('确认按年级（6/7/8）分层随机分配A/B吗？\n\nS04、S05固定为B；30名正式学生时总人数目标为A=15、B=15。切换到W3时平台会自动完成这一步；这里只保留手动补救入口。分组前会自动创建W1/W2安全快照。')) return;
-  const typed=prompt('为防止误操作，请输入：RANDOMIZE W3','');
-  if(typed!=='RANDOMIZE W3'){ alert('输入不一致，已取消。'); return; }
+  if(!confirm('确认执行“可选的按年级分层随机初始分组”吗？\n\nS04、S05固定为B；平台不会强制全体15/15。随机后仍可在下方逐个调整。执行前会创建W1/W2/W3干预前安全快照。')) return;
+  const typed=prompt('为防止误操作，请输入：RANDOMIZE W4','');
+  if(typed!=='RANDOMIZE W4'){ alert('输入不一致，已取消。'); return; }
   try{
     randomBtn.disabled=true; randomBtn.textContent='正在随机分组…';
     const r=await api('/participants/stratified-randomize',{method:'POST',body:JSON.stringify({confirm:typed})});
     alert(`分组完成：A组 ${r.totals.A} 人，B组 ${r.totals.B} 人。`);
     await loadParticipants();
   }catch(x){ alert(x.message); }
-  finally{ randomBtn.disabled=false; randomBtn.textContent='按年级分层随机分组 A/B'; }
+  finally{ randomBtn.disabled=false; randomBtn.textContent='可选：按年级分层随机初始分组'; }
 };
 
 function badge(v, t = '已完成') { return v ? `<span class="badge">${t}</span>` : '—'; }
@@ -358,7 +349,8 @@ function liveMessageHtml(id,sid,m){
   const stage=m.task_field_label?` · ${esc(m.task_field_label)}`:'';
   const latency=m.role==='assistant'&&m.ai_latency_ms!=null?` · ${(Number(m.ai_latency_ms)/1000).toFixed(1)}s`:'';
   const failed=m.request_failed?' · 请求失败':'';
-  return `<div class="live-bubble ${m.role==='assistant'?'assistant':'user'}"><div class="live-msg-meta"><strong>${who}</strong><span>${esc(m.created_at||'')}${stage}${latency}${failed}</span></div><div class="live-msg-text">${esc(m.content||'')}</div>${(m.attachments||[]).length?`<div class="photo-grid chat-photos">${m.attachments.map(a=>chatImage(id,sid,a)).join('')}</div>`:''}</div>`;
+  const route=m.agent_route?` · 系统路由 ${esc(m.agent_route)}${m.scaffold_triggered?' · 已触发支架':''}`:'';
+  return `<div class="live-bubble ${m.role==='assistant'?'assistant':'user'}"><div class="live-msg-meta"><strong>${who}</strong><span>${esc(m.created_at||'')}${stage}${latency}${failed}${route}</span></div><div class="live-msg-text">${esc(m.content||'')}</div>${(m.attachments||[]).length?`<div class="photo-grid chat-photos">${m.attachments.map(a=>chatImage(id,sid,a)).join('')}</div>`:''}</div>`;
 }
 
 function liveActivityRows(){
@@ -374,6 +366,7 @@ function liveActivityRows(){
       case 'ai_draft_sent': return ['发送AI问题', [d.final_chars?`${d.final_chars} 字`:'',secs].filter(Boolean).join(' · ')];
       case 'chat_history_revisit': return ['回看旧AI回复', d.dwell_ms?`停留约 ${(Number(d.dwell_ms)/1000).toFixed(1)}秒`: ''];
       case 'ai_request_started': return ['AI开始处理', d.task_field_label||''];
+      case 'help_seeking_route_decision': return ['系统求助路由（非正式编码）', [d.agent_route||'',d.scaffold_triggered?'触发EHS支架':'未触发支架',d.route_parse_status&&d.route_parse_status!=='ok'?`解析 ${d.route_parse_status}`:''].filter(Boolean).join(' · ')];
       case 'ai_request_completed': return ['AI回复完成', d.ai_latency_ms!=null?`${(Number(d.ai_latency_ms)/1000).toFixed(1)}秒`:''];
       case 'ai_request_failed': return ['AI请求异常', d.error||''];
       case 'ai_opened': return ['打开AI助手', ''];
@@ -521,10 +514,10 @@ async function runDiagnostics(){
     const sessions=Object.entries(d.by_session||{}).map(([sid,x])=>`<tr><td>${sid}</td><td>${x.records}</td><td>${x.messages}</td><td>${x.events}</td><td>${x.revisions}</td></tr>`).join('');
     const archives=(d.recent_reset_archives||[]).map(a=>`<div class="archive-row"><div><strong>${esc(a.participant_id)} ${esc(a.session_id)}</strong><div class="small">${esc(a.archived_at||'')} · ${esc(a.reason||'')}</div></div><button class="btn ghost mini restore-archive" data-key="${esc(a.key)}" data-id="${esc(a.participant_id)}" data-sid="${esc(a.session_id)}" type="button">恢复到空课次</button></div>`).join('');
     const snap=d.protected_pre_w3_snapshot;
-    const snapHtml=snap?`<div class="notice safe-snapshot"><strong>W1/W2安全快照已存在</strong><br><span class="small">${esc(snap.created_at||'')} · ${Number(snap.copied_objects||0)} 个原始对象 · 前缀 <code>${esc(snap.prefix||'')}</code></span><div class="row" style="margin-top:10px"><a class="btn ghost mini" href="/express/api/admin/export/protected-pre-w3.zip">下载安全快照ZIP</a><button class="btn ghost mini" id="restoreProtectedSnapshot" type="button">仅恢复缺失的W1/W2数据</button></div></div>`:`<div class="notice warn"><strong>尚未创建W1/W2安全快照。</strong><br><span class="small">切换到W3时会自动创建；也可以现在手动创建。</span><div class="row" style="margin-top:10px"><button class="btn ghost mini" id="createProtectedSnapshot" type="button">立即创建W1/W2安全快照</button></div></div>`;
+    const snapHtml=snap?`<div class="notice safe-snapshot"><strong>W1/W2/W3干预前安全快照已存在</strong><br><span class="small">${esc(snap.created_at||'')} · ${Number(snap.copied_objects||0)} 个原始对象 · 前缀 <code>${esc(snap.prefix||'')}</code></span><div class="row" style="margin-top:10px"><a class="btn ghost mini" href="/express/api/admin/export/protected-pre-w4.zip">下载安全快照ZIP</a><button class="btn ghost mini" id="restoreProtectedSnapshot" type="button">仅恢复缺失的W1/W2/W3数据</button></div></div>`:`<div class="notice warn"><strong>尚未创建W1/W2/W3干预前安全快照。</strong><br><span class="small">可在正式W4前手动创建；执行可选随机分组时也会自动创建。</span><div class="row" style="margin-top:10px"><button class="btn ghost mini" id="createProtectedSnapshot" type="button">立即创建W1/W2/W3干预前快照</button></div></div>`;
     box.innerHTML=`<div class="notice"><strong>当前存储：</strong><code>${esc(d.storage?.root_prefix||'')}</code><br><span class="small">Blob：${esc(d.storage?.blob_store_name||'—')} · 对象总数 ${d.object_count} · 可恢复重置归档 ${d.reset_archive_count}</span></div>${snapHtml}<div class="table-wrap"><table class="admin-table"><thead><tr><th>课次</th><th>record</th><th>messages</th><th>events</th><th>revisions</th></tr></thead><tbody>${sessions}</tbody></table></div>${archives?`<h4>最近可恢复归档</h4><div class="archive-list">${archives}</div>`:'<p class="small">当前没有通过后台“重置”产生的可恢复归档。</p>'}`;
     document.getElementById('createProtectedSnapshot')?.addEventListener('click',async()=>{try{const r=await api('/protected-snapshot/create',{method:'POST'});alert(`安全快照已创建：${r.copied_objects||0} 个对象`);await runDiagnostics();}catch(e){alert(e.message);}});
-    document.getElementById('restoreProtectedSnapshot')?.addEventListener('click',async()=>{const typed=prompt('只恢复当前缺失的W1/W2对象，不覆盖现有数据。请输入：RESTORE W1 W2','');if(typed!=='RESTORE W1 W2')return;try{const r=await api('/protected-snapshot/restore-missing',{method:'POST',body:JSON.stringify({confirm:typed})});alert(`恢复完成：补回 ${r.restored} 个对象，已有 ${r.skipped} 个保持不动。`);await loadHistorySummary();await runDiagnostics();}catch(e){alert(e.message);}});
+    document.getElementById('restoreProtectedSnapshot')?.addEventListener('click',async()=>{const typed=prompt('只恢复当前缺失的W1/W2对象，不覆盖现有数据。请输入：RESTORE W1 W2','');if(typed!=='RESTORE W1 W2 W3')return;try{const r=await api('/protected-snapshot/restore-missing',{method:'POST',body:JSON.stringify({confirm:typed})});alert(`恢复完成：补回 ${r.restored} 个对象，已有 ${r.skipped} 个保持不动。`);await loadHistorySummary();await runDiagnostics();}catch(e){alert(e.message);}});
     box.querySelectorAll('.restore-archive').forEach(btn=>btn.onclick=async()=>{
       const id=btn.dataset.id,sid=btn.dataset.sid;
       const typed=prompt(`只会在 ${id} ${sid} 当前为空时恢复。请输入：RESTORE ${id} ${sid}`,'');
@@ -575,7 +568,10 @@ function chatImage(id, sid, a) {
   return `<a target="_blank" href="${href}"><img src="${href}" alt="聊天图片"></a>`;
 }
 function messages(id, sid, arr = []) {
-  return arr.map(m => `<div class="answer-block chat-record ${m.role === 'assistant' ? 'assistant-record' : 'student-record'}"><div><strong>${m.role === 'assistant' ? 'AI' : '学生'} · 第${m.message_index || '—'}条</strong><span class="small"> · ${esc(m.created_at || '')}</span></div><div class="record-text">${esc(m.content || '')}</div>${(m.attachments || []).length ? `<div class="photo-grid chat-photos">${m.attachments.map(a => chatImage(id, sid, a)).join('')}</div>` : ''}</div>`).join('') || '<p class="small empty-record">暂无聊天记录</p>';
+  return arr.map(m => {
+    const route=m.agent_route?`<div class="small">系统路由（仅执行记录，不是正式编码）：${esc(m.agent_route)}${m.scaffold_triggered?' · 已触发EHS支架':''}${m.route_parse_status&&m.route_parse_status!=='ok'?` · ${esc(m.route_parse_status)}`:''}</div>`:'';
+    return `<div class="answer-block chat-record ${m.role === 'assistant' ? 'assistant-record' : 'student-record'}"><div><strong>${m.role === 'assistant' ? 'AI' : '学生'} · 第${m.message_index || '—'}条</strong><span class="small"> · ${esc(m.created_at || '')}</span></div>${route}<div class="record-text">${esc(m.content || '')}</div>${(m.attachments || []).length ? `<div class="photo-grid chat-photos">${m.attachments.map(a => chatImage(id, sid, a)).join('')}</div>` : ''}</div>`;
+  }).join('') || '<p class="small empty-record">暂无聊天记录</p>';
 }
 function events(arr = []) {
   return arr.length ? `<details><summary class="small">查看系统事件（${arr.length}）</summary><pre>${esc(JSON.stringify(arr, null, 2))}</pre></details>` : '';
@@ -611,7 +607,7 @@ async function detail(id, scroll = false) {
 
     detailBox.innerHTML = `<div class="row between detail-heading"><div><span class="eyebrow">学生完整数据</span><h2>${id}${d.participant.is_test ? ' · 教师测试号' : ''}</h2><p class="small">已读取该编号13周的任务文字、作品图片、问卷、AI完整对话、聊天图片、任务文本版本历史和时间戳。有数据的课次会自动展开。</p></div><button class="btn ghost mini" id="refreshDetail" type="button">刷新此学生记录</button></div>
       <div class="section"><h3>基本信息</h3><div class="grid two"><label>年级<input id="grade" value="${esc(d.participant.grade || '')}"></label><label>condition<select id="condition" ${d.participant.condition_fixed?'disabled':''}><option value="unassigned">unassigned</option><option value="A">A · 支持型AI</option><option value="B">B · 自由AI</option></select>${d.participant.condition_fixed?`<span class="small">固定组别：${esc(d.participant.condition_fixed_reason||'系统固定')}</span>`:''}</label></div>${d.participant.is_test ? '<p class="small">该编号是教师测试号，不要求姓名校验。S00=实验组，S99=对照组。</p>' : `<label class="name-reset-label">登录姓名校验 <span class="small">${d.participant.login_name_hash ? '已设置。出于隐私，系统不保存也不显示姓名明文；如需更正，在下框重新输入。' : '尚未设置，学生现在无法用该编号登录。'}</span><input id="loginName" placeholder="输入姓名后保存；留空表示不修改" autocomplete="off"></label>`}<button class="btn secondary" id="saveMeta">保存</button></div>
-      <div class="section"><h3>问卷</h3><div class="grid two"><div class="answer-block"><strong>W8后测（当前正式分析）</strong><p class="small">${d.questionnaires?.post?.submitted_at?`已提交：${esc(d.questionnaires.post.submitted_at)}｜IHS=${esc(d.questionnaires.post.scores?.instrumental_mean??'')} EHS=${esc(d.questionnaires.post.scores?.executive_mean??'')} AHS=${esc(d.questionnaires.post.scores?.avoidance_mean??'')}`:'未提交'}</p></div><div class="answer-block"><strong>历史前测（如曾测试）</strong><p class="small">${d.questionnaires?.pre?.submitted_at?`保留但不进入当前正式分析：${esc(d.questionnaires.pre.submitted_at)}`:'无'}</p></div></div></div><div class="section"><h3>13周完整记录</h3>${sessionHtml}</div>`;
+      <div class="section"><h3>问卷</h3><div class="grid two"><div class="answer-block"><strong>候选后测（教师启用后）</strong><p class="small">${d.questionnaires?.post?.submitted_at?`已提交：${esc(d.questionnaires.post.submitted_at)}｜IHS=${esc(d.questionnaires.post.scores?.instrumental_mean??'')} EHS=${esc(d.questionnaires.post.scores?.executive_mean??'')} AHS=${esc(d.questionnaires.post.scores?.avoidance_mean??'')}`:'未提交'}</p></div><div class="answer-block"><strong>历史前测（如曾测试）</strong><p class="small">${d.questionnaires?.pre?.submitted_at?`保留但不进入当前正式分析：${esc(d.questionnaires.pre.submitted_at)}`:'无'}</p></div></div></div><div class="section"><h3>13周完整记录</h3>${sessionHtml}</div>`;
     document.getElementById('condition').value = d.participant.condition || 'unassigned';
     document.getElementById('refreshDetail').onclick = () => detail(id, false);
     document.getElementById('saveMeta').onclick = async () => {

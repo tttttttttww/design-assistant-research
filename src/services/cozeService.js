@@ -86,7 +86,7 @@ class CozeService {
       conversation_id: conversationId || `mock_conv_${participantId}_${courseSessionId}_${sessionId}`,
       chat_id: `mock_chat_${Date.now()}`,
       message_id: `mock_msg_${Date.now()}`,
-      assistant_message: `模拟${variant === 'supported' ? '支持型' : '自由'}AI回复：我收到了“${String(message).slice(-80)}”${image || imageUrl ? '，并收到了1张图片。' : '。'}`,
+      assistant_message: `模拟${variant === 'supported' ? '支持型' : '自由'}AI回复：我收到了“${String(message).slice(-80)}”${image || imageUrl ? '，并收到了1张图片。' : '。'}${variant === 'supported' ? '\n[[HS_ROUTE:OTHER|SCAFFOLD:NONE]]' : ''}`,
       model: this.modelName(),
       coze_file_id: image ? `mock_file_${Date.now()}` : '',
     };

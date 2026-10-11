@@ -223,22 +223,65 @@ class ResearchService {
     return parse(await storageService.getObject(orientationKey(id, sid)), null);
   }
 
-  async orientationPublicState(id, sid) {
+  async orientationConfigFor(id, sid) {
     const session = getSessionConfig(sid);
-    if (!session || sid !== 'W3') return null;
+    if (!session || !INTERVENTION_ORIENTATION[sid]) return null;
     const participant = await this.getParticipant(id);
     const variant = aiVariantFor({ session, condition: participant.condition, isTest: participant.is_test });
     if (!['supported','free'].includes(variant)) return null;
     const mode = variant === 'supported' ? 'supported' : 'control';
-    const config = INTERVENTION_ORIENTATION[mode];
+    const base = INTERVENTION_ORIENTATION[sid]?.[mode];
+    if (!base) return null;
+    const config = JSON.parse(JSON.stringify(base));
+    if (sid === 'W7' && mode === 'supported' && config.dynamic_personal_queries) {
+      const pool = [];
+      for (const priorSid of ['W4','W5','W6']) {
+        const messages = (await this.getMessages(id, priorSid))
+          .filter(m => m.role === 'user' && String(m.content || '').trim())
+          .map(m => ({ ...m, prior_sid: priorSid }));
+        pool.push(...messages);
+      }
+      // 优先各取一条系统当时路由为 EHS / IHS 的真实学生提问；学生端不显示分类标签。
+      // 系统路由只是干预执行记录，不作为论文正式人工编码。
+      const picked = [];
+      const ehs = [...pool].reverse().find(m => m.agent_route === 'EHS');
+      const ihs = [...pool].reverse().find(m => m.agent_route === 'IHS' && !(m.prior_sid === ehs?.prior_sid && m.message_index === ehs?.message_index));
+      if (ehs) picked.push({ row: ehs, selection_basis: 'agent_route_EHS' });
+      if (ihs) picked.push({ row: ihs, selection_basis: 'agent_route_IHS' });
+      for (const m of [...pool].reverse()) {
+        if (picked.length >= 2) break;
+        if (picked.some(x => x.row.prior_sid === m.prior_sid && x.row.message_index === m.message_index)) continue;
+        picked.push({ row: m, selection_basis: 'recent_fallback' });
+      }
+      config.cards = picked.length ? picked.map((x, i) => ({
+        title: `你当时问过AI ${i + 1}`,
+        body: [String(x.row.content || '').trim().slice(0, 360)],
+      })) : [{
+        title:'前几周没有可显示的已发送问题',
+        body:['这不代表“没有求助就是不好”。回想你在设计中什么时候真正需要外部帮助、什么时候自己完成即可。'],
+      }];
+      config._selection_meta = picked.map(x => ({
+        session_id: x.row.prior_sid,
+        message_index: x.row.message_index,
+        selection_basis: x.selection_basis,
+        agent_route: x.row.agent_route || '',
+      }));
+    }
+    return { session, participant, variant, mode, config };
+  }
+
+  async orientationPublicState(id, sid) {
+    const resolved = await this.orientationConfigFor(id, sid);
+    if (!resolved) return null;
+    const { mode, config } = resolved;
     const stored = await this.getOrientation(id, sid);
-    const compatible = stored?.mode === mode ? stored : null;
+    const compatible = stored?.mode === mode && stored?.orientation_key === config.key ? stored : null;
     return {
       mode,
       key: config.key,
       title: config.title,
       intro: config.intro,
-      cards: config.cards,
+      cards: config.cards || [],
       checks: config.checks || [],
       acknowledgements: config.acknowledgements || [],
       button: config.button,
@@ -250,21 +293,18 @@ class ResearchService {
   }
 
   async startOrientation(id, sid) {
-    if (sid !== 'W3') throw Object.assign(new Error('当前课次没有平台学习环节。'), { status: 409 });
-    const participant = await this.getParticipant(id);
-    const session = getSessionConfig(sid);
-    const variant = aiVariantFor({ session, condition: participant.condition, isTest: participant.is_test });
-    if (!['supported','free'].includes(variant)) throw Object.assign(new Error('尚未完成分组，暂不能开始。'), { status: 409 });
-    const mode = variant === 'supported' ? 'supported' : 'control';
-    const config = INTERVENTION_ORIENTATION[mode];
+    const resolved = await this.orientationConfigFor(id, sid);
+    if (!resolved) throw Object.assign(new Error('当前课次没有平台学习环节。'), { status: 409 });
+    const { mode, config } = resolved;
     const old = await this.getOrientation(id, sid);
-    if (old && old.mode !== mode) {
+    if (old && (old.mode !== mode || old.orientation_key !== config.key)) {
       await storageService.putObject(
         `orientation-archives/${id}/${sid}/${iso().replace(/[:.]/g,'-')}.json`,
-        JSON.stringify({ ...old, archived_reason:'condition_changed', archived_at:iso() }, null, 2),
+        JSON.stringify({ ...old, archived_reason:'condition_or_design_changed', archived_at:iso() }, null, 2),
       );
     }
-    const row = old?.mode === mode ? old : {
+    const isNew = !(old?.mode === mode && old?.orientation_key === config.key);
+    const row = !isNew ? old : {
       participant_id: id,
       session_id: sid,
       mode,
@@ -273,17 +313,29 @@ class ResearchService {
       completed_at: null,
       duration_seconds: null,
       answers: {},
+      displayed_cards: config.dynamic_personal_queries ? (config.cards || []) : [],
+      selection_meta: config.dynamic_personal_queries ? (config._selection_meta || []) : [],
       schema_version: SCHEMA_VERSION,
     };
     if (!row.started_at) row.started_at = iso();
     await storageService.putObject(orientationKey(id, sid), JSON.stringify(row));
+    if (isNew) {
+      await this.appendEvent(id, sid, 'orientation_started', {
+        orientation_mode: mode,
+        orientation_key: config.key,
+        displayed_cards: row.displayed_cards || [],
+        selection_meta: row.selection_meta || [],
+      });
+    }
     return row;
   }
 
   async completeOrientation(id, sid, answers = {}) {
     const row = await this.startOrientation(id, sid);
     if (row.completed_at) return row;
-    const config = INTERVENTION_ORIENTATION[row.mode];
+    const resolved = await this.orientationConfigFor(id, sid);
+    const config = resolved?.config;
+    if (!config) throw Object.assign(new Error('平台学习环节配置不存在。'), { status: 409 });
     const clean = {};
     if (row.mode === 'supported') {
       for (const item of config.checks || []) {
@@ -294,9 +346,7 @@ class ResearchService {
         clean[item.id] = v;
       }
       const wrong = (config.checks || []).find(item => clean[item.id] !== Number(item.correct));
-      if (wrong) {
-        throw Object.assign(new Error('还有一题需要重新判断，请看完提示后再试一次。'), { status: 422 });
-      }
+      if (wrong) throw Object.assign(new Error('还有一题需要重新判断，请看完提示后再试一次。'), { status: 422 });
     } else {
       const ack = Array.isArray(answers.acknowledged) ? answers.acknowledged.map(Boolean) : [];
       if (ack.length !== (config.acknowledgements || []).length || ack.some(v => !v)) {
@@ -316,18 +366,18 @@ class ResearchService {
     return row;
   }
 
-  async createProtectedPreW3Snapshot() {
-    const latestKey = 'protected-snapshots/pre-w3-latest.json';
+  async createProtectedPreW4Snapshot() {
+    const latestKey = 'protected-snapshots/pre-w4-latest.json';
     const existing = parse(await storageService.getObject(latestKey), null);
     if (existing?.prefix) return { ...existing, reused: true };
 
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const prefix = `protected-snapshots/pre-w3-${stamp}`;
+    const prefix = `protected-snapshots/pre-w4-${stamp}`;
     const all = await storageService.listObjects('', 30000);
     const keep = all.filter(row => {
       const k = String(row.key || '');
-      return /^participants\/S(?:0[1-9]|[12]\d|30)\/sessions\/W[12]\//.test(k)
-        || /^uploads\/S(?:0[1-9]|[12]\d|30)\/W[12]\//.test(k);
+      return /^participants\/S(?:0[1-9]|[12]\d|30)\/sessions\/W[123]\//.test(k)
+        || /^uploads\/S(?:0[1-9]|[12]\d|30)\/W[123]\//.test(k);
     });
     let copied = 0;
     for (const row of keep) {
@@ -341,21 +391,21 @@ class ResearchService {
       prefix,
       copied_objects: copied,
       source_storage: storageService.describe(),
-      sessions: ['W1','W2'],
-      note: 'W1/W2 immutable pre-W3 safety snapshot. Raw object paths are preserved under raw/.',
+      sessions: ['W1','W2','W3'],
+      note: 'W1/W2/W3 immutable pre-W4 intervention safety snapshot. Raw object paths are preserved under raw/.',
     };
     await storageService.putObject(`${prefix}/meta.json`, JSON.stringify(meta, null, 2));
     await storageService.putObject(latestKey, JSON.stringify(meta, null, 2));
     return meta;
   }
 
-  async protectedPreW3SnapshotInfo() {
-    return parse(await storageService.getObject('protected-snapshots/pre-w3-latest.json'), null);
+  async protectedPreW4SnapshotInfo() {
+    return parse(await storageService.getObject('protected-snapshots/pre-w4-latest.json'), null);
   }
 
-  async restoreProtectedPreW3SnapshotMissingOnly() {
-    const meta = await this.protectedPreW3SnapshotInfo();
-    if (!meta?.prefix) throw Object.assign(new Error('尚未创建W1/W2安全快照。'), { status: 404 });
+  async restoreProtectedPreW4SnapshotMissingOnly() {
+    const meta = await this.protectedPreW4SnapshotInfo();
+    if (!meta?.prefix) throw Object.assign(new Error('尚未创建W1/W2/W3干预前安全快照。'), { status: 404 });
     const rows = await storageService.listObjects(`${meta.prefix}/raw/`, 30000);
     let restored = 0, skipped = 0;
     const rawPrefix = `${meta.prefix}/raw/`;
@@ -407,15 +457,15 @@ class ResearchService {
       clean[item.id] = v;
     }
     if (slot === 'post') {
-      const w8 = await this.getSessionRecord(id, 'W8');
-      if (!w8.submitted_at) throw Object.assign(new Error('请先提交W8正式项目，再完成后测问卷。'), { status: 409 });
+      const w9 = await this.getSessionRecord(id, 'W9');
+      if (!w9.submitted_at) throw Object.assign(new Error('请先提交W9正式项目，再完成后测问卷。'), { status: 409 });
     }
     const row = {
       participant_id: id, slot, questionnaire_version: QUESTIONNAIRE_VERSION,
       responses: clean, scores: this.questionnaireScores(clean), submitted_at: iso(),
     };
     await storageService.putObject(qKey(id, slot), JSON.stringify(row));
-    await this.appendEvent(id, slot === 'pre' ? 'W2' : 'W8', `questionnaire_${slot}_submitted`, {
+    await this.appendEvent(id, slot === 'pre' ? 'W2' : 'W9', `questionnaire_${slot}_submitted`, {
       questionnaire_version: QUESTIONNAIRE_VERSION, scores: row.scores,
     });
     return row;
@@ -435,12 +485,12 @@ class ResearchService {
     const session = getSessionConfig(sid);
     if (!session) throw Object.assign(new Error('课次不存在'), { status: 404 });
     if (session.ai_mode === 'condition' && !participant.is_test && participant.condition === 'unassigned') {
-      throw Object.assign(new Error('正式课次尚未完成随机分组，请联系老师。'), { status: 409 });
+      throw Object.assign(new Error('正式干预课次尚未设置实验组/对照组，请联系老师。'), { status: 409 });
     }
-    if (sid === 'W3') {
+    if (['W4','W7'].includes(sid)) {
       const orientation = await this.orientationPublicState(id, sid);
       if (orientation && !orientation.completed) {
-        throw Object.assign(new Error('请先完成进入正式任务前的平台小练习。'), { status: 409 });
+        throw Object.assign(new Error('请先完成本节进入任务前的平台学习环节。'), { status: 409 });
       }
     }
     if (session.require_questionnaire_before_task) {
@@ -724,6 +774,11 @@ class ResearchService {
       task_field_label: data.task_field_label || '',
       task_field_stage: data.task_field_stage || '',
       task_context: data.task_context && typeof data.task_context === 'object' ? data.task_context : {},
+      agent_route: data.agent_route || '',
+      scaffold_triggered: typeof data.scaffold_triggered === 'boolean' ? data.scaffold_triggered : null,
+      scaffold_type: data.scaffold_type || '',
+      route_parse_status: data.route_parse_status || '',
+      route_protocol_version: data.route_protocol_version || '',
     };
     await storageService.putObject(mKey(id, sid, message_index), JSON.stringify(row));
     return row;
@@ -845,7 +900,7 @@ class ResearchService {
     else if (session.ai_mode === 'condition' && !participant.is_test && participant.condition === 'unassigned') task_gate = 'awaiting_assignment';
     if (!task_gate && orientation && !orientation.completed) learning_gate = 'orientation';
     const record = (task_gate || learning_gate) ? await this.getSessionRecord(id, session.id) : await this.ensureStarted(id, session.id);
-    if (!learning_gate && session.questionnaire_after_submit && record.submitted_at && !questionnaire.post.submitted) task_gate = 'questionnaire_post';
+    if (!learning_gate && settings.questionnaire_enabled && session.questionnaire_after_submit && record.submitted_at && !questionnaire.post.submitted) task_gate = 'questionnaire_post';
     const chat = session.ai_mode === 'none' || task_gate || learning_gate ? null : await this.getChatSession(id, session.id);
     const messages = session.ai_mode === 'none' || task_gate || learning_gate ? [] : await this.getMessages(id, session.id);
     let carry = null;
@@ -854,7 +909,7 @@ class ResearchService {
     delete publicParticipant.login_name_hash;
     return {
       settings, participant: publicParticipant, session, session_locked, record, questionnaire, task_gate, learning_gate, orientation,
-      support_card: ai_variant === 'supported' ? (INTERVENTION_SUPPORT_CARDS[session.id] || null) : null,
+      support_card: null,
       ai_variant,
       chat_session: chat, chat_messages: messages,
       carry_from: session.carry_from ? { session: getSessionConfig(session.carry_from), record: carry } : null,

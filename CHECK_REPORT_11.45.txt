@@ -1,0 +1,5 @@
+
+> design-thinking-help-seeking-platform@11.45.0 check
+> node scripts/check.mjs
+
+CHECK OK v11.45: IHS/EHS/Other internal routing + hidden marker logging; draft unsent events preserved; W7 route-informed query review; transfer and questionnaire settings unchanged.
