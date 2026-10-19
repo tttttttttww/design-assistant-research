@@ -255,38 +255,3 @@ pre{white-space:pre-wrap;word-break:break-word;background:#f6f4ef;border-radius:
 
 /* v11.39 manual group adjustment */
 .group-adjust-box{margin:14px 0 18px;padding:18px;border:1px solid #cfded8;border-radius:16px;background:#f8fbf9}.group-adjust-box h3{margin:3px 0 5px}.group-counts{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.group-adjust-table{margin-top:12px;max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:14px;background:#fff}.manual-condition-select{min-width:138px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff}.warn-badge{background:#fff3e7;color:#8a531c;border-color:#efd3b7}@media(max-width:760px){.group-counts{justify-content:flex-start}.group-adjust-box{padding:14px}}
-
-
-/* v11.52: W7 read one real message/reply at left; answer 3 prompts at right. */
-.orientation-shell.reflection-shell{max-width:1180px}
-.reflection-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;margin:18px 0 12px;align-items:start}
-.reflection-history,.reflection-form{min-width:0;border:1px solid #e1e9e4;border-radius:16px;background:#fcfefc;padding:18px}
-.reflection-history h2,.reflection-form h2{font-size:19px;margin:0 0 8px;color:#245849}
-.reflection-exchanges{display:flex;flex-direction:column;gap:12px;max-height:590px;overflow:auto;padding:2px}
-.reflection-exchange{border:1px solid #dce5df;background:white;border-radius:14px;padding:12px;display:flex;gap:9px;align-items:flex-start;cursor:pointer}
-.reflection-exchange:has(input:checked){border-color:#2e8068;box-shadow:0 0 0 2px #cae6d9 inset;background:#f8fcf9}
-.reflection-exchange>input{width:17px;height:17px;min-width:17px;margin:4px 0 0;accent-color:#327863}
-.reflection-exchange-content{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
-.reflection-exchange-content>strong{font-size:14px}
-.reflection-bubble{display:block;padding:10px 12px;border-radius:12px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65;font-size:14px}
-.reflection-bubble.student{background:#e9f2ee;color:#244d3c}
-.reflection-bubble.assistant{background:#f1f3f7;color:#333c46}
-.reflection-picked{color:#277052;font-size:12px;font-weight:600}
-.reflection-step{padding:12px 0;border-top:1px solid #e3eae5}
-.reflection-step:first-of-type{border-top:0}
-.reflection-step label{display:block;margin-bottom:7px;line-height:1.55}
-.reflection-step label strong{display:block;margin-bottom:3px}
-.reflection-step .small{font-size:12px;font-weight:normal;color:#566e63}
-.reflection-step textarea{width:100%;display:block;min-height:72px;margin-bottom:8px}
-.reflection-note{margin:12px 0;color:#65766d}
-@media(max-width:800px){.reflection-layout{grid-template-columns:1fr}.reflection-exchanges{max-height:360px}.reflection-history,.reflection-form{padding:14px}}
-
-/* v11.54: 2 short scenario judgments before last-session chat review. */
-.micro-lesson{border:1px solid #dbe7dc;border-radius:16px;padding:14px 18px;background:#f9fbf8;margin:16px 0}
-.micro-lesson h2{margin:0 0 6px;font-size:19px;color:#245849}
-.micro-question{margin:10px 0;border:1px solid #e1e6e1;background:white;border-radius:12px;padding:10px 12px}
-.micro-question legend{padding:0 6px;font-weight:650;font-size:14px}
-.micro-question label{display:flex;align-items:flex-start;gap:8px;font-size:14px;padding:5px 1px;cursor:pointer}
-.micro-question input{accent-color:#327863;margin-top:3px}
-.micro-reason{margin:4px 0 0;color:#355e51;font-size:13px}
-.micro-reason p{margin:6px 0;line-height:1.6}

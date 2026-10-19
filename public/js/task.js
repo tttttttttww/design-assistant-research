@@ -236,23 +236,8 @@ function fieldHtml(f, value=''){
   return `<label>${esc(f.label)} ${req}<textarea data-field="${esc(f.key)}" placeholder="${esc(f.placeholder)}" ${disabled}>${esc(value)}</textarea>${f.helper?`<span class="small">${esc(f.helper)}</span>`:''}</label>`;
 }
 function artifactHtml(a, meta){
-  const versions=state.artifact_versions?.[a.key] || (meta?[meta]:[]);
-  const req=a.required?'<span class="req">必交</span>':'<span class="optional">选交</span>';
-  const disabled=(state.record.submitted_at||state.session_locked)?'disabled':'';
-  const recentReplies=(state.chat_messages||[]).filter(m=>m.role==='assistant'&&m.message_id).slice(-12).reverse();
-  const options=recentReplies.map(m=>`<option value="${esc(m.message_id)}">${esc(String(m.content||'').slice(0,46))} (${esc(String(m.created_at||'').slice(5,16))})</option>`).join('');
-  const carryId=state.carry_from?.session?.id||'';
-  const carryVersions=Object.entries(state.carry_artifact_versions||{}).flatMap(([key,entries])=>entries.map((v,i)=>({...v,carry_key:key,ordinal:i+1}))) ;
-  const carryOptions=carryVersions.map(v=>`<option value="${esc(`${carryId}:${v.version_id}`)}" ${v===([...carryVersions].reverse().find(x=>!x.original_order_unknown)||carryVersions.at(-1))?'selected':''}>${esc(carryId)} · ${esc(v.carry_key)} · ${v.original_order_unknown?'旧图（顺序未知）':`第${v.ordinal}版`}</option>`).join('');
-  const gallery=versions.length?`<div class="photo-grid" style="margin:10px 0">${versions.map((v,i)=>`<div class="upload-preview"><img src="${artifactUrl(v)}" alt="第${i+1}版图纸"><p class="small">第${i+1}版 · ${v.original_order_unknown?'旧图（顺序未知）':v.kind==='correction'?'误传更正':v.kind==='revision'?'修改版':v.kind==='draft'?'初稿':'旧版'} · ${esc(String(v.uploaded_at||'').slice(0,16))}</p>${v.change_note?`<p class="small">${esc(v.change_note)}</p>`:''}</div>`).join('')}</div>`:'';
-  return `<div class="upload-card" data-artifact-card="${esc(a.key)}"><strong>${esc(a.label)} ${req}</strong><p class="small">${esc(a.helper)}；支持初稿、修改版1/2/3…及误传更正。历史版本不会删除。</p>${gallery}
-  <div class="row" style="margin-top:12px"><input type="file" data-artifact="${esc(a.key)}" accept="image/jpeg,image/png,image/webp" ${disabled}><span class="small" data-upload-status="${esc(a.key)}">${versions.length?`已有${versions.length}版，仍可再传`:'尚未上传'}</span></div>
-  <div class="form" style="margin-top:8px;gap:7px"><label>本次上传性质<select data-artifact-kind="${esc(a.key)}" ${disabled}><option value="${versions.length?'revision':'draft'}">${versions.length?'新增修改版本':'第一次上传/初稿'}</option>${versions.length?'<option value="correction">更正误传图片（旧图保留存档）</option>':''}</select></label>
-  <label>这次修改主要参考什么？（自述，不代表研究者已核实）<select data-artifact-source="${esc(a.key)}" ${disabled}><option value="unknown">未说明/不确定</option><option value="self">自己思考/测试</option><option value="ai">AI建议</option><option value="mixed">AI+自己/其他来源</option><option value="teacher">教师</option><option value="peer">同伴</option></select></label>
-  <label>修改了哪里、为什么？（选填）<textarea data-artifact-note="${esc(a.key)}" rows="2" maxlength="500" placeholder="请按实际情况写：这版和上一版有什么不同？为什么这样修改？" ${disabled}></textarea></label>
-  <label>这张图在修改哪张上一节课的图？（可选）<select data-artifact-based-on="${esc(a.key)}" ${disabled}><option value="">不是上一课作品的修改/无法确定</option>${carryOptions}</select></label>
-  <label>如确实参考了本课AI回复，可选关联哪条AI消息<select data-artifact-ai="${esc(a.key)}" ${disabled}><option value="">未关联；不强制</option>${options}</select></label></div>
-  <p class="small">先填写说明，再选图片。需要重传时选择新的图片即可；“更正误传”只修改当前展示版本，不抹去旧文件。</p></div>`;
+  const src=artifactUrl(meta); const req=a.required?'<span class="req">必交</span>':'<span class="optional">选交</span>';
+  return `<div class="upload-card"><strong>${esc(a.label)} ${req}</strong><p class="small">${esc(a.helper)}</p>${src?`<div class="upload-preview"><img src="${src}" alt="已上传"></div>`:''}<div class="row" style="margin-top:12px"><input type="file" data-artifact="${esc(a.key)}" accept="image/jpeg,image/png,image/webp" ${(state.record.submitted_at||state.session_locked)?'disabled':''}><span class="small" data-upload-status="${esc(a.key)}">${src?'已上传 ✓':''}</span></div></div>`;
 }
 
 function supportCardHtml(){
@@ -282,63 +267,15 @@ function chatPanel(){
 }
 
 
-function reflectionOrientationHtml(o){
-  const opts=o.personal_query_options||[];
-  const hasOwn=opts.length>0;
-  const cards=o.cards||[];
-  const fallback=o.reflection_fallback_case||{title:'统一练习案例',body:['学生：我想直接要一个完整设计。','AI：你已经尝试过哪些材料？需要解决哪一步困难？']};
-  const pairs=hasOwn?opts.map((ref,i)=>({
-    ref:`${ref.session_id}:${ref.message_index}`,
-    title:`历史对话 ${i+1} · ${ref.session_id}`,
-    body:cards[i]?.body||[],
-  })):[{ref:'',title:fallback.title||'统一练习案例',body:fallback.body||[]}];
-  const renderExchange=(p,i)=>`<label class="reflection-exchange ${hasOwn?'ref-choosable':''}">
-    ${hasOwn?`<input type="radio" name="reflectionReference" value="${esc(p.ref)}" ${i===0?'checked':''} aria-label="选择${esc(p.title)}">`:''}
-    <span class="reflection-exchange-content"><strong>${esc(p.title)}</strong>
-      ${(p.body||[]).map((msg,j)=>`<span class="reflection-bubble ${j===0?'student':'assistant'}">${esc(msg)}</span>`).join('')}
-      ${hasOwn?'<span class="reflection-picked">选这段对话作回顾</span>':''}
-    </span>
-  </label>`;
-  return `<div class="single-column-page"><section class="card orientation-shell reflection-shell">
-    <span class="eyebrow">进入本节任务前 · 约6—8分钟</span>
-    <h1>${esc(o.title||'个人对话回顾')}</h1><p class="lead">${esc(o.intro||'')}</p>
-    ${o.strategy_micro_lesson?`<section class="micro-lesson" aria-label="求助辨析小练习"><h2>① 看情境，练一练</h2><p class="small">遇到困难时先找具体卡点，向AI要解释、比较依据或局部建议；得到回复后根据真实条件作判断。选好答案后可以展开理由，练习不是考试。</p>${(o.checks||[]).map((q,i)=>`<fieldset class="micro-question"><legend>${i+1}. ${esc(q.question)}</legend>${(q.options||[]).map((opt,j)=>`<label><input type="radio" name="orientation_${esc(q.id)}" value="${j}"><span>${esc(opt)}</span></label>`).join('')}<details class="micro-reason"><summary>我选好了，查看解析</summary><p>${esc(q.explanation)}</p></details></fieldset>`).join('')}</section>`:''}
-    <div class="reflection-layout">
-      <section class="reflection-history" aria-label="历史AI对话">
-        <h2>${o.strategy_micro_lesson?'②':'①'} 看上节课的一次求助</h2><p class="small">${hasOwn?(o.case_selection_reason==='personal_IHS_neutral_review'?'这是你上节课的真实求助，可能本来就很好。请观察哪些地方表达得清楚，哪些还可以补充，不必硬找错误。':'这是上节课值得重新审视的候选求助，请自己判断；系统筛选不等于判定你问错了。'):o.prior_chat_count>0?'你上节课有AI对话，但没有找到适合作求助回顾的消息，因此使用统一案例；不表示你问得不好。':'上节课没有可供回顾的已发送AI求助，请分析统一案例，不必编造经历。'}</p>
-        <div class="reflection-exchanges">${pairs.map(renderExchange).join('')}</div>
-      </section>
-      <section class="reflection-form" aria-label="引导回顾问题">
-        <h2>${o.strategy_micro_lesson?'③':'②'} 找问题、检查回复、改写</h2>
-        <div class="reflection-step"><label for="reflectionDifficulty"><strong>1. 原提问哪里值得改进？</strong><span class="small">指出一句具体内容：是否没有说清困难、已有尝试，或把本应自己决定的事交给了AI？如没有问题，也可以说明。</span></label>
-          <textarea id="reflectionDifficulty" maxlength="600" rows="3" placeholder="例如：原提问没有交代……"></textarea></div>
-        <div class="reflection-step"><label for="reflectionReplyReview"><strong>2. 这次AI回复给了什么帮助？还缺什么判断？</strong><span class="small">指出回复中的一条具体内容，并说明你后来是否采纳、检查或没有使用。没有做过的事不必编造。</span></label>
-          <textarea id="reflectionReplyReview" maxlength="600" rows="3" placeholder="指出回复中的一条具体建议，以及你怎样判断"></textarea></div>
-        <div class="reflection-step"><label for="reflectionRevised"><strong>3. 如果再问一次，你会怎样修改这个问题？</strong><span class="small">写一句新的问法，不要求套固定模板。</span></label>
-          <textarea id="reflectionRevised" maxlength="600" rows="3" placeholder="可以写出具体困难、已经尝试的方法和需要的帮助"></textarea>
-          <label for="reflectionReason" class="small">简单说一句：为什么这样改？</label>
-          <textarea id="reflectionReason" maxlength="600" rows="2" placeholder="说出你补充了什么或希望自己保留哪个判断"></textarea></div>
-      </section>
-    </div>
-    <p class="small reflection-note">本活动属于实验组的计划内学习环节，不是问卷，也不要求此刻再向AI提问。回答只用于研究求助策略，不用于评价作品美观。</p>
-    <div id="orientationError" class="notice warn hidden" role="alert"></div>
-    <button class="btn orange" id="completeOrientation" type="button">${esc(o.button||'保存回顾，进入设计任务')}</button>
-  </section></div>`;
-}
-
 function orientationHtml(){
   const o=state?.orientation;
   if(!o) return '<div class="notice warn">平台小练习暂时无法读取，请刷新页面。</div>';
-  if(o.reflection_activity && o.mode==='supported') return reflectionOrientationHtml(o);
   const cards=(o.cards||[]).map(c=>`<article class="orientation-card"><h3>${esc(c.title||'')}</h3>${(c.body||[]).map(x=>`<p>${esc(x)}</p>`).join('')}${c.example_bad?`<div class="orientation-example muted-example">${esc(c.example_bad)}</div>`:''}${c.example_good?`<div class="orientation-example good-example">${esc(c.example_good)}</div>`:''}</article>`).join('');
   let activity='';
   if(o.mode==='supported' && (o.checks||[]).length){
-    const personalQueryOptions=o.personal_query_options||[];
-    const hasPersonalQueries=personalQueryOptions.length>0;
-    const reflectionCase= o.reflection_fallback_case || {title:'标准练习案例（不是你的真实对话）',body:['学生：直接给我一个能帮助人画画的完整装置，材料和制作步骤都写好。','AI：我可以帮你分析，但要先了解实际需要。你希望装置帮助使用者完成画画的哪一步？目前最困难的动作是什么？你已经尝试过什么？']};
-    activity=`<div class="orientation-checks"><h3>先看一个具体例子，再完成回顾</h3><p class="small">只需完成三个核心问题。重点是从真实消息或案例中找证据，不是写“AI很好用”这类笼统评价。</p>${o.reflection_activity?`<div class="orientation-question"><h3>${hasPersonalQueries?'你的真实历史对话':'标准练习案例'}</h3>${hasPersonalQueries?`<p class="small">下方展示的是你以前真实发送的消息及匹配回复。请选择一条作为主要分析对象。</p><label>本次主要回顾哪一条？<select id="reflectionRef"><option value="">请选择一条真实对话</option>${personalQueryOptions.map((q,i)=>`<option value="${esc(q.session_id+':'+q.message_index)}">第${i+1}条 · ${esc(q.session_id)}</option>`).join('')}</select></label>`:`<p class="small">前几周没有已发送的AI求助消息可供回看，所以使用下面的标准案例练习。请不要把它写成自己的真实经历。</p>`}</div>${!hasPersonalQueries?`<article class="orientation-card"><h3>${esc(reflectionCase.title)}</h3>${(reflectionCase.body||[]).map(x=>`<p>${esc(x)}</p>`).join('')}</article>`:''}<label>① 这条提问想解决的具体问题是什么？原提问有没有说清自己的卡点、已经尝试的办法或限制？<textarea id="reflectionDifficulty" rows="2" maxlength="600" placeholder="写出一处具体信息；分析标准案例时，就分析案例里的提问"></textarea></label><label>② AI回复后，学生实际做了什么或接下来应怎样处理？请指出一条具体建议，并说明是采纳、修改、拒绝/暂不使用，还是还需要核实。<textarea id="reflectionReplyReview" rows="3" maxlength="600" placeholder="结合真实回复；若是标准案例，说明还缺什么信息、如何核实建议"></textarea></label><label>③ 如果重新提问，你会怎样改写？<textarea id="reflectionRevised" rows="2" maxlength="600" placeholder="写出你自己的具体问法，不要求套模板"></textarea></label><label>为什么这个改写更可能得到有用帮助，而不是让AI替你完成整个任务？<textarea id="reflectionReason" rows="2" maxlength="600" placeholder="简要说明一个理由即可"></textarea></div>`:''}${(o.checks||[]).map((q,idx)=>`<fieldset class="orientation-question"><legend>${idx+1}. ${esc(q.question)}</legend>${(q.options||[]).map((opt,i)=>`<label><input type="radio" name="orientation_${esc(q.id)}" value="${i}"><span>${esc(opt)}</span></label>`).join('')}</fieldset>`).join('')}</div>`;
+    activity=`<div class="orientation-checks"><h3>快速判断</h3><p class="small">选完后再进入本节设计任务。</p>${(o.checks||[]).map((q,idx)=>`<fieldset class="orientation-question"><legend>${idx+1}. ${esc(q.question)}</legend>${(q.options||[]).map((opt,i)=>`<label><input type="radio" name="orientation_${esc(q.id)}" value="${i}"><span>${esc(opt)}</span></label>`).join('')}</fieldset>`).join('')}</div>`;
   }else if(o.mode==='control'){
-    activity=`<div class="orientation-checks"><h3>确认一下</h3>${o.neutral_design_note_required?`<label>${esc(o.neutral_label_1||'本节你准备观察装置的什么具体表现？')}<textarea id="neutralObservation" rows="3" maxlength="600" placeholder="按真实情况简单填写"></textarea></label><label>${esc(o.neutral_label_2||'如果测试结果与预想不同，你打算先做什么检查？')}<textarea id="neutralNextstep" rows="3" maxlength="600" placeholder="按真实情况简单填写"></textarea></label>`:''}${(o.acknowledgements||[]).map((x,i)=>`<label class="orientation-ack"><input type="checkbox" name="orientation_ack_${i}"><span>${esc(x)}</span></label>`).join('')}</div>`;
+    activity=`<div class="orientation-checks"><h3>确认一下</h3>${(o.acknowledgements||[]).map((x,i)=>`<label class="orientation-ack"><input type="checkbox" name="orientation_ack_${i}"><span>${esc(x)}</span></label>`).join('')}</div>`;
   }
   return `<div class="single-column-page"><section class="card orientation-shell"><span class="eyebrow">进入本节任务前</span><h1>${esc(o.title||'平台小练习')}</h1><p class="lead">${esc(o.intro||'')}</p><div class="orientation-grid">${cards}</div>${activity}<div id="orientationError" class="notice warn hidden"></div><button class="btn orange" id="completeOrientation" type="button">${esc(o.button||'进入设计任务')}</button></section></div>`;
 }
@@ -355,16 +292,12 @@ async function completeOrientation(){
   const o=state?.orientation; if(!o) return;
   const answers={};
   if(o.mode==='supported'){
-    if(o.reflection_activity){answers.personal_ref=document.querySelector('input[name="reflectionReference"]:checked')?.value||document.getElementById('reflectionRef')?.value||'';answers.reflection_source=answers.personal_ref?'personal_chat':'standard_case';answers.reflection_difficulty=document.getElementById('reflectionDifficulty')?.value||'';answers.reflection_reply_review=document.getElementById('reflectionReplyReview')?.value||'';answers.revised_question=document.getElementById('reflectionRevised')?.value||'';answers.reflection_reason=document.getElementById('reflectionReason')?.value||'';
-      if((o.personal_query_options||[]).length&&!answers.personal_ref){const box=document.getElementById('orientationError');box.textContent='请先选择一条真实历史对话作为主要回顾对象。';box.classList.remove('hidden');return;}
-    }
     for(const q of o.checks||[]){
       const checked=document.querySelector(`input[name="orientation_${q.id}"]:checked`);
       if(!checked){ const box=document.getElementById('orientationError'); box.textContent='请先完成全部快速判断。'; box.classList.remove('hidden'); return; }
       answers[q.id]=Number(checked.value);
     }
   }else{
-    if(o.neutral_design_note_required){answers.neutral_observation=document.getElementById('neutralObservation')?.value||'';answers.neutral_nextstep=document.getElementById('neutralNextstep')?.value||'';}
     answers.acknowledged=(o.acknowledgements||[]).map((_,i)=>Boolean(document.querySelector(`input[name="orientation_ack_${i}"]`)?.checked));
     if(answers.acknowledged.some(v=>!v)){ const box=document.getElementById('orientationError'); box.textContent='请先确认已经阅读全部平台操作说明。'; box.classList.remove('hidden'); return; }
   }
@@ -409,7 +342,7 @@ async function submitQuestionnaire(slot){
 
 function gateHtml(){
   if(state.task_gate==='questionnaire_pre') return `<div class="single-column-page">${questionnaireHtml('pre')}</div>`;
-  if(state.task_gate==='questionnaire_post') return `<div class="single-column-page"><section class="card"><span class="eyebrow">W10正式干预已完成</span><h2>后测问卷</h2><p>教师已在后台启用候选后测问卷，请按真实情况完成。</p></section>${questionnaireHtml('post')}</div>`;
+  if(state.task_gate==='questionnaire_post') return `<div class="single-column-page"><section class="card"><span class="eyebrow">W9正式项目已提交</span><h2>后测问卷</h2><p>教师已在后台启用候选后测问卷，请按真实情况完成。</p></section>${questionnaireHtml('post')}</div>`;
   if(state.task_gate==='awaiting_assignment') return `<div class="single-column-page"><section class="card"><span class="eyebrow">正式干预尚未开放</span><h1>等待老师确认实验组 / 对照组</h1><p class="lead">W4开始正式干预前，老师需要在后台确认你的组别。平台不会自动强制分成固定人数。完成后点击下面按钮刷新。</p><button class="btn" id="refreshAssignment">刷新分组状态</button></section></div>`;
   return '';
 }
@@ -566,7 +499,7 @@ async function saveAndExit(){
     location.href='/';
   }catch(e){setSaveStatus(`保存失败：${e.message}`);}
 }
-async function uploadArtifact(input){const key=input.dataset.artifact,status=document.querySelector(`[data-upload-status="${key}"]`),file=input.files?.[0];if(!file)return;status.textContent='正在上传……';try{await persistCurrentFields({saveReason:'before_artifact_upload'});}catch(e){status.textContent=`先保存文字失败：${e.message}`;input.value='';return;}const fd=new FormData();fd.append('participantId',id);fd.append('sessionId',state.session.id);fd.append('artifactKey',key);fd.append('image',file);const root=input.closest('[data-artifact-card]');fd.append('kind',root?.querySelector('[data-artifact-kind]')?.value||'draft');fd.append('changeSource',root?.querySelector('[data-artifact-source]')?.value||'unknown');fd.append('changeNote',root?.querySelector('[data-artifact-note]')?.value||'');fd.append('aiMessageId',root?.querySelector('[data-artifact-ai]')?.value||'');fd.append('basedOnVersionRef',root?.querySelector('[data-artifact-based-on]')?.value||'');try{const pendingChatText=document.getElementById('message')?.value||'';await App.api('/upload',{method:'POST',body:fd});status.textContent='上传成功 ✓';await load(false);const currentChatBox=document.getElementById('message');if(currentChatBox&&pendingChatText)currentChatBox.value=pendingChatText;}catch(e){status.textContent=e.message;input.value='';}}
+async function uploadArtifact(input){const key=input.dataset.artifact,status=document.querySelector(`[data-upload-status="${key}"]`),file=input.files?.[0];if(!file)return;status.textContent='正在上传……';try{await persistCurrentFields({saveReason:'before_artifact_upload'});}catch(e){status.textContent=`先保存文字失败：${e.message}`;input.value='';return;}const fd=new FormData();fd.append('participantId',id);fd.append('sessionId',state.session.id);fd.append('artifactKey',key);fd.append('image',file);try{await App.api('/upload',{method:'POST',body:fd});status.textContent='上传成功 ✓';await load(false);}catch(e){status.textContent=e.message;input.value='';}}
 async function openAi(){
   try{
     await persistCurrentFields({saveReason:'before_ai_open'});

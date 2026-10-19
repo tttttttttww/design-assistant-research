@@ -1,8 +1,8 @@
 {
   "name": "design-thinking-help-seeking-platform",
-  "version": "11.54.0",
+  "version": "11.55.0",
   "type": "module",
-  "description": "W5—W10每课短求助策略情境练习＋上课真实求助回顾＋即时AI支架；历史数据和研究导出保留",
+  "description": "13周设计思维课程与生成式AI学业求助研究平台（W4竖版A4纸质V1原型+测试工具仅铅笔+精简统一材料参考+最小公共任务上下文+IHS/EHS/Other单步EHS支架+W7个体回看+W10–W11撤架近迁移）",
   "main": "cloud-functions/express/[[default]].js",
   "scripts": {
     "start": "node server.js",
