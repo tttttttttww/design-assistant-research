@@ -78,20 +78,14 @@ class StorageService {
     await walk(rootDir); return results;
   }
   async deletePrefix(prefix) { for (const row of await this.listObjects(prefix)) await this.deleteObject(row.key); }
-  async discoverRunPrefixes(limit=1600) {
+  // Read-only diagnostic: searches object metadata without copying or deleting data.
+  async discoverRunPrefixes(limit=1600){
     const store=await this.blobStore();
-    if(!store){
-      return {mode:'local',note:'本地模式不代表线上Blob',prefixes:[this.rootPrefix]};
-    }
-    const rows=await store.list({prefix:'runs/',limit,consistency:'strong'});
-    const blobs=rows?.blobs||[];
-    const counts={};
-    for(const item of blobs){
-      const key=String(item.key||'');
-      const match=key.match(/^(runs\/[^/]+\/[^/]+)\//);
-      if(match) counts[match[1]]=(counts[match[1]]||0)+1;
-    }
-    return {prefixes:Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([prefix,visible_object_count])=>({prefix,visible_object_count})),listed:blobs.length,list_capped:blobs.length>=limit};
+    if(!store) return {mode:'local',prefixes:[this.rootPrefix],note:'本地文件不代表腾讯云线上数据'};
+    const reply=await store.list({prefix:'runs/',limit,consistency:'strong'});
+    const rows=reply?.blobs||[],found={};
+    for(const item of rows){const m=String(item.key||'').match(/^(runs\/[^/]+\/[^/]+)\//);if(m)found[m[1]]=(found[m[1]]||0)+1;}
+    return {prefixes:Object.entries(found).map(([prefix,visible_object_count])=>({prefix,visible_object_count})),listed:rows.length,list_capped:rows.length>=limit};
   }
   describe() {
     return {
