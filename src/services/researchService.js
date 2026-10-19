@@ -41,6 +41,7 @@ function blankRecord(id, sid) {
     revision_count: 0,
     field_revision_counts: {},
     artifacts: {},
+    artifact_versions: {}, // v11.48: append-only image revision index; old artifacts remain readable
     saved_at: null,
     submitted_at: null,
     completed_at: null,
@@ -175,6 +176,7 @@ class ResearchService {
   }
 
   async replaceFormalCohort(rows = []) {
+    throw Object.assign(new Error('正式研究期间禁止整批清空学生记录；使用更新现有名单。'),{status:403});
     const expected = Array.from({ length: 30 }, (_, i) => `S${String(i + 1).padStart(2, '0')}`);
     const byId = new Map(rows.map(r => [String(r.participant_id || '').toUpperCase(), r]));
     if (byId.size !== 30 || expected.some(id => !byId.has(id))) {
@@ -233,38 +235,62 @@ class ResearchService {
     const base = INTERVENTION_ORIENTATION[sid]?.[mode];
     if (!base) return null;
     const config = JSON.parse(JSON.stringify(base));
-    if (sid === 'W7' && mode === 'supported' && config.dynamic_personal_queries) {
+    // Preserve historical course timing: a lesson that already started before this weekly
+    // protocol became active must never be retrospectively locked behind a new pre-task gate.
+    // Old orientation records remain readable in original storage (and archive on any deliberate
+    // new start), but are not rewritten merely to make a past class look treated.
+    if (config.strategy_micro_lesson || String(config.key||'').startsWith('neutral-weekly-readiness-')) {
+      const existing = await this.getOrientation(id, sid);
+      if (!existing || existing.orientation_key !== config.key) {
+        const previousRecord = await this.getSessionRecord(id, sid);
+        if (previousRecord?.started_at || previousRecord?.submitted_at || previousRecord?.saved_at || existing?.completed_at) return null;
+      }
+    }
+    if (mode === 'supported' && config.dynamic_personal_queries) {
       const pool = [];
-      for (const priorSid of ['W4','W5','W6']) {
-        const messages = (await this.getMessages(id, priorSid))
-          .filter(m => m.role === 'user' && String(m.content || '').trim())
-          .map(m => ({ ...m, prior_sid: priorSid }));
+      const humanEhsRefs = new Set();
+      const humanIhsRefs = new Set();
+      const humanLabeledRefs = new Set();
+      for (const priorSid of [config.previous_session_id]) {
+        const allMessages = await this.getMessages(id, priorSid);
+        const messages = allMessages.filter(m => m.role === 'user' && String(m.content || '').trim())
+          .map(m => ({ ...m, prior_sid:priorSid,
+            paired_ai_reply:(allMessages.find(a => a.role === 'assistant' && m.interaction_id && a.interaction_id === m.interaction_id)?.content || '').slice(0,2400) }));
         pool.push(...messages);
+        // Human-coded EHS takes precedence over any online model route. The coding remains unchanged.
+        const codingKeys = await storageService.listObjects(`research-coding/v1/${id}/${priorSid}/`);
+        for (const entry of codingKeys) {
+          try {
+            const row = parse(await storageService.getObject(entry.key), null);
+            if (row?.help_type && Number.isInteger(Number(row.message_index))) {
+              humanLabeledRefs.add(`${priorSid}:${row.message_index}`);
+              if (row.help_type === 'EHS') humanEhsRefs.add(`${priorSid}:${row.message_index}`);
+              if (row.help_type === 'IHS') humanIhsRefs.add(`${priorSid}:${row.message_index}`);
+            }
+          } catch (_) { /* Malformed optional coding never blocks the lesson. */ }
+        }
       }
-      // 优先各取一条系统当时路由为 EHS / IHS 的真实学生提问；学生端不显示分类标签。
-      // 系统路由只是干预执行记录，不作为论文正式人工编码。
-      const picked = [];
-      const ehs = [...pool].reverse().find(m => m.agent_route === 'EHS');
-      const ihs = [...pool].reverse().find(m => m.agent_route === 'IHS' && !(m.prior_sid === ehs?.prior_sid && m.message_index === ehs?.message_index));
-      if (ehs) picked.push({ row: ehs, selection_basis: 'agent_route_EHS' });
-      if (ihs) picked.push({ row: ihs, selection_basis: 'agent_route_IHS' });
-      for (const m of [...pool].reverse()) {
-        if (picked.length >= 2) break;
-        if (picked.some(x => x.row.prior_sid === m.prior_sid && x.row.message_index === m.message_index)) continue;
-        picked.push({ row: m, selection_basis: 'recent_fallback' });
-      }
-      config.cards = picked.length ? picked.map((x, i) => ({
-        title: `你当时问过AI ${i + 1}`,
-        body: [String(x.row.content || '').trim().slice(0, 360)],
-      })) : [{
-        title:'前几周没有可显示的已发送问题',
-        body:['这不代表“没有求助就是不好”。回想你在设计中什么时候真正需要外部帮助、什么时候自己完成即可。'],
-      }];
+      const reversed = [...pool].reverse();
+      const eligible = row => Boolean(row.paired_ai_reply && String(row.content || '').trim());
+      const verified = reversed.filter(row => eligible(row) && humanEhsRefs.has(`${row.prior_sid}:${row.message_index}`));
+      const system = reversed.filter(row => eligible(row) && row.agent_route === 'EHS' && !humanLabeledRefs.has(`${row.prior_sid}:${row.message_index}`));
+      const ehsPicked = [...verified.map(row => ({row, selection_basis:'human_coded_EHS'})),
+        ...system.map(row => ({row, selection_basis:'agent_route_EHS_unverified'}))].slice(0,2);
+      // When last session has no EHS candidate, allow a genuine, help-oriented IHS chat as neutral review. Never label it wrong.
+      const ordinary = reversed.filter(row => eligible(row) && (humanIhsRefs.has(`${row.prior_sid}:${row.message_index}`) ||
+        (!humanLabeledRefs.has(`${row.prior_sid}:${row.message_index}`) && row.agent_route === 'IHS')));
+      const picked = ehsPicked.length ? ehsPicked : ordinary.slice(0,1).map(row => ({row, selection_basis:'personal_IHS_neutral_review'}));
+      // Do NOT show an ordinary/IHS request as 'poor help-seeking'. When no candidate exists, use a standardized case.
+      config._prior_chat_count = pool.length;
+      config._case_selection_reason = ehsPicked.length ? 'personal_EHS_candidate' : (picked.length ? 'personal_IHS_neutral_review' : (pool.length ? 'no_eligible_help_request_in_prior_chat' : 'no_prior_chat'));
+      config.cards = picked.length ? picked.map((x,i) => ({
+        title:`真实历史对话 ${i+1} · ${x.row.prior_sid}`,
+        body:[`学生当时的问题：${String(x.row.content || '').trim().slice(0,1600)}`,
+          `AI当时的回答：${x.row.paired_ai_reply}`],
+      })) : [];
       config._selection_meta = picked.map(x => ({
-        session_id: x.row.prior_sid,
-        message_index: x.row.message_index,
-        selection_basis: x.selection_basis,
-        agent_route: x.row.agent_route || '',
+        session_id:x.row.prior_sid,message_index:x.row.message_index,
+        selection_basis:x.selection_basis,agent_route:x.row.agent_route || '',
       }));
     }
     return { session, participant, variant, mode, config };
@@ -281,10 +307,20 @@ class ResearchService {
       key: config.key,
       title: config.title,
       intro: config.intro,
-      cards: config.cards || [],
+      cards: compatible?.displayed_cards ?? config.cards ?? [],
       checks: config.checks || [],
       acknowledgements: config.acknowledgements || [],
       button: config.button,
+      reflection_activity: Boolean(config.reflection_activity),
+      strategy_micro_lesson: Boolean(config.strategy_micro_lesson),
+      previous_session_id: config.previous_session_id || '',
+      neutral_label_1: config.neutral_label_1 || '',
+      neutral_label_2: config.neutral_label_2 || '',
+      personal_query_options: (compatible?.selection_meta ?? config._selection_meta ?? []).map(x=>({session_id:x.session_id,message_index:x.message_index})),
+      reflection_fallback_case: config.reflection_fallback_case || null,
+      prior_chat_count: compatible?.prior_chat_count ?? config._prior_chat_count ?? null,
+      case_selection_reason: compatible?.case_selection_reason || config._case_selection_reason || '',
+      neutral_design_note_required: Boolean(config.neutral_design_note_required),
       started_at: compatible?.started_at || null,
       completed_at: compatible?.completed_at || null,
       duration_seconds: compatible?.duration_seconds ?? null,
@@ -313,8 +349,10 @@ class ResearchService {
       completed_at: null,
       duration_seconds: null,
       answers: {},
-      displayed_cards: config.dynamic_personal_queries ? (config.cards || []) : [],
+      displayed_cards: config.dynamic_personal_queries ? ((config.cards || []).length ? config.cards : [config.reflection_fallback_case]) : [],
       selection_meta: config.dynamic_personal_queries ? (config._selection_meta || []) : [],
+      prior_chat_count: config._prior_chat_count ?? null,
+      case_selection_reason: config._case_selection_reason || '',
       schema_version: SCHEMA_VERSION,
     };
     if (!row.started_at) row.started_at = iso();
@@ -338,6 +376,22 @@ class ResearchService {
     if (!config) throw Object.assign(new Error('平台学习环节配置不存在。'), { status: 409 });
     const clean = {};
     if (row.mode === 'supported') {
+      if(config.reflection_activity) {
+        const ref=String(answers.personal_ref||'').slice(0,80);
+        const allowedRefs=(row.selection_meta||[]).map(x=>`${x.session_id}:${x.message_index}`);
+        if(ref && !allowedRefs.includes(ref))throw Object.assign(new Error('历史提问关联无效。'),{status:400});
+        if(allowedRefs.length && !ref)throw Object.assign(new Error('请从上方真实历史对话中选择一条作为主要回顾对象。'),{status:400});
+        const difficulty=String(answers.reflection_difficulty||'').trim().slice(0,600);
+        const replyReview=String(answers.reflection_reply_review||'').trim().slice(0,600);
+        const revised=String(answers.revised_question||'').trim().slice(0,600);
+        const rationale=String(answers.reflection_reason||'').trim().slice(0,600);
+        if(difficulty.length<4 || replyReview.length<4 || revised.length<6 || rationale.length<6)throw Object.assign(new Error('请完成三个核心回顾：明确问题、判断回复后采取的行动、改写提问并说明理由。'),{status:400});
+        clean.personal_ref=ref;clean.reflection_source=ref?'personal_chat':'standard_case';clean.reflection_difficulty=difficulty;clean.reflection_reply_review=replyReview;clean.revised_question=revised;clean.reflection_reason=rationale;
+        clean.had_original_question=Boolean(ref);
+        clean.prior_chat_count=Number(row.prior_chat_count ?? config._prior_chat_count ?? 0);
+        clean.case_selection_reason=row.case_selection_reason || config._case_selection_reason || '';
+        clean.selected_case_basis=ref?(row.selection_meta||[]).find(x=>`${x.session_id}:${x.message_index}`===ref)?.selection_basis||'':'';
+      }
       for (const item of config.checks || []) {
         const v = Number(answers[item.id]);
         if (!Number.isInteger(v) || v < 0 || v >= item.options.length) {
@@ -346,8 +400,19 @@ class ResearchService {
         clean[item.id] = v;
       }
       const wrong = (config.checks || []).find(item => clean[item.id] !== Number(item.correct));
-      if (wrong) throw Object.assign(new Error('还有一题需要重新判断，请看完提示后再试一次。'), { status: 422 });
+      if (wrong && !config.allow_imperfect_quiz) throw Object.assign(new Error('还有一题需要重新判断，请看完提示后再试一次。'), { status: 422 });
+      if (config.strategy_micro_lesson) {
+        clean.strategy_practice_count = (config.checks || []).length;
+        clean.strategy_practice_correct_count = (config.checks || []).filter(item => clean[item.id] === Number(item.correct)).length;
+        clean.strategy_practice_protocol='scenario-practice-with-explanation-not-pretest';
+      }
     } else {
+      if(config.neutral_design_note_required){
+        const observation=String(answers.neutral_observation||'').trim().slice(0,600);
+        const nextstep=String(answers.neutral_nextstep||'').trim().slice(0,600);
+        if(observation.length<6 || nextstep.length<6)throw Object.assign(new Error('请先写下具体的测试观察点和可能的后续操作。'),{status:400});
+        clean.neutral_observation=observation;clean.neutral_nextstep=nextstep;
+      }
       const ack = Array.isArray(answers.acknowledged) ? answers.acknowledged.map(Boolean) : [];
       if (ack.length !== (config.acknowledgements || []).length || ack.some(v => !v)) {
         throw Object.assign(new Error('请确认已经阅读全部平台操作说明。'), { status: 400 });
@@ -457,15 +522,15 @@ class ResearchService {
       clean[item.id] = v;
     }
     if (slot === 'post') {
-      const w9 = await this.getSessionRecord(id, 'W9');
-      if (!w9.submitted_at) throw Object.assign(new Error('请先提交W9正式项目，再完成后测问卷。'), { status: 409 });
+      const w10 = await this.getSessionRecord(id, 'W10');
+      if (!w10.submitted_at) throw Object.assign(new Error('请先提交W10正式干预任务，再完成后测问卷。'), { status: 409 });
     }
     const row = {
       participant_id: id, slot, questionnaire_version: QUESTIONNAIRE_VERSION,
       responses: clean, scores: this.questionnaireScores(clean), submitted_at: iso(),
     };
     await storageService.putObject(qKey(id, slot), JSON.stringify(row));
-    await this.appendEvent(id, slot === 'pre' ? 'W2' : 'W9', `questionnaire_${slot}_submitted`, {
+    await this.appendEvent(id, slot === 'pre' ? 'W2' : 'W10', `questionnaire_${slot}_submitted`, {
       questionnaire_version: QUESTIONNAIRE_VERSION, scores: row.scores,
     });
     return row;
@@ -487,7 +552,7 @@ class ResearchService {
     if (session.ai_mode === 'condition' && !participant.is_test && participant.condition === 'unassigned') {
       throw Object.assign(new Error('正式干预课次尚未设置实验组/对照组，请联系老师。'), { status: 409 });
     }
-    if (['W4','W7'].includes(sid)) {
+    if (INTERVENTION_ORIENTATION[sid]) {
       const orientation = await this.orientationPublicState(id, sid);
       if (orientation && !orientation.completed) {
         throw Object.assign(new Error('请先完成本节进入任务前的平台学习环节。'), { status: 409 });
@@ -610,16 +675,90 @@ class ResearchService {
     return r;
   }
 
+  // Read both newly recorded versions and legacy single-image slots without changing past records.
+  async getArtifactVersions(id, sid, record = null) {
+    const r = record || await this.getSessionRecord(id, sid);
+    const out = {};
+    for (const [key, old] of Object.entries(r.artifacts || {})) {
+      if (old?.file_path) out[key] = [{...old, version_id:old.version_id||`legacy-${old.file_name}`, version_no:old.version_no||1, kind:old.kind||'legacy', evidence_status:'legacy_upload', is_legacy:!old.version_id}];
+    }
+    for (const [key, entries] of Object.entries(r.artifact_versions || {})) {
+      if (!out[key]) out[key] = [];
+      for (const entry of entries || []) if (entry?.file_path && !out[key].some(x=>x.file_path===entry.file_path)) out[key].push(entry);
+    }
+    // A separate immutable source object is written per upload for audit/recovery.
+    const objects = await storageService.listObjects(`${sBase(id,sid)}/artifact-versions/`);
+    for (const item of objects) {
+      const v = parse(await storageService.getObject(item.key));
+      if (!v?.file_path || !v?.artifact_key) continue;
+      if (!out[v.artifact_key]) out[v.artifact_key] = [];
+      if (!out[v.artifact_key].some(x=>x.file_path===v.file_path)) out[v.artifact_key].push(v);
+    }
+    // Before v11.48 a replaced upload could leave an unreferenced image object.
+    // Recover references non-destructively from the old upload path; original order is unknown.
+    const allowedKeys = new Set((getSessionConfig(sid)?.artifacts||[]).map(a=>a.key));
+    const olderImages = await storageService.listObjects(`uploads/${id}/${sid}/`);
+    for (const item of olderImages) {
+      const parts=String(item.key||'').split('/');
+      if(parts.length!==5 || !allowedKeys.has(parts[3]))continue; // exclude chat images
+      const [, , , key, fileName]=parts;
+      if(!/\.(png|jpg|jpeg|webp)$/i.test(fileName))continue;
+      if(!out[key])out[key]=[];
+      if(!out[key].some(x=>x.file_path===item.key))out[key].push({participant_id:id,session_id:sid,
+        artifact_key:key,file_name:fileName,file_path:item.key,version_id:`unindexed-${fileName}`,
+        version_no:null,kind:'unindexed_legacy_image',uploaded_at:'',is_legacy:true,
+        original_order_unknown:true,evidence_status:'historical_blob_found_without_version_index'});
+    }
+    for (const values of Object.values(out)) values.sort((a,b)=>
+      Number(Boolean(a.original_order_unknown))-Number(Boolean(b.original_order_unknown))||
+      Number(a.version_no??1)-Number(b.version_no??1)||
+      String(a.uploaded_at||'').localeCompare(String(b.uploaded_at||'')));
+    return out;
+  }
+
   async addArtifact(id, sid, artifactKey, meta) {
     await this.assertSessionWritable(sid);
     const config = getSessionConfig(sid);
     if (!config.artifacts.some(a => a.key === artifactKey)) throw Object.assign(new Error('上传项目无效'), { status: 400 });
     const r = await this.ensureStarted(id, sid);
     if (r.submitted_at) throw Object.assign(new Error('本节任务已经提交，不能再替换图片。'), { status: 409 });
-    r.artifacts[artifactKey] = meta;
+    const prior = r.artifacts[artifactKey];
+    // Capture the prior v11.47 image before changing the latest-image pointer.
+    const history = r.artifact_versions && Array.isArray(r.artifact_versions[artifactKey]) ? [...r.artifact_versions[artifactKey]] : [];
+    if (prior?.file_path && !history.some(x=>x.file_path===prior.file_path)) history.unshift({ ...prior, version_id:prior.version_id||`legacy-${prior.file_name}`, version_no:prior.version_no||1, kind:prior.kind||'legacy', is_legacy:!prior.version_id });
+    const previous = history.at(-1) || null;
+    const kind = ['draft','revision','correction'].includes(meta.kind) ? meta.kind : previous?'revision':'draft';
+    const source = ['self','ai','teacher','peer','mixed','unknown'].includes(meta.change_source) ? meta.change_source:'unknown';
+    let baseVersionRef = '';
+    const requestedBase = String(meta.based_on_version_ref||'').slice(0,160);
+    const carrySid = getSessionConfig(sid)?.carry_from;
+    if (requestedBase && carrySid) {
+      const prevVersions = await this.getArtifactVersions(id,carrySid);
+      if(Object.values(prevVersions).flat().some(v=>requestedBase===`${carrySid}:${v.version_id}`))baseVersionRef=requestedBase;
+      else throw Object.assign(new Error('关联的上一课作品版本不存在，请重新选择。'),{status:400});
+    } else if(requestedBase) throw Object.assign(new Error('此课次不能关联上一课作品。'),{status:400});
+    const aiMessageId = String(meta.ai_message_id||'').slice(0,110);
+    let matched = null;
+    if (aiMessageId) {
+      const messages = await this.getMessages(id,sid);
+      matched = messages.find(m=>m.role==='assistant' && String(m.message_id||'')===aiMessageId) || null;
+      if (!matched) throw Object.assign(new Error('所选择的AI回复不存在，请重新选择或取消关联。'),{status:400});
+    }
+    const version = { ...meta, version_id:randomUUID(), version_no:history.length+1, kind,
+      change_source:source, change_note:String(meta.change_note||'').slice(0,500),
+      ai_message_id:matched?.message_id||'', ai_message_at:matched?.created_at||'',
+      linked_ai_evidence:matched?'student_linked_to_existing_reply':'not_linked',
+      supersedes_version_id:previous?.version_id||'', based_on_version_ref:baseVersionRef, uploaded_at:iso() };
+    // Write independent append-only version metadata first: no past version/image is ever deleted.
+    await storageService.putObject(`${sBase(id,sid)}/artifact-versions/${artifactKey}/${version.uploaded_at.replace(/[:.]/g,'-')}_${version.version_id}.json`,JSON.stringify(version));
+    r.artifact_versions = { ...(r.artifact_versions||{}), [artifactKey]:[...history,version] };
+    r.artifacts[artifactKey] = version; // old API keeps latest-image pointer for backward compatibility
     r.saved_at = iso();
-    await this.saveSessionRecord(id, sid, r);
-    await this.appendEvent(id, sid, 'artifact_uploaded', { artifact_key: artifactKey, file_name: meta.file_name });
+    await this.saveSessionRecord(id,sid,r);
+    await this.appendEvent(id,sid,kind==='correction'?'artifact_corrected':'artifact_version_uploaded',{
+      artifact_key:artifactKey, version_id:version.version_id, version_no:version.version_no,
+      previous_version_id:version.supersedes_version_id, kind, change_source:source,
+      ai_message_id:version.ai_message_id, based_on_version_ref:baseVersionRef, file_name:version.file_name });
     return r;
   }
 
@@ -632,8 +771,15 @@ class ResearchService {
     if (missingField) throw Object.assign(new Error(`请先完成：${missingField.label}`), { status: 400 });
     const missingArtifact = config.artifacts.find(a => a.required && !r.artifacts[a.key]);
     if (missingArtifact) throw Object.assign(new Error(`请先完成：${missingArtifact.label}`), { status: 400 });
-    if (config.ai_use_required_once && !r.ai_used) await this.appendEvent(id, sid, 'ai_required_not_used_at_submit', {});
-    r.ai_requirement_met = config.ai_use_required_once ? Boolean(r.ai_used) : null;
+    if (config.ai_use_required_once) {
+      const msgs=await this.getMessages(id,sid);
+      const hasExchange=msgs.some((m,i)=>m.role==='user' && msgs.slice(i+1).some(a=>a.role==='assistant' && (a.interaction_id && a.interaction_id===m.interaction_id || !a.interaction_id)));
+      if (!hasExchange) {
+        await this.appendEvent(id,sid,'ai_required_exchange_missing_at_submit',{});
+        throw Object.assign(new Error('本节需要至少完成一轮AI问答：发送问题并等待AI回复后再提交。如遇设备或网络故障请联系教师。'),{status:400});
+      }
+      r.ai_requirement_met = true;
+    } else r.ai_requirement_met = null;
     r.submitted_at = iso();
     r.completed_at = iso();
     await this.saveSessionRecord(id, sid, r);
@@ -827,10 +973,11 @@ class ResearchService {
   }
 
   async appendEvent(id, sid, type, data = {}) {
-    const rows = await storageService.listObjects(ePrefix(id, sid));
-    const index = rows.length + 1;
-    const row = { participant_id: id, session_id: sid, event_index: index, type, at: iso(), data };
-    await storageService.putObject(eKey(id, sid, index), JSON.stringify(row));
+    const at = iso();
+    const index=Date.now()*1000+Math.floor(Math.random()*1000);
+    const row = { participant_id: id, session_id: sid, event_index: index, type, at, data };
+    // Unique append-only filename; historical 00001.json events remain readable.
+    await storageService.putObject(`${ePrefix(id, sid)}v2_${at.replace(/[^0-9]/g,'')}_${randomUUID()}.json`, JSON.stringify(row));
     return row;
   }
 
@@ -841,21 +988,14 @@ class ResearchService {
       const raw = await storageService.getObject(row.key);
       if (raw) out.push(JSON.parse(raw));
     }
-    return out;
+    return out.sort((a,b)=> Number(a.event_index||0)-Number(b.event_index||0));
   }
 
   async getEventsAfter(id, sid, afterIndex = 0, limit = 160) {
-    const rows = await storageService.listObjects(ePrefix(id, sid));
-    const pick = rows
-      .map(row => ({ ...row, index: Number((row.key.match(/(\d+)\.json$/) || [])[1] || 0) }))
-      .filter(row => row.index > Number(afterIndex || 0))
-      .sort((a,b) => a.index - b.index)
-      .slice(-Math.max(1, Number(limit || 160)));
-    const out = await Promise.all(pick.map(async row => {
-      const raw = await storageService.getObject(row.key);
-      return raw ? JSON.parse(raw) : null;
-    }));
-    return out.filter(Boolean).sort((a,b) => Number(a.event_index||0)-Number(b.event_index||0));
+    const rows=await this.getEvents(id,sid);
+    return rows.filter(x=>Number(x.event_index||0)>Number(afterIndex||0))
+      .sort((a,b)=>Number(a.event_index||0)-Number(b.event_index||0))
+      .slice(0,Math.max(1,Number(limit||160)));
   }
 
   async getLiveTrace(id, sid) {
@@ -910,6 +1050,8 @@ class ResearchService {
     return {
       settings, participant: publicParticipant, session, session_locked, record, questionnaire, task_gate, learning_gate, orientation,
       support_card: null,
+      artifact_versions: await this.getArtifactVersions(id, session.id, record),
+      carry_artifact_versions: carry ? await this.getArtifactVersions(id,session.carry_from,carry) : {},
       ai_variant,
       chat_session: chat, chat_messages: messages,
       carry_from: session.carry_from ? { session: getSessionConfig(session.carry_from), record: carry } : null,
@@ -929,13 +1071,14 @@ class ResearchService {
         this.getEvents(id, config.id),
         this.getRevisions(id, config.id),
       ]);
-      return [config.id, { config, record, chat_session, chat_messages, events, revisions }];
+      return [config.id, { config, record, chat_session, chat_messages, events, revisions, artifact_versions:await this.getArtifactVersions(id,config.id,record) }];
     }));
     const [pre, post] = await Promise.all([this.getQuestionnaire(id, 'pre'), this.getQuestionnaire(id, 'post')]);
     return { participant, questionnaires: { pre, post }, sessions: Object.fromEntries(entries) };
   }
 
   async archiveAndResetSession(id, sid, { reason = 'manual_admin_reset' } = {}) {
+    if (!isTestParticipant(id)) throw Object.assign(new Error('正式学生历史数据不可重置。'),{status:403});
     const config = getSessionConfig(sid);
     if (!config) throw Object.assign(new Error('课次不存在'), { status: 404 });
     const participant = await this.getParticipant(id);

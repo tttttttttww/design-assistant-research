@@ -7,6 +7,8 @@ import * as XLSX from 'xlsx';
 import { requireAdmin } from '../middleware/auth.js';
 import { storageService } from '../services/storageService.js';
 import { researchService } from '../services/researchService.js';
+import { getMeasurements, getMessageCoding, putMessageCoding, codingDataset, getInterviewNote, putInterviewNote, interviewDataset, getArtifactAssessments, putArtifactAssessment, artifactEvidenceDataset, processSequenceDataset, measurementMeta } from '../services/measurementService.js';
+import { getFinalProductScores, putFinalProductScore, finalProductDataset, productScoreHeaders } from '../services/finalProductService.js';
 import { SESSIONS, QUESTIONNAIRE_ITEMS, QUESTIONNAIRE_META, QUESTIONNAIRE_VERSION, PROTECTED_SESSION_IDS } from '../config/researchConfig.js';
 import { normalizeParticipantId, validateParticipantId, isTestParticipant } from '../utils/validators.js';
 import { parseRosterBuffer, validateRosterRows } from '../utils/rosterImport.js';
@@ -126,6 +128,8 @@ const rosterUpload = multer({
 
 function openZip(res, fileName) {
   res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
   const archive = archiver('zip', { zlib: { level: 6 } });
   archive.on('warning', err => console.warn('zip warning', err));
@@ -337,24 +341,7 @@ router.post('/participants/roster-import', requireAdmin, async (req, res) => {
   }
 });
 // Replace the whole formal cohort. This is intentionally destructive for active S01-S30 data.
-router.post('/participants/roster-replace', requireAdmin, async (req, res) => {
-  try {
-    if (process.env.ALLOW_DESTRUCTIVE_COHORT_REPLACE !== 'true') return res.status(403).json({ error: '为保护研究数据，当前版本已禁用整批清空名单。请使用“更新现有名单（保留数据）”。' });
-    if (String(req.body?.confirm || '') !== 'REPLACE S01-S30') {
-      return res.status(400).json({ error: '确认信息不匹配，未更换名单' });
-    }
-    const cleanRows = validateRosterRows(req.body?.rows || []);
-    const expected = formalIds();
-    const ids = [...new Set(cleanRows.map(r => r.participant_id))].sort();
-    if (cleanRows.length !== 30 || ids.length !== 30 || expected.some((id, i) => ids[i] !== id)) {
-      return res.status(400).json({ error: '更换整批学生必须包含完整的 S01–S30 共30人' });
-    }
-    const result = await researchService.replaceFormalCohort(cleanRows);
-    res.json(result);
-  } catch (e) {
-    res.status(e.status || 500).json({ error: e.message || '更换整批学生失败' });
-  }
-});
+router.post('/participants/roster-replace', requireAdmin, (_req,res)=>res.status(403).json({error:'已永久禁用整批清空正式学生数据；请更新现有名单。'}));
 
 router.post('/participant/:participantId/meta', requireAdmin, async (req, res) => {
   try {
@@ -561,6 +548,7 @@ router.post('/participant/:participantId/session/:sessionId/reset', requireAdmin
     const id = normalizeParticipantId(req.params.participantId);
     const sid = String(req.params.sessionId || '').toUpperCase();
     if (!validateParticipantId(id)) return res.status(400).json({ error: '编号无效' });
+    if (!isTestParticipant(id)) return res.status(403).json({error:'为保护正式研究历史，S01–S30 的重置接口已关闭。'});
     if (PROTECTED_SESSION_IDS.includes(sid) && process.env.ALLOW_PROTECTED_PILOT_RESET !== 'true') {
       return res.status(403).json({ error: `${sid} 已设为受保护的前期观察数据，当前禁止重置。` });
     }
@@ -570,20 +558,7 @@ router.post('/participant/:participantId/session/:sessionId/reset', requireAdmin
   } catch (e) { res.status(e.status || 500).json({ error: e.message || '重置失败' }); }
 });
 
-router.post('/session/:sessionId/reset-all', requireAdmin, async (req, res) => {
-  try {
-    const sid = String(req.params.sessionId || '').toUpperCase();
-    if (!SESSIONS.some(s => s.id === sid)) return res.status(400).json({ error: '课次无效' });
-    if (PROTECTED_SESSION_IDS.includes(sid) && process.env.ALLOW_PROTECTED_PILOT_RESET !== 'true') {
-      return res.status(403).json({ error: `${sid} 已设为受保护的前期观察数据，当前禁止批量重置。` });
-    }
-    if (String(req.body?.confirm || '').trim() !== `RESET ${sid}`) return res.status(400).json({ error: `请输入 RESET ${sid} 才能执行批量重置` });
-    const result = [];
-    for (const id of await allIds(true)) result.push(await researchService.archiveAndResetSession(id, sid, { reason: 'whole_session_admin_reset' }));
-    const archived = result.filter(x => x.archived_previous).length;
-    res.json({ session_id: sid, reset_count: result.length, archived_count: archived, result });
-  } catch (e) { res.status(e.status || 500).json({ error: e.message || '批量重置失败' }); }
-});
+router.post('/session/:sessionId/reset-all', requireAdmin, (_req,res)=>res.status(403).json({error:'已永久禁用整节课重置，前几节课的正式记录受到保护。'}));
 
 async function formalData() {
   const out = [];
@@ -820,6 +795,7 @@ router.get('/export/task-package.zip', requireAdmin, async (req, res) => {
   try {
     archive = openZip(res, 'task_records_and_works.zip');
     const rows = [];
+    const workVersionRows = [];
     let imageCount = 0;
     for (const id of formalIds()) {
       const participant = await researchService.getParticipant(id);
@@ -832,15 +808,14 @@ router.get('/export/task-package.zip', requireAdmin, async (req, res) => {
           .join('\n');
         const artifactNames = [];
         const artifactZipPaths = [];
-        for (const [key, a] of Object.entries(r.artifacts || {})) {
-          if (!a?.file_path) continue;
-          const data = await storageService.getObjectBuffer(a.file_path);
-          if (!data) continue;
-          const zipPath = `works/${id}/${s.id}/${safeName(key)}_${safeName(a.file_name)}`;
-          archive.append(data, { name: zipPath });
-          artifactNames.push(a.file_name || '');
-          artifactZipPaths.push(zipPath);
-          imageCount++;
+        const versions=await researchService.getArtifactVersions(id,s.id,r);
+        for(const [key,list] of Object.entries(versions))for(const [index,a] of list.entries()){
+          if(!a?.file_path)continue;
+          const data=await storageService.getObjectBuffer(a.file_path);
+          if(!data)continue;
+          const zipPath=`works/${id}/${s.id}/${safeName(key)}/v${String(index+1).padStart(3,'0')}_${safeName(a.file_name)}`;
+          archive.append(data,{name:zipPath});artifactNames.push(a.file_name||'');artifactZipPaths.push(zipPath);imageCount++;
+          workVersionRows.push({participant_id:id,session_id:s.id,artifact_key:key,version_no:index+1,version_id:a.version_id||'',version_kind:a.kind||'',file_name:a.file_name||'',file_path:a.file_path,zip_path:zipPath,uploaded_at:a.uploaded_at||'',change_source:a.change_source||'',change_note:a.change_note||'',ai_message_id:a.ai_message_id||'',based_on_version_ref:a.based_on_version_ref||'',original_order_unknown:!!a.original_order_unknown});
         }
         rows.push({
           participant_id: id,
@@ -870,7 +845,8 @@ router.get('/export/task-package.zip', requireAdmin, async (req, res) => {
     }
     const headers = ['participant_id','grade','condition_current','session_id','session_title','date','research_role','condition_at_time','ai_variant','started_at','first_ai_open_at','first_ai_open_latency_seconds','first_user_message_at','first_user_message_latency_seconds','ai_open_count','ai_used','task_text','text_fields_json','work_file_names','work_zip_paths','submitted_at','completed_at'];
     archive.append(csvText(headers, rows), { name: 'task_records.csv' });
-    archive.append(`正式数据仅含 S01-S30，自动排除 S00（实验组测试）与 S99（对照组测试）。\ntask_records.csv：每个学生每个课次的当前/最终任务记录。\nworks/：W1及W3以后需要上传的草图、原型、测试证据和最终作品原图；W2不要求最终图片。\n求助过程相关的 behavior_events.csv、task_revisions.csv 与 process_timeline.csv 已统一放入“AI求助过程数据 ZIP”，避免两个工作包重复。\n共 ${rows.length} 条课次记录、${imageCount} 张任务图片。\n`, { name: 'README.txt' });
+    archive.append(csvText(['participant_id','session_id','artifact_key','version_no','version_id','version_kind','file_name','file_path','zip_path','uploaded_at','change_source','change_note','ai_message_id','based_on_version_ref','original_order_unknown'],workVersionRows),{name:'artifact_versions_and_image_paths.csv'});
+    archive.append(`正式数据仅含 S01-S30，自动排除 S00（实验组测试）与 S99（对照组测试）。\ntask_records.csv：每个学生每个课次的当前/最终任务记录。\nworks/：W1及W3以后历次上传的原始图像，按版本分目录（包括更正误传的旧图）；W2不要求最终图片。\n求助过程相关的 behavior_events.csv、task_revisions.csv 与 process_timeline.csv 已统一放入“AI求助过程数据 ZIP”，避免两个工作包重复。\n共 ${rows.length} 条课次记录、${imageCount} 张任务图片。\n`, { name: 'README.txt' });
     await archive.finalize();
   } catch (e) {
     console.error('task package export', e);
@@ -971,5 +947,152 @@ router.get('/export/events.csv', requireAdmin, async (req, res) => {
 });
 router.get('/export/test-archives.json', requireAdmin, async (req, res) => sendJson(res, 'teacher_test_archives.json', await researchService.listTestArchives()));
 router.get('/export/reset-archives.json', requireAdmin, async (req, res) => sendJson(res, 'admin_reset_archives.json', await researchService.listResetArchives()));
+
+
+// ===== 研究测量：原始行为统计与人工编码，和AI自动路由严格分离 =====
+router.get('/research/measurements',requireAdmin,async(req,res)=>{
+ try {const sid=String(req.query.session_id||'W5').toUpperCase();res.json({session_id:sid,rows:await getMeasurements(sid),meta:measurementMeta,generated_at:new Date().toISOString()});}
+ catch(e){res.status(e.status||500).json({error:e.message||'汇总失败'});}
+});
+router.get('/research/coding/:participantId/:sessionId',requireAdmin,async(req,res)=>{
+ try {
+ const id=String(req.params.participantId||'').toUpperCase(),sid=String(req.params.sessionId||'').toUpperCase();
+ if(!formalIds().includes(id)||!SESSIONS.some(x=>x.id===sid))return res.status(400).json({error:'学生或课次无效'});
+ const [messages,codes,interview]=await Promise.all([researchService.getMessages(id,sid),getMessageCoding(id,sid),getInterviewNote(id,sid)]);
+ res.json({participant_id:id,session_id:sid,artifact_versions:await researchService.getArtifactVersions(id,sid),artifact_assessments:await getArtifactAssessments(id,sid),messages:messages.filter(x=>x.role==='user').map(x=>({message_index:x.message_index,content:x.content,created_at:x.created_at,agent_route_system:x.agent_route||'',scaffold_triggered_system:x.scaffold_triggered??null,task_field_key:x.task_field_key||''})),codings:codes,interview,meta:measurementMeta});
+ }catch(e){res.status(e.status||500).json({error:e.message||'读取编码失败'});}
+});
+router.post('/research/coding',requireAdmin,async(req,res)=>{
+ try {res.json(await putMessageCoding(req.body||{}));}
+ catch(e){res.status(e.status||500).json({error:e.message||'保存编码失败'});}
+});
+router.post('/research/interview',requireAdmin,async(req,res)=>{
+ try{res.json(await putInterviewNote(req.body||{}));}
+ catch(e){res.status(e.status||500).json({error:e.message||'访谈记录保存失败'});}
+});
+router.post('/research/artifact-assessment',requireAdmin,async(req,res)=>{
+ try{res.json(await putArtifactAssessment(req.body||{}));}
+ catch(e){res.status(e.status||500).json({error:e.message||'保存作品关联核实失败'});}
+});
+// Independent W10 final-product assessment: different evidence from process portfolio / LSA.
+router.get('/research/product-scores/:participantId',requireAdmin,async(req,res)=>{
+ try{res.json({participant_id:req.params.participantId,scores:await getFinalProductScores(String(req.params.participantId).toUpperCase())});}
+ catch(e){res.status(e.status||500).json({error:e.message||'读取作品评分失败'});}
+});
+router.post('/research/product-scores',requireAdmin,async(req,res)=>{
+ try{res.json(await putFinalProductScore(req.body||{}));}
+ catch(e){res.status(e.status||500).json({error:e.message||'保存作品评分失败'});}
+});
+router.get('/export/final-product-scores.csv',requireAdmin,async(req,res)=>{
+ try{sendCsv(res,'W10_final_product_scores_two_raters.csv',productScoreHeaders,await finalProductDataset());}
+ catch(e){res.status(500).json({error:e.message||'导出作品评分失败'});}
+});
+const ARTIFACT_CSV_HEADERS=['participant_id','grade','condition_at_time','session_id','artifact_key','version_id','version_no','version_kind','previous_version_id','based_on_previous_session_version_ref','file_name','file_path','uploaded_at','student_report_change_source','student_change_note','linked_ai_message_id','linked_ai_message_at','linked_ai_message_text','chronological_ai_reply_before_upload','researcher_link_verification','researcher_change_nature','researcher_evidence_note','researcher_coder','researcher_coded_at','is_legacy','source_warning'];
+// v11.49: standalone W4/W7 exposure CSV: never edits original orientation or historical chats.
+router.get('/export/orientation-activities.csv',requireAdmin,async(req,res)=>{
+ try{
+  const rows=[];
+  for(const id of formalIds())for(const sid of ['W4','W5','W6','W7','W8','W9','W10']){
+   const [o,p,record]=await Promise.all([researchService.getOrientation(id,sid),researchService.getParticipant(id),researchService.getSessionRecord(id,sid)]);
+   if(!o)continue;
+   const a=o.answers||{};
+   rows.push({participant_id:id,grade:p.grade||'',condition_at_time:record.condition_at_time||p.condition,
+    session_id:sid,orientation_mode:o.mode||'',activity_key:o.orientation_key||'',started_at:o.started_at||'',completed_at:o.completed_at||'',duration_seconds:o.duration_seconds||'',
+    selected_past_message_ref:a.personal_ref||'',reflection_source:a.reflection_source||'',reflection_difficulty:a.reflection_difficulty||'',reflection_reply_review:a.reflection_reply_review||'',revised_help_question:a.revised_question||'',reflection_reason:a.reflection_reason||'',had_original_ai_question:a.had_original_question??'',prior_chat_count:a.prior_chat_count??o.prior_chat_count??'',case_selection_reason:a.case_selection_reason||o.case_selection_reason||'',selected_case_basis:a.selected_case_basis||'',
+    neutral_observation:a.neutral_observation||'',neutral_nextstep:a.neutral_nextstep||'',answers_json:JSON.stringify(a),shown_personal_queries_json:JSON.stringify(o.displayed_cards||[]),
+    review_is_planned_intervention:['W5','W6','W7','W8','W9','W10'].includes(sid)&&o.mode==='supported',strategy_practice_count:a.strategy_practice_count??'',strategy_practice_correct_count:a.strategy_practice_correct_count??'',strategy_practice_protocol:a.strategy_practice_protocol||'',review_previous_session_id: sid==='W4'?'':`W${Number(sid.slice(1))-1}`});
+  }
+  sendCsv(res,'orientation_and_personal_reflection.csv',['participant_id','grade','condition_at_time','session_id','orientation_mode','activity_key','started_at','completed_at','duration_seconds','selected_past_message_ref','reflection_source','reflection_difficulty','reflection_reply_review','revised_help_question','reflection_reason','had_original_ai_question','prior_chat_count','case_selection_reason','selected_case_basis','neutral_observation','neutral_nextstep','answers_json','shown_personal_queries_json','review_is_planned_intervention','strategy_practice_count','strategy_practice_correct_count','strategy_practice_protocol','review_previous_session_id'],rows);
+ }catch(e){res.status(500).json({error:e.message||'导出活动记录失败'});}
+});
+
+router.get('/export/download-test.csv',requireAdmin,async(req,res)=>{
+ sendCsv(res,'download_test.csv',['check','generated_at','tip'],[{check:'OK',generated_at:new Date().toISOString(),tip:'能实际在下载目录找到并打开本CSV，再尝试正式统计CSV和逐课历史ZIP。'}]);
+});
+router.get('/export/artifact-versions.csv',requireAdmin,async(req,res)=>{
+ try{const sid=String(req.query.session_id||'ALL').toUpperCase();sendCsv(res,'artifact_versions_and_ai_links.csv',ARTIFACT_CSV_HEADERS,await artifactEvidenceDataset(sid));}
+ catch(e){res.status(e.status||500).json({error:e.message||'作品版本CSV导出失败'});}
+});
+// SMALL, image-free full-session research pack, with actual direct CSV routes as fallbacks.
+router.get('/export/research-tables/:sessionId.zip',requireAdmin,async(req,res)=>{
+ const sid=String(req.params.sessionId||'').toUpperCase();if(!SESSIONS.some(s=>s.id===sid))return res.status(400).json({error:'课次不存在'});
+ let archive;try{
+  const [measure,coding,artifact,interviews]=await Promise.all([getMeasurements(sid),codingDataset(sid),artifactEvidenceDataset(sid),interviewDataset(sid)]);
+  archive=openZip(res,`research_tables_${sid}.zip`);
+  archive.append(csvText(['participant_id','grade','condition_at_time','session_id','user_messages','ai_open_count','ihs_human','ehs_human','ihs_share_among_ihs_ehs','ehs_share_among_ihs_ehs','human_coding_complete','uploaded_artifact_version_count','unindexed_historical_images','artifact_self_report_ai_count','task_text_revisions','chat_history_revisit_events','interview_recorded'],measure),{name:'participant_session_summary.csv'});
+  archive.append(csvText(['participant_id','session_id','message_index','message_at','message_text','interaction_id','protocol_ai_required','protocol_first_user_message','help_type_human','process_codes_human','primary_process_code_human','fine_process_code_human','coder','memo','coded_at'],coding),{name:'human_coding_and_original_user_text.csv'});
+  archive.append(csvText(ARTIFACT_CSV_HEADERS,artifact),{name:'all_artifact_versions.csv'});
+  if(sid==='W10')archive.append(csvText(productScoreHeaders,await finalProductDataset()),{name:'W10_final_product_scores_two_raters.csv'});
+  if(['W4','W5','W6','W7','W8','W9','W10'].includes(sid)){
+    const activity=await Promise.all(formalIds().map(async id=>{
+      const o=await researchService.getOrientation(id,sid);if(!o)return null;
+      return {participant_id:id,session_id:sid,mode:o.mode||'',key:o.orientation_key||'',completed_at:o.completed_at||'',duration_seconds:o.duration_seconds??'',reflection_source:o.answers?.reflection_source||'',answers:JSON.stringify(o.answers||{}),shown_personal_queries:JSON.stringify(o.displayed_cards||[])};
+    }));
+    archive.append(csvText(['participant_id','session_id','mode','key','completed_at','duration_seconds','reflection_source','answers','shown_personal_queries'],activity.filter(Boolean)),{name:'session_strategy_and_reflection_activity.csv'});
+  }
+  const rawGroups=await Promise.all(formalIds().map(async id=>{
+    const [messages,events,revisions]=await Promise.all([researchService.getMessages(id,sid),researchService.getEvents(id,sid),researchService.getRevisions(id,sid)]);
+    return {id,messages,events,revisions};
+  }));
+  const allMessages=rawGroups.flatMap(g=>g.messages.map(m=>({...m,participant_id:g.id})));
+  const allEvents=rawGroups.flatMap(g=>g.events.map(e=>({...e,participant_id:g.id})));
+  const allRevisions=rawGroups.flatMap(g=>g.revisions.map(r=>({...r,participant_id:g.id})));
+  archive.append(csvText(['participant_id','course_session_id','message_index','message_id','interaction_id','role','content','created_at','agent_route','scaffold_triggered','task_field_key','attachments'],allMessages),{name:'raw_full_ai_chat_both_roles.csv'});
+  archive.append(csvText(['participant_id','session_id','event_index','type','at','data'],allEvents),{name:'raw_action_trace_events.csv'});
+  archive.append(csvText(['participant_id','session_id','revision_index','field_key','previous_text','text','created_at','last_ai_message_id','last_ai_message_at','save_reason'],allRevisions),{name:'raw_task_text_revisions.csv'});
+
+  archive.append(csvText(['participant_id','session_id','at','within_session_event_order','sequence_event_code','lsa_stage','sensitivity_lsa_stage','primary_lsa_included','source','source_id','protocol_first_user_message','help_type_human','fine_process_code_human','evidence_level','message_text','link_note'],await processSequenceDataset(sid)),{name:'human_coded_process_sequence.csv'});
+  archive.append(csvText(['participant_id','session_id','difficulty','reasons','memo','source','recorded_at','revision'],interviews),{name:'interview_reasons.csv'});
+  archive.append('此包是无图片的研究统计表，可以直接用Excel导入。要保留作品/聊天原图，还需下载对应课次完整原始ZIP。未编码的IHS/EHS比例为空；图片版本与AI的先后顺序/学生报告不是因果证明。\n',{name:'README.txt'});
+  await archive.finalize();
+ }catch(e){console.error('research tables export',e);if(!res.headersSent)res.status(500).json({error:e.message||'轻量研究表导出失败'});else res.destroy(e);}
+});
+router.get('/export/interviews.csv',requireAdmin,async(req,res)=>{
+ try{const sid=String(req.query.session_id||'ALL').toUpperCase();sendCsv(res,'no_ai_interview_coded_summary.csv',['participant_id','session_id','difficulty','reasons','memo','source','recorded_at','revision'],await interviewDataset(sid));}
+ catch(e){res.status(e.status||500).json({error:e.message||'访谈摘要导出失败'});}
+});
+router.get('/export/measurement.csv',requireAdmin,async(req,res)=>{
+ try {
+ const sid=String(req.query.session_id||'ALL').toUpperCase(),rows=await getMeasurements(sid);
+ const headers=['participant_id','grade','condition_current','condition_at_time','session_id','session_title','phase','started_at','completed_at','has_task_record','ai_open_count','ai_opened','user_messages','ai_responses','actual_sent_to_ai','ai_open_without_message','never_opened_ai','draft_started_events','draft_unsent_deleted_events','draft_unsent_left_events','chat_history_revisit_events','ai_open_no_send_events','task_field_interaction_events','task_text_revisions','uploaded_artifact_count','uploaded_artifact_version_count','unindexed_historical_images','artifact_self_report_ai_count','orientation_completed_events','interview_recorded','interview_difficulty','interview_reasons','route_ehs_events','scaffold_triggered_system_events','messages_human_coded','messages_pending_human_coding','messages_with_primary_process','human_coding_complete','ihs_human','ehs_human','other_help_human','not_help_human','valid_ihs_ehs_denom','ihs_share_among_ihs_ehs','ehs_share_among_ihs_ehs','total_human_help','process_d_human','process_h_human','process_e_human','process_p_human','source_note'];
+ sendCsv(res,'helpseeking_participant_session_measures.csv',headers,rows);
+ }catch(e){res.status(e.status||500).json({error:e.message||'统计CSV导出失败'});}
+});
+router.get('/export/process-sequence.csv',requireAdmin,async(req,res)=>{
+ try{const sid=String(req.query.session_id||'ALL').toUpperCase();sendCsv(res,'human_coded_process_sequence.csv',['participant_id','session_id','at','within_session_event_order','sequence_event_code','lsa_stage','sensitivity_lsa_stage','primary_lsa_included','source','source_id','protocol_first_user_message','help_type_human','fine_process_code_human','evidence_level','message_text','link_note'],await processSequenceDataset(sid));}
+ catch(e){res.status(e.status||500).json({error:e.message||'过程序列CSV导出失败'});}
+});
+router.get('/export/human-coding.csv',requireAdmin,async(req,res)=>{
+ try {
+ const sid=String(req.query.session_id||'ALL').toUpperCase(),rows=await codingDataset(sid);
+ sendCsv(res,'human_coding_with_source_messages.csv',['participant_id','grade','condition_current','condition_at_time','session_id','message_index','message_at','message_text','interaction_id','protocol_ai_required','protocol_first_user_message','agent_route_system','scaffold_triggered_system','help_type_human','process_codes_human','primary_process_code_human','fine_process_code_human','coder','memo','coded_at','coding_scheme'],rows);
+ }catch(e){res.status(e.status||500).json({error:e.message||'逐条编码CSV导出失败'});}
+});
+// 每节课独立完整原始对象包：有所有学生原始消息、事件、记录、修订和对应上传图片，不更动存储。
+router.get('/export/history-session/:sessionId.zip',requireAdmin,async(req,res)=>{
+ const sid=String(req.params.sessionId||'').toUpperCase();
+ if(!SESSIONS.some(x=>x.id===sid))return res.status(400).json({error:'课次不存在'});
+ const pid=String(req.query.participant_id||'').trim().toUpperCase();
+ if(pid && !formalIds().includes(pid))return res.status(400).json({error:'只能导出S01–S30正式学生编号'});
+ const exportIds=pid?[pid]:formalIds();
+ let archive;try{
+ archive=openZip(res,`original_history_${sid}${pid?'_'+pid:''}.zip`);
+ const stats={session_id:sid,created_at:new Date().toISOString(),storage_namespace:storageService.describe().root_prefix,student_count:exportIds.length,participant_filter:pid||'ALL',raw_objects:0,bytes:0,empty:false,missing_objects:[],note:'正式学生 S01–S30 原始对象和图片；原始路径保留在 objects/ 下。此导出只读，不覆盖原有记录。解压后请妥善保管学生敏感数据。'};
+ for(const id of exportIds) {
+   for(const prefix of [`participants/${id}/sessions/${sid}/`,`uploads/${id}/${sid}/`]){
+     const objects=await storageService.listObjects(prefix,30000);
+     for(const item of objects){
+       const bytes=await storageService.getObjectBuffer(item.key);
+       if(bytes==null){stats.missing_objects.push(item.key);continue;}
+       archive.append(bytes,{name:`objects/${item.key}`});stats.raw_objects++;stats.bytes+=bytes.length;
+     }
+   }
+ }
+ stats.empty=stats.raw_objects===0;
+ archive.append(JSON.stringify(stats,null,2),{name:'MANIFEST.json'});
+ archive.append('本ZIP为当前存储命名空间中该课次的实际原始数据，不是自动创建的历史副本。若以前的记录已经丢失或存储命名空间改变，此ZIP不会恢复缺失数据。\\n', {name:'README.txt'});
+ await archive.finalize();
+ }catch(e){console.error('history raw export',e);if(!res.headersSent)res.status(e.status||500).json({error:e.message||'历史课次导出失败'});else res.destroy(e);}
+});
 
 export default router;

@@ -30,7 +30,8 @@ await researchService.appendMessage('S01','W3',{role:'user',content:'我想先�
 await researchService.setParticipantMeta('S01',{condition:'A'});
 if(aiVariantFor({session:getSessionConfig('W4'),condition:'A',isTest:false})!=='supported') throw new Error('A W4 routing failed');
 if(aiVariantFor({session:getSessionConfig('W4'),condition:'B',isTest:false})!=='free') throw new Error('B W4 routing failed');
-if(aiVariantFor({session:getSessionConfig('W10'),condition:'A',isTest:false})!=='free') throw new Error('W10 transfer must be free AI');
+if(aiVariantFor({session:getSessionConfig('W10'),condition:'A',isTest:false})!=='supported') throw new Error('W10 must continue supported AI');
+if(aiVariantFor({session:getSessionConfig('W11'),condition:'A',isTest:false})!=='free') throw new Error('W11 transfer must use ordinary AI');
 
 const o4=await researchService.orientationPublicState('S01','W4');
 if(!o4||o4.mode!=='supported'||o4.completed) throw new Error('W4 supported orientation missing');
@@ -40,14 +41,21 @@ if(!bad) throw new Error('W4 orientation correctness gate missing');
 await researchService.completeOrientation('S01','W4',{q1:1,q2:0});
 if(!(await researchService.orientationPublicState('S01','W4')).completed) throw new Error('W4 orientation completion missing');
 
-// Seed W4-W6 personal query history with execution-time route metadata for W7 review.
-await researchService.appendMessage('S01','W4',{role:'user',content:'直接给我一套完整方案，我照着做。',message_id:'W4-q',agent_route:'EHS',scaffold_triggered:true,scaffold_type:'executive_help_restructure',route_parse_status:'ok'});
-await researchService.appendMessage('S01','W5',{role:'user',content:'测试时画笔会转动，可能是什么原因？',message_id:'W5-q',agent_route:'IHS',scaffold_triggered:false,route_parse_status:'ok'});
-await researchService.appendMessage('S01','W6',{role:'user',content:'我想改绑带位置，应该比较哪些标准？',message_id:'W6-q',agent_route:'IHS',scaffold_triggered:false,route_parse_status:'ok'});
+// W5 design review and W7 personal reflection do not alter earlier history.
+await researchService.appendMessage('S01','W4',{role:'user',content:'直接给我一套完整方案，我照着做。',message_id:'W4-q',interaction_id:'W4-real1',agent_route:'EHS',scaffold_triggered:true,scaffold_type:'executive_help_restructure',route_parse_status:'ok'});
+await researchService.appendMessage('S01','W4',{role:'assistant',content:'请先确定需要帮助的局部困难。',interaction_id:'W4-real1'});
+await researchService.appendMessage('S01','W5',{role:'user',content:'魔术贴固定铅笔时容易转动，怎样处理？',message_id:'W5-q',agent_route:'IHS',scaffold_triggered:false,route_parse_status:'ok'});
+if(getSessionConfig('W5').artifacts[0].key==='v1_photo') throw new Error('W5 should not require built prototype photo');
+await researchService.appendMessage('S01','W6',{role:'user',content:'你帮我直接做好整套作品',interaction_id:'W6-real1',agent_route:'EHS'});
+await researchService.appendMessage('S01','W6',{role:'assistant',content:'先看你遇到的最关键困难',interaction_id:'W6-real1'});
 const o7=await researchService.orientationPublicState('S01','W7');
-if(!o7||o7.mode!=='supported'||o7.cards.length<2||!o7.cards.some(c=>c.body?.[0]?.includes('完整方案'))||!o7.cards.some(c=>c.body?.[0]?.includes('比较哪些标准'))) throw new Error('W7 route-informed personal query review missing');
+if(!o7?.reflection_activity || o7?.mode!=='supported' || o7.cards.length<1) throw new Error('W7 personal retrospective missing');
 await researchService.startOrientation('S01','W7');
-await researchService.completeOrientation('S01','W7',{});
+await researchService.completeOrientation('S01','W7', {practice_1:1,practice_2:0,personal_ref:'W6:1',reflection_difficulty:'当时我不知道怎样固定铅笔',reflection_reply_review:'我当时收到AI建议但还需要检查材料是否合适',revised_question:'我现在不知道材料应该怎样连接，请帮我比较可选方法',reflection_reason:'用自己的情况描述困难后我还需要检验建议是否适合'});
+if(!(await researchService.orientationPublicState('S01','W7')).completed)throw new Error('W7 reflection not saved');
+// W10 is the last supported week, while W11/W12 are common-model transfer.
+if(!getSessionConfig('W10').questionnaire_after_submit || getSessionConfig('W9').questionnaire_after_submit)throw new Error('posttest should only be after W10');
+if(!getSessionConfig('W11').ai_use_required_once || getSessionConfig('W12').ai_use_required_once)throw new Error('W11 AI exchange requirement configuration invalid');
 
 // Fixed control IDs remain fixed B.
 await researchService.createParticipant('S04',{grade:'7',condition:'A'});
@@ -68,14 +76,22 @@ if(parsedMissing.agentRoute!=='UNRESOLVED'||parsedMissing.routeParseStatus!=='mi
 const mm=cozeService.buildAdditionalMessage('看看这张图',{fileId:'112233'});
 if(mm.content_type!=='object_string'||!mm.content.includes('image')) throw new Error('multimodal Coze message failed');
 
-// Session reset/archive safety still works.
-const reset=await researchService.archiveAndResetSession('S01','W1',{reason:'smoke_reset'});
-if(!reset.archived_previous) throw new Error('reset archive missing');
+// Formal history cannot be reset. Test participant may still be reset with archive.
+let resetBlocked=false;
+try { await researchService.archiveAndResetSession('S01','W1',{reason:'attempt_blocked'}); }
+catch(e){resetBlocked=e.status===403;}
+if(!resetBlocked) throw new Error('formal archive reset must be blocked');
+if(!(await researchService.getSessionRecord('S01','W1')).started_at) throw new Error('formal W1 lost during blocked reset');
+await researchService.createParticipant('S00',{grade:'7',condition:'A'});
+await researchService.ensureStarted('S00','W4');
+await researchService.appendMessage('S00','W4',{role:'user',content:'测试清理',message_id:'test-w4'});
+const reset=await researchService.archiveAndResetSession('S00','W4',{reason:'smoke_reset'});
+if(!reset.archived_previous) throw new Error('test reset archive missing');
 const archives=await researchService.listResetArchives();
-const target=archives.find(x=>x.data?.participant?.participant_id==='S01'&&x.data?.session_config?.id==='W1');
-if(!target) throw new Error('restorable archive missing');
+const target=archives.find(x=>x.data?.participant?.participant_id==='S00'&&x.data?.session_config?.id==='W4');
+if(!target) throw new Error('test restore archive missing');
 await researchService.restoreResetArchive(target.key);
-if(!(await researchService.getSessionRecord('S01','W1')).started_at) throw new Error('restore failed');
+if(!(await researchService.getSessionRecord('S00','W4')).started_at) throw new Error('test restore failed');
 
 // Test accounts persist.
 await researchService.createParticipant('S99',{grade:'',condition:'B'});
@@ -84,4 +100,4 @@ await researchService.appendMessage('S99','W3',{role:'user',content:'测试号�
 await researchService.touchParticipant('S99');
 if((await researchService.getMessages('S99','W3')).at(-1)?.content!=='测试号连续性消息') throw new Error('test account history persistence failed');
 
-console.log('SMOKE OK v11.45: IHS/EHS/Other route parser, W7 route-informed review, pre-W4 snapshot, persistence.');
+console.log('SMOKE OK v11.54: W7 prior-session review with mini practice, W4–W10 supported AI; W11–W12 scaffold-off; historical snapshot retained.');
