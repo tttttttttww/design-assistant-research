@@ -736,7 +736,7 @@ class ResearchService {
     const history = r.artifact_versions && Array.isArray(r.artifact_versions[artifactKey]) ? [...r.artifact_versions[artifactKey]] : [];
     if (prior?.file_path && !history.some(x=>x.file_path===prior.file_path)) history.unshift({ ...prior, version_id:prior.version_id||`legacy-${prior.file_name}`, version_no:prior.version_no||1, kind:prior.kind||'legacy', is_legacy:!prior.version_id });
     const previous = history.at(-1) || null;
-    const kind = ['draft','revision','correction'].includes(meta.kind) ? meta.kind : previous?'revision':'draft';
+    const kind = ['draft','revision','correction','progress'].includes(meta.kind) ? meta.kind : previous?'revision':'draft';
     const source = ['self','ai','teacher','peer','mixed','unknown'].includes(meta.change_source) ? meta.change_source:'unknown';
     let baseVersionRef = '';
     const requestedBase = String(meta.based_on_version_ref||'').slice(0,160);
@@ -746,17 +746,21 @@ class ResearchService {
       if(Object.values(prevVersions).flat().some(v=>requestedBase===`${carrySid}:${v.version_id}`))baseVersionRef=requestedBase;
       else throw Object.assign(new Error('关联的上一课作品版本不存在，请重新选择。'),{status:400});
     } else if(requestedBase) throw Object.assign(new Error('此课次不能关联上一课作品。'),{status:400});
-    const aiMessageId = String(meta.ai_message_id||'').slice(0,110);
-    let matched = null;
-    if (aiMessageId) {
+    const requestedAiIds = [...new Set((Array.isArray(meta.ai_message_ids) ? meta.ai_message_ids : [meta.ai_message_id]).map(x=>String(x||'').slice(0,110)).filter(Boolean))].slice(0,8);
+    let matchedMessages = [];
+    if (requestedAiIds.length) {
       const messages = await this.getMessages(id,sid);
-      matched = messages.find(m=>m.role==='assistant' && String(m.message_id||'')===aiMessageId) || null;
-      if (!matched) throw Object.assign(new Error('所选择的AI回复不存在，请重新选择或取消关联。'),{status:400});
+      matchedMessages = requestedAiIds.map(messageId=>messages.find(m=>m.role==='assistant' && String(m.message_id||'')===messageId)).filter(Boolean);
+      if (matchedMessages.length !== requestedAiIds.length) throw Object.assign(new Error('所选择的AI回复中有记录不存在，请重新选择或取消关联。'),{status:400});
     }
+    const matched = matchedMessages[0] || null;
     const version = { ...meta, version_id:randomUUID(), version_no:history.length+1, kind,
       change_source:source, change_note:String(meta.change_note||'').slice(0,500),
-      ai_message_id:matched?.message_id||'', ai_message_at:matched?.created_at||'',
-      linked_ai_evidence:matched?'student_linked_to_existing_reply':'not_linked',
+      modification_status:['first_version','modified','not_modified','tested_no_change'].includes(meta.modification_status)?meta.modification_status:'',
+      change_bases:Array.isArray(meta.change_bases)?meta.change_bases.filter(x=>typeof x==='string').slice(0,8):[],
+      ai_usage_role:['not_used','unsure','direct_adopt','adapted','inspired','viewed_not_adopted'].includes(meta.ai_usage_role)?meta.ai_usage_role:'',
+      ai_message_id:matched?.message_id||'', ai_message_ids:matchedMessages.map(m=>m.message_id), ai_message_at:matched?.created_at||'',
+      linked_ai_evidence:matchedMessages.length?'student_linked_to_existing_reply':'not_linked',
       supersedes_version_id:previous?.version_id||'', based_on_version_ref:baseVersionRef, uploaded_at:iso() };
     // Write independent append-only version metadata first: no past version/image is ever deleted.
     await storageService.putObject(`${sBase(id,sid)}/artifact-versions/${artifactKey}/${version.uploaded_at.replace(/[:.]/g,'-')}_${version.version_id}.json`,JSON.stringify(version));
@@ -767,8 +771,112 @@ class ResearchService {
     await this.appendEvent(id,sid,kind==='correction'?'artifact_corrected':'artifact_version_uploaded',{
       artifact_key:artifactKey, version_id:version.version_id, version_no:version.version_no,
       previous_version_id:version.supersedes_version_id, kind, change_source:source,
-      ai_message_id:version.ai_message_id, based_on_version_ref:baseVersionRef, file_name:version.file_name });
+      ai_message_id:version.ai_message_id, ai_message_ids:version.ai_message_ids, modification_status:version.modification_status,
+      change_bases:version.change_bases, based_on_version_ref:baseVersionRef, file_name:version.file_name });
     return r;
+  }
+
+  async getTaskPhaseExchangeCounts(id, sid, taskFlow = null) {
+    const config = getSessionConfig(sid);
+    const flow = taskFlow || config?.task_flow;
+    if (!flow?.steps?.length) return {};
+    const messages = await this.getMessages(id, sid);
+    const counts = {};
+    for (const step of flow.steps) {
+      const rolesByInteraction = new Map();
+      for (const message of messages) {
+        if (String(message?.task_context?.task_phase || '') !== String(step.task_phase || '')) continue;
+        const interactionId = String(message?.interaction_id || '');
+        if (!interactionId) continue;
+        if (!rolesByInteraction.has(interactionId)) rolesByInteraction.set(interactionId, new Set());
+        rolesByInteraction.get(interactionId).add(message.role);
+      }
+      counts[step.key] = [...rolesByInteraction.values()].filter(roles => roles.has('user') && roles.has('assistant')).length;
+    }
+    return counts;
+  }
+
+  async getTaskFlowState(id, sid, taskFlow = null) {
+    const config = getSessionConfig(sid);
+    const flow = taskFlow || config?.task_flow;
+    if (!flow?.steps?.length) return null;
+    const events = await this.getEvents(id, sid);
+    const completed = {};
+    for (const event of events) {
+      const key = String(event?.data?.step_key || '');
+      if (!flow.steps.some(step => step.key === key)) continue;
+      if (event.type === 'task_step_submitted') completed[key] = event;
+      else if (event.type === 'task_step_reopened') delete completed[key];
+    }
+    const counts = await this.getTaskPhaseExchangeCounts(id, sid, flow);
+    return {
+      completed_steps: Object.keys(completed),
+      step_events: completed,
+      ai_exchange_counts: counts,
+      steps: flow.steps.map(step => ({
+        key: step.key, label: step.label, min_ai_exchanges: Number(step.min_ai_exchanges || 0),
+        ai_exchanges: Number(counts[step.key] || 0), completed: Boolean(completed[step.key]),
+      })),
+    };
+  }
+
+  async submitTaskStep(id, sid, stepKey, textFields = {}, saveContext = {}) {
+    await this.assertSessionWritable(sid);
+    const config = getSessionConfig(sid);
+    const flow = config?.task_flow;
+    if (!flow?.steps?.length) throw Object.assign(new Error('当前课次没有分段任务。'), { status: 400 });
+    const stepIndex = flow.steps.findIndex(step => step.key === String(stepKey || ''));
+    if (stepIndex < 0) throw Object.assign(new Error('任务环节无效。'), { status: 400 });
+    const step = flow.steps[stepIndex];
+    const priorState = await this.getTaskFlowState(id, sid, flow);
+    if (priorState?.completed_steps?.includes(step.key)) return { record: await this.getSessionRecord(id, sid), task_progress: priorState, already_completed: true };
+    if (stepIndex > 0) {
+      const previous = flow.steps[stepIndex - 1];
+      if (!priorState?.completed_steps?.includes(previous.key)) {
+        throw Object.assign(new Error(`请先完成并提交${previous.label}，再进入下一项任务。`), { status: 409 });
+      }
+    }
+    const record = await this.saveFields(id, sid, textFields, { ...saveContext, reason: saveContext?.reason || `task_step_${step.key}_submit` });
+    for (const key of step.required_fields || []) {
+      const field = config.fields.find(item => item.key === key);
+      if (!String(record.text_fields?.[key] || '').trim()) {
+        throw Object.assign(new Error(`请先完成：${field?.label || key}`), { status: 400 });
+      }
+    }
+    for (const key of step.required_artifacts || []) {
+      if (!record.artifacts?.[key]) {
+        const artifact = config.artifacts.find(item => item.key === key);
+        throw Object.assign(new Error(`请先上传：${artifact?.label || key}`), { status: 400 });
+      }
+    }
+    const anyKeys = step.required_any_artifact_keys || [];
+    if (anyKeys.length && !anyKeys.some(key => Boolean(record.artifacts?.[key]))) {
+      const labels = anyKeys.map(key => config.artifacts.find(item => item.key === key)?.label || key);
+      throw Object.assign(new Error(`请至少上传一项：${labels.join('；')}`), { status: 400 });
+    }
+    const counts = await this.getTaskPhaseExchangeCounts(id, sid, flow);
+    const exchangeCount = Number(counts[step.key] || 0);
+    const minimum = Number(step.min_ai_exchanges || 0);
+    if (exchangeCount < minimum) {
+      await this.appendEvent(id, sid, 'task_step_gate_blocked', {
+        step_key: step.key, task_phase: step.task_phase, observed_ai_exchanges: exchangeCount,
+        required_ai_exchanges: minimum, count_basis: 'completed_student_ai_interaction_pairs',
+      });
+      throw Object.assign(new Error(`${step.label}目前记录到${exchangeCount}轮完整AI对话，还需要${minimum - exchangeCount}轮。只统计你发送消息且收到AI回复的完整对话；可以先保存进度，稍后继续。`), { status: 400 });
+    }
+    if (stepIndex === flow.steps.length - 1) {
+      const completedRecord = await this.submitSession(id, sid, textFields, { ...saveContext, reason: `task_step_${step.key}_submit` });
+      await this.appendEvent(id, sid, 'task_step_submitted', {
+        step_key: step.key, task_phase: step.task_phase, ai_exchange_count: exchangeCount,
+        required_ai_exchanges: minimum, completed_at: iso(),
+      });
+      return { record: completedRecord, task_progress: await this.getTaskFlowState(id, sid, flow) };
+    }
+    await this.appendEvent(id, sid, 'task_step_submitted', {
+      step_key: step.key, task_phase: step.task_phase, ai_exchange_count: exchangeCount,
+      required_ai_exchanges: minimum, completed_at: iso(),
+    });
+    return { record: await this.getSessionRecord(id, sid), task_progress: await this.getTaskFlowState(id, sid, flow) };
   }
 
   async submitSession(id, sid, textFields = {}, saveContext = {}) {
@@ -813,6 +921,11 @@ class ResearchService {
       await this.saveChatSession(id, sid, s);
     }
     await this.appendEvent(id, sid, 'session_reopened_by_student', { prior_submitted_at: priorSubmittedAt });
+    const config = getSessionConfig(sid);
+    if (config?.task_flow?.steps?.length) {
+      const finalStep = config.task_flow.steps.at(-1);
+      await this.appendEvent(id, sid, 'task_step_reopened', { step_key: finalStep.key, reason: 'student_reopened_submitted_session' });
+    }
     return r;
   }
 
@@ -1052,13 +1165,14 @@ class ResearchService {
     if (!learning_gate && settings.questionnaire_enabled && session.questionnaire_after_submit && record.submitted_at && !questionnaire.post.submitted) task_gate = 'questionnaire_post';
     const chat = session.ai_mode === 'none' || task_gate || learning_gate ? null : await this.getChatSession(id, session.id);
     const messages = session.ai_mode === 'none' || task_gate || learning_gate ? [] : await this.getMessages(id, session.id);
+    const task_progress = session.task_flow ? await this.getTaskFlowState(id, session.id, session.task_flow) : null;
     let carry = null;
     if (session.carry_from) carry = await this.getSessionRecord(id, session.carry_from);
     const publicParticipant = { ...participant };
     delete publicParticipant.login_name_hash;
     return {
       settings, participant: publicParticipant, session, session_locked, record, questionnaire, task_gate, learning_gate, orientation,
-      support_card: null,
+      support_card: null, task_progress,
       artifact_versions: await this.getArtifactVersions(id, session.id, record),
       carry_artifact_versions: carry ? await this.getArtifactVersions(id,session.carry_from,carry) : {},
       ai_variant,

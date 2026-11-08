@@ -1,6 +1,7 @@
 import express from 'express';
 import { researchService } from '../services/researchService.js';
 import { isAllowedParticipant, normalizeParticipantId, isTestParticipant } from '../utils/validators.js';
+import { getSessionConfig } from '../config/researchConfig.js';
 
 const router = express.Router();
 const pid = req => normalizeParticipantId(req.body?.participantId ?? req.query?.participantId);
@@ -62,12 +63,27 @@ router.post('/session/save', async (req, res) => {
   } catch (e) { res.status(e.status || 500).json({ error: e.message || '保存失败' }); }
 });
 
+router.post('/session/step-submit', async (req, res) => {
+  try {
+    const id = pid(req); if (!guard(id, res)) return;
+    const sid = String(req.body?.sessionId || '').toUpperCase();
+    const settings = await cohortGuard(req, id, res); if (!settings) return;
+    if (!settings.session_open || settings.active_session_id !== sid) return res.status(409).json({ error: '当前不是这个课次。' });
+    await researchService.assertTaskAccess(id, sid);
+    const result = await researchService.submitTaskStep(id, sid, String(req.body?.stepKey || ''), req.body?.textFields || {}, req.body?.saveContext || {});
+    res.json(result);
+  } catch (e) { res.status(e.status || 500).json({ error: e.message || '提交任务环节失败' }); }
+});
+
 router.post('/session/submit', async (req, res) => {
   try {
     const id = pid(req); if (!guard(id, res)) return;
     const sid = String(req.body?.sessionId || '').toUpperCase();
     const settings = await cohortGuard(req, id, res); if (!settings) return;
     if (!settings.session_open || settings.active_session_id !== sid) return res.status(409).json({ error: '当前不是这个课次。' });
+    if (getSessionConfig(sid)?.task_flow?.steps?.length) {
+      return res.status(409).json({ error: '本课需要按任务阶段提交，请使用任务页面中的分阶段提交按钮。' });
+    }
     await researchService.assertTaskAccess(id, sid);
     res.json({ record: await researchService.submitSession(id, sid, req.body?.textFields || {}, req.body?.saveContext || {}) });
   } catch (e) { res.status(e.status || 500).json({ error: e.message || '提交失败' }); }

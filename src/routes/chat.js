@@ -47,7 +47,7 @@ function imageUrl(req, id, sid, fileName) {
   return `${base}/express/api/chat-image/${encodeURIComponent(id)}/${encodeURIComponent(sid)}/${encodeURIComponent(fileName)}`;
 }
 
-function safeTaskContext(raw, config) {
+function safeTaskContext(raw, config, expectedTaskPhase = '') {
   let parsed = {};
   try { parsed = raw ? JSON.parse(String(raw)) : {}; } catch { parsed = {}; }
   const key = String(parsed?.field_key || '').slice(0, 120);
@@ -55,10 +55,13 @@ function safeTaskContext(raw, config) {
   const completed = Array.isArray(parsed?.completed_field_keys)
     ? parsed.completed_field_keys.map(x => String(x)).filter(x => (config?.fields || []).some(f => f.key === x)).slice(0, 30)
     : [];
+  // For split tasks, the server—not the browser—decides which phase is currently active.
+  const taskPhase = config?.task_flow?.steps?.length ? expectedTaskPhase : '';
   return {
     field_key: field?.key || '',
     field_label: field?.label || '',
     field_stage: field?.stage || '',
+    task_phase: taskPhase,
     main_update_revealed: Boolean(parsed?.main_update_revealed),
     bonus_task_revealed: Boolean(parsed?.bonus_task_revealed),
     bonus_update_revealed: Boolean(parsed?.bonus_update_revealed),
@@ -110,7 +113,10 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
     if (!validateMessage(message)) return res.status(400).json({ error: '请用文字告诉AI你想让它帮你看什么。' });
     const state = await access(req, id, sid);
     const config = getSessionConfig(sid);
-    const taskContext = safeTaskContext(req.body?.taskContext, config);
+    const completedTaskSteps = state?.task_progress?.completed_steps || [];
+    const expectedTaskPhase = config?.task_flow?.steps?.length
+      ? (completedTaskSteps.includes('task1') ? 'task2_prototype' : 'task1_design') : '';
+    const taskContext = safeTaskContext(req.body?.taskContext, config, expectedTaskPhase);
     const clientSentAt = String(req.body?.clientSentAt || '').trim();
     if (req.file && config?.chat_image_enabled === false) return res.status(400).json({ error: '本节任务不使用聊天图片，请直接用文字与AI交流。' });
     let s = await researchService.ensureChatSession(id, sid);
@@ -134,7 +140,13 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
     const commonResponseRules = `【共同回答表达规则：两组一致】\n${COMMON_AI_RESPONSE_RULES.map(x => `- ${x}`).join('\n')}`;
     const variantRules = AI_VARIANT_RUNTIME_RULES[state.ai_variant] || AI_VARIANT_RUNTIME_RULES.free;
     const variantResponseRules = `【当前AI条件的运行规则】\n${variantRules.map(x => `- ${x}`).join('\n')}`;
-    const taskContextText = firstStudentTurn ? `${await researchService.hiddenContextForChat(sid)}\n\n` : '';
+    const baseTaskContextText = firstStudentTurn ? `${await researchService.hiddenContextForChat(sid)}\n\n` : '';
+    const phaseContext = taskContext.task_phase === 'task1_design'
+      ? '当前活动阶段：任务一——上传上一课任务单，学习教师提供的科学知识，将至少一个知识点应用到设计图，并选择材料、标注用途。'
+      : taskContext.task_phase === 'task2_prototype'
+        ? '当前活动阶段：任务二——根据完善后的设计图领取材料并制作第一版实体原型；后续可持续迭代版本。'
+        : '';
+    const taskContextText = `${baseTaskContextText}${phaseContext ? `【当前活动阶段】\n${phaseContext}\n\n` : ''}`;
     const hidden = `${taskContextText}${commonResponseRules}\n\n${variantResponseRules}\n\n【学生实际输入】\n${message}`;
     interactionId = uuidv4();
     const aiRequestStartedAt = new Date().toISOString();
@@ -168,7 +180,7 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
       interaction_id: interactionId,
       task_field_key: taskContext.field_key,
       task_field_label: taskContext.field_label,
-      task_field_stage: taskContext.field_stage,
+      task_field_stage: taskContext.field_stage, task_phase: taskContext.task_phase,
     });
 
     const ai = await cozeService.sendMessage({
@@ -232,7 +244,7 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
       interaction_id: interactionId, ai_latency_ms: aiLatencyMs,
       agent_route: routing.agentRoute, scaffold_triggered: routing.scaffoldTriggered, scaffold_type: routing.scaffoldType,
       route_parse_status: routing.routeParseStatus,
-      task_field_key: taskContext.field_key, task_field_label: taskContext.field_label, task_field_stage: taskContext.field_stage,
+      task_field_key: taskContext.field_key, task_field_label: taskContext.field_label, task_field_stage: taskContext.field_stage, task_phase: taskContext.task_phase,
     });
     await researchService.appendEvent(id, sid, 'ai_message_sent', {
       interaction_id: interactionId,
@@ -247,6 +259,7 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
       task_field_key: taskContext.field_key,
       task_field_label: taskContext.field_label,
       task_field_stage: taskContext.field_stage,
+      task_phase: taskContext.task_phase,
     });
     res.json({ message: routing.visibleText, session: s, attachment, record: updatedRecord, user_message: userMessageRow, assistant_message_row: assistantMessageRow });
   } catch (e) {
