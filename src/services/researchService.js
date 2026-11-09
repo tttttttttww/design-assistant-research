@@ -273,7 +273,7 @@ class ResearchService {
     // protocol became active must never be retrospectively locked behind a new pre-task gate.
     // Old orientation records remain readable in original storage (and archive on any deliberate
     // new start), but are not rewritten merely to make a past class look treated.
-    if (config.strategy_micro_lesson || String(config.key||'').startsWith('neutral-weekly-readiness-')) {
+    if (session.condition_protocol==='A-free-B-supported-v12.2' || config.strategy_micro_lesson || String(config.key||'').startsWith('neutral-weekly-readiness-')) {
       const existing = await this.getOrientation(id, sid);
       if (!existing || existing.orientation_key !== config.key) {
         const previousRecord = await this.getSessionRecord(id, sid);
