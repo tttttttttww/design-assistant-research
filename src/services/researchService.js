@@ -583,7 +583,7 @@ class ResearchService {
       clean[item.id] = v;
     }
     if (slot === 'post') {
-      const lesson10 = await this.getSessionRecord(id, 'W15');
+      const lesson10 = await this.getSessionRecord(id, 'W10');
       if (!lesson10.submitted_at) throw Object.assign(new Error('请先完成并提交本节任务，再填写课末小问卷。'), { status: 409 });
     }
     const row = {
@@ -591,7 +591,7 @@ class ResearchService {
       responses: clean, scores: this.questionnaireScores(clean), submitted_at: iso(),
     };
     await storageService.putObject(qKey(id, slot), JSON.stringify(row));
-    await this.appendEvent(id, slot === 'pre' ? 'W2' : 'W15', `questionnaire_${slot}_submitted`, {
+    await this.appendEvent(id, slot === 'pre' ? 'W2' : 'W10', `questionnaire_${slot}_submitted`, {
       questionnaire_version: QUESTIONNAIRE_VERSION, scores: row.scores,
     });
     return row;
@@ -789,7 +789,7 @@ class ResearchService {
     let count = 0;
     for (const priorSid of predecessors) {
       const prior = getSessionConfig(priorSid);
-      const priorKey = prior?.paired_artifacts?.[0]?.overview || (priorSid==='W8'?'w8_prototype_versions':'');
+      const priorKey = prior?.paired_artifacts?.[0]?.overview || (priorSid==='W6'?'l06_prototype_versions':'');
       if (!priorKey) continue;
       const record = await this.getSessionRecord(id, priorSid);
       const versions = record.artifact_versions?.[priorKey] || [];
@@ -976,7 +976,8 @@ class ResearchService {
         const isSupported=aiVariantFor({session:config,condition:participant.condition,isTest:participant.is_test})==='supported';
         if(isSupported){
           const messages=await this.getMessages(id,sid);
-          const assistantMessages=messages.filter(m=>m.role==='assistant');
+          const validPhases=new Set((config.task_flow?.steps||[]).map(step=>step.task_phase));
+          const assistantMessages=messages.filter(m=>m.role==='assistant' && validPhases.has(m.task_context?.task_phase));
           const ref=String(record.text_fields?.lesson_review_reference||'');
           const noReason=String(record.text_fields?.lesson_no_history_reason||'').trim();
           const help=String(record.text_fields?.lesson_review_use||'').trim();
