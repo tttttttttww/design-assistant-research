@@ -57,19 +57,21 @@ document.getElementById('loginForm').onsubmit = async e => {
     b.classList.remove('hidden');
   }
 };
+document.querySelectorAll('.admin-nav a[href^="#"]').forEach(a=>a.addEventListener('click',()=>{const target=document.querySelector(a.getAttribute('href'));target?.closest('details.admin-extra')?.setAttribute('open','');}));
 document.getElementById('logout').onclick = async () => { await api('/logout', { method: 'POST' }); location.reload(); };
 
 async function loadSettings() {
   settings = await api('/settings');
   sessions = settings.sessions || [];
   const f = document.getElementById('settingsForm');
-  f.active_session_id.innerHTML = sessions.map(s => `<option value="${s.id}">${s.id} · ${s.date} · ${esc(s.title)}</option>`).join('');
+  const activeOptions=sessions.filter(s=>!['W6','W7'].includes(s.id)||s.id===settings.active_session_id).sort((a,b)=>(a.actual_lesson||a.order)-(b.actual_lesson||b.order));
+  f.active_session_id.innerHTML = activeOptions.map(s => `<option value="${s.id}">${s.actual_lesson?'第'+s.actual_lesson+'节':'历史课次'} · ${esc(s.title)}（${s.id}）</option>`).join('');
   f.active_session_id.value = settings.active_session_id;
   f.session_open.checked = Boolean(settings.session_open);
   f.questionnaire_enabled.checked = Boolean(settings.questionnaire_enabled);
   f.active_session_locked.checked = Array.isArray(settings.locked_session_ids) && settings.locked_session_ids.includes(settings.active_session_id);
   f.active_session_id.onchange = () => { f.active_session_locked.checked = Array.isArray(settings.locked_session_ids) && settings.locked_session_ids.includes(f.active_session_id.value); };
-  document.getElementById('activeSessionBadge').textContent = `当前：${settings.active_session_id} · ${sessions.find(s => s.id === settings.active_session_id)?.title || ''}`;
+  document.getElementById('activeSessionBadge').textContent = `当前：第${sessions.find(s=>s.id===settings.active_session_id)?.actual_lesson || '?'}节 · ${sessions.find(s => s.id === settings.active_session_id)?.title || ''}`;
   renderSessionCards();
 }
 document.getElementById('settingsForm').onsubmit = async e => {
@@ -84,7 +86,8 @@ document.getElementById('settingsForm').onsubmit = async e => {
 };
 
 function renderSessionCards() {
-  document.getElementById('sessionCards').innerHTML = sessions.map(s => `<div class="session-card ${s.id === settings.active_session_id ? 'current' : ''}"><div class="row between"><strong>${s.id} · ${s.date}</strong><span class="badge">${s.ai_mode === 'condition' ? '按组AI' : s.ai_mode === 'free' ? '自由AI' : '无AI'}</span></div><h3>${esc(s.title)}</h3><p>${esc(s.subtitle)}</p><p class="small">${esc(s.brief.join(' '))}</p>${s.candidate ? '<div class="notice"><strong>教师说明：</strong>候选任务，正式实施前仍可替换。</div>' : ''}<button class="btn ghost set-current" data-id="${s.id}">设为当前课次</button></div>`).join('');
+  const visible=sessions.filter(s=>!['W6','W7'].includes(s.id)).sort((a,b)=>(a.actual_lesson||a.order)-(b.actual_lesson||b.order));
+  document.getElementById('sessionCards').innerHTML = visible.map(s => `<div class="session-card ${s.id === settings.active_session_id ? 'current' : ''}"><div class="row between"><strong>${s.actual_lesson?'第'+s.actual_lesson+'节':'历史课次'} · ${s.date}</strong><span class="badge">${s.ai_mode === 'condition' ? '按组AI' : s.ai_mode === 'free' ? '自由AI' : '无AI'}</span></div><h3>${esc(s.title)}</h3><p>${esc(s.subtitle)}</p><p class="small">${esc(s.brief.slice(0,1).join(' '))}</p><details><summary>查看完整教学任务</summary><p>${esc(s.brief.join(' '))}</p></details>${s.candidate ? '<div class="notice"><strong>教师说明：</strong>候选任务，正式实施前仍可替换。</div>' : ''}<button class="btn ghost set-current" data-id="${s.id}">设为当前课次</button></div>`).join('');
   document.querySelectorAll('.set-current').forEach(b => b.onclick = async () => {
     const r = await api('/settings', { method: 'POST', body: JSON.stringify({ active_session_id: b.dataset.id, session_open: settings.session_open, questionnaire_enabled: settings.questionnaire_enabled }) });
     await loadSettings();

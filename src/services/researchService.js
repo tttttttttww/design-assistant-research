@@ -583,15 +583,15 @@ class ResearchService {
       clean[item.id] = v;
     }
     if (slot === 'post') {
-      const w10 = await this.getSessionRecord(id, 'W10');
-      if (!w10.submitted_at) throw Object.assign(new Error('请先完成并提交本节任务，再填写课末小问卷。'), { status: 409 });
+      const lesson10 = await this.getSessionRecord(id, 'W15');
+      if (!lesson10.submitted_at) throw Object.assign(new Error('请先完成并提交本节任务，再填写课末小问卷。'), { status: 409 });
     }
     const row = {
       participant_id: id, slot, questionnaire_version: QUESTIONNAIRE_VERSION,
       responses: clean, scores: this.questionnaireScores(clean), submitted_at: iso(),
     };
     await storageService.putObject(qKey(id, slot), JSON.stringify(row));
-    await this.appendEvent(id, slot === 'pre' ? 'W2' : 'W10', `questionnaire_${slot}_submitted`, {
+    await this.appendEvent(id, slot === 'pre' ? 'W2' : 'W15', `questionnaire_${slot}_submitted`, {
       questionnaire_version: QUESTIONNAIRE_VERSION, scores: row.scores,
     });
     return row;
@@ -779,6 +779,26 @@ class ResearchService {
     return out;
   }
 
+  // 每节课使用独立的原始保存键，但在学生端按同一作品连续编号。
+  // 只读取上一课版本信息；不修改、删除或重编号既有学生历史对象。
+  async prototypeVersionBase(id, sid, artifactKey) {
+    const current = getSessionConfig(sid);
+    const pair = (current?.paired_artifacts || []).find(p => p.overview===artifactKey || p.wear===artifactKey);
+    const predecessors = current?.prototype_version_predecessors || [];
+    if (!pair || !predecessors.length) return 0;
+    let count = 0;
+    for (const priorSid of predecessors) {
+      const prior = getSessionConfig(priorSid);
+      const priorKey = prior?.paired_artifacts?.[0]?.overview || (priorSid==='W8'?'w8_prototype_versions':'');
+      if (!priorKey) continue;
+      const record = await this.getSessionRecord(id, priorSid);
+      const versions = record.artifact_versions?.[priorKey] || [];
+      const unique = new Set(versions.filter(v=>v?.file_path && v.kind!=='progress').map(v=>v.file_path));
+      if (!unique.size && record.artifacts?.[priorKey]?.file_path) unique.add(record.artifacts[priorKey].file_path);
+      count += unique.size;
+    }
+    return count;
+  }
   async addArtifact(id, sid, artifactKey, meta) {
     await this.assertSessionWritable(sid);
     const config = getSessionConfig(sid);
@@ -808,7 +828,10 @@ class ResearchService {
       if (matchedMessages.length !== requestedAiIds.length) throw Object.assign(new Error('所选择的AI回复中有记录不存在，请重新选择或取消关联。'),{status:400});
     }
     const matched = matchedMessages[0] || null;
-    const version = { ...meta, version_id:randomUUID(), version_no:history.length+1, kind,
+    const priorVersionCount = await this.prototypeVersionBase(id, sid, artifactKey);
+    const historicalMaximum = Math.max(0,...history.map(v=>Number(v.version_no)||0));
+    const nextVersionNumber = Math.max(priorVersionCount+history.length,historicalMaximum)+1;
+    const version = { ...meta, version_id:randomUUID(), version_no:nextVersionNumber, kind,
       change_source:source, change_note:String(meta.change_note||'').slice(0,500),
       modification_status:['first_version','modified','not_modified','tested_no_change'].includes(meta.modification_status)?meta.modification_status:'',
       change_bases:Array.isArray(meta.change_bases)?meta.change_bases.filter(x=>typeof x==='string').slice(0,8):[],
@@ -908,6 +931,33 @@ class ResearchService {
       const labels = anyKeys.map(key => config.artifacts.find(item => item.key === key)?.label || key);
       throw Object.assign(new Error(`请至少上传一项：${labels.join('；')}`), { status: 400 });
     }
+    // 正式原型的整体图和佩戴图按同一版数配对。进行中的草稿不会被删除，也不会自动冒充完成版。
+    if(stepIndex===flow.steps.length-1 && Array.isArray(config.paired_artifacts)){
+      for(const pair of config.paired_artifacts){
+        const left=(record.artifact_versions?.[pair.overview]||[]).filter(v=>v.kind!=='progress');
+        const right=(record.artifact_versions?.[pair.wear]||[]).filter(v=>v.kind!=='progress');
+        const leftNumbers = left.map(v=>Number(v.version_no)).filter(Number.isFinite).sort((a,b)=>a-b);
+        const rightNumbers = right.map(v=>Number(v.version_no)).filter(Number.isFinite).sort((a,b)=>a-b);
+        if(left.length!==right.length || JSON.stringify(leftNumbers)!==JSON.stringify(rightNumbers)){
+          throw Object.assign(new Error('每一版正式原型都需要同一版本号的整体图和实际佩戴图。请补齐对应照片，或先保存制作进度。'),{status:400});
+        }
+      }
+    }
+    // 当堂求助回顾与普通进度记录分开：不要求学生回忆上周对话。
+    if(stepIndex===flow.steps.length-1 && config.fields.some(f=>f.key==='lesson_review_use')){
+      const person=await this.getParticipant(id);
+      const variant=aiVariantFor({session:config,condition:person.condition,isTest:person.is_test});
+      if(variant==='supported'){
+        const msgs=await this.getMessages(id,sid);
+        const refs=new Set(msgs.filter(m=>m.role==='assistant').map(m=>String(m.message_id||'')));
+        const ref=String(record.text_fields?.lesson_review_reference||'').trim();
+        if(refs.size && !refs.has(ref))throw Object.assign(new Error('请先在本节回顾中选一段真实的AI回复。'),{status:400});
+        if(!refs.size && !String(record.text_fields?.lesson_no_history_reason||'').trim())throw Object.assign(new Error('没有可回顾的对话时，请记录原因。'),{status:400});
+        if(!String(record.text_fields?.lesson_review_use||'').trim() || !String(record.text_fields?.lesson_review_next||'').trim())throw Object.assign(new Error('请先完成简短的本节求助回顾，再提交。'),{status:400});
+      }else if(!String(record.text_fields?.lesson_exit_note||'').trim()){
+        throw Object.assign(new Error('请先写一句本节实际进度，再提交。'),{status:400});
+      }
+    }
     const counts = await this.getTaskPhaseExchangeCounts(id, sid, flow);
     const exchangeCount = Number(counts[step.key] || 0);
     const minimum = Number(step.min_ai_exchanges || 0);
@@ -919,6 +969,36 @@ class ResearchService {
       throw Object.assign(new Error(`${step.label}目前记录到${exchangeCount}轮完整AI对话，还需要${minimum - exchangeCount}轮。只统计你发送消息且收到AI回复的完整对话；可以先保存进度，稍后继续。`), { status: 400 });
     }
     if (stepIndex === flow.steps.length - 1) {
+      // Course-level finalization: same-day reflections use only messages saved for this student and lesson.
+      const currentLesson=Number(config.actual_lesson||0);
+      if(currentLesson>=6 && currentLesson<=10){
+        const participant=await this.getParticipant(id);
+        const isSupported=aiVariantFor({session:config,condition:participant.condition,isTest:participant.is_test})==='supported';
+        if(isSupported){
+          const messages=await this.getMessages(id,sid);
+          const assistantMessages=messages.filter(m=>m.role==='assistant');
+          const ref=String(record.text_fields?.lesson_review_reference||'');
+          const noReason=String(record.text_fields?.lesson_no_history_reason||'').trim();
+          const help=String(record.text_fields?.lesson_review_use||'').trim();
+          const next=String(record.text_fields?.lesson_review_next||'').trim();
+          if(assistantMessages.length && !assistantMessages.some(m=>m.message_id===ref))
+            throw Object.assign(new Error('请先在本节回顾中选择一条真实的AI对话，并保存反思。'),{status:400});
+          if(!assistantMessages.length && !noReason)
+            throw Object.assign(new Error('请按实际情况说明本节没有可回顾对话的原因。'),{status:400});
+          if(assistantMessages.length && (!help || !next))
+            throw Object.assign(new Error('请先完成本节AI交流回顾，再提交任务。'),{status:400});
+        }else if(!String(record.text_fields?.lesson_exit_note||'').trim()){
+          throw Object.assign(new Error('请先写一句今天的进度，再提交任务。'),{status:400});
+        }
+        // Prototype versions are append-only and every *new* version must have a matching worn photo.
+        for(const pair of config.paired_artifacts||[]){
+          const versionLists=await this.getArtifactVersions(id,sid,record);
+          const overall=(versionLists[pair.overview]||[]).filter(v=>v.kind!=='correction'&&v.kind!=='progress');
+          const worn=(versionLists[pair.wear]||[]).filter(v=>v.kind!=='correction'&&v.kind!=='progress');
+          if(overall.length!==worn.length)
+            throw Object.assign(new Error('每个正式原型版本都要上传整体图和佩戴图两张照片。尚未完成请先保存进度。'),{status:400});
+        }
+      }
       const completedRecord = await this.submitSession(id, sid, textFields, { ...saveContext, reason: `task_step_${step.key}_submit` });
       await this.appendEvent(id, sid, 'task_step_submitted', {
         step_key: step.key, task_phase: step.task_phase, ai_exchange_count: exchangeCount,

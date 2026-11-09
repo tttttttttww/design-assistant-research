@@ -370,3 +370,24 @@ pre{white-space:pre-wrap;word-break:break-word;background:#f6f4ef;border-radius:
  .w8-save-row{align-items:stretch;flex-direction:column}
  .w8-save-row .btn{width:100%}
 }
+
+/* Simplified teacher dashboard: preserve access to advanced data functions. */
+details.admin-extra {margin:14px 0;border:1px solid #dce5ee;border-radius:14px;background:#fff;overflow:hidden}
+details.admin-extra>summary {cursor:pointer;padding:16px 20px;font-weight:700;color:#334155}
+details.admin-extra>section {margin:0!important;border:0!important;box-shadow:none!important}
+
+/* v11.59：学生端只显示必需的科学图示、任务、对话与当堂回顾。 */
+.science-mini-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
+.science-mini-card{background:#f7faf8;border:1px solid #dbe7e2;border-radius:14px;padding:12px}
+.science-mini-card strong{font-size:15px;display:block;margin-bottom:7px}
+.science-mini-card svg{display:block;width:100%;height:auto;max-height:118px}
+.science-mini-card svg text{font-family:"Microsoft YaHei","PingFang SC",sans-serif;font-size:12px;fill:#263b41}
+.science-mini-card p{font-size:13px;color:#4b5b5b;line-height:1.55;margin:5px 0 0}
+.lesson-compact-head{padding:16px 20px}
+.lesson-compact-head h1{font-size:23px;margin:6px 0}
+.lesson-compact-head p{margin:4px 0;color:#5c6971}
+.lesson-review{margin-top:14px;padding:18px}
+.lesson-review h2{font-size:20px;margin:3px 0 8px}
+.lesson-review select{width:100%;min-height:43px}
+.lesson-review textarea{min-height:72px}
+@media(max-width:720px){.science-mini-grid{grid-template-columns:1fr}.lesson-compact-head h1{font-size:21px}}

@@ -166,6 +166,31 @@ for(const sid of ['W5','W6','W7','W8','W9','W10']) {
   };
 }
 // W4为既有单次辨析；W5—W10每节为短策略练习＋前一课求助回顾＋正常AI即时反馈。
+// 第6—10次：统一短求助指导，历史对话反思在当堂结束前完成，学生不看前一周对话。
+for(const [sid,topic,question,options,correct] of [
+ ['W8','识别尚未发现的问题','设计图画好了，怎样确认仍需检查的地方？',['直接说没有问题','核查固定、材料与佩戴条件，再讨论尚未验证之处','让AI重新画一个成品'],1],
+ ['W9','说明具体问题','固定结构松开，怎样向AI表达？',['说明哪里松开、用了什么材料、试过什么','只说不知道','直接要完整成品'],0],
+ ['W10','根据证据追问','AI说肯定稳定，但测试会松开，应怎么办？',['相信AI','用测试现象核对并追问','删掉测试记录'],1],
+ ['W14','比较不同办法','两种固定办法都可用，怎样询问AI？',['请AI替我决定','比较利弊后结合证据自己判断','忽略现实材料'],1],
+ ['W15','检查结论依据','AI说一个没测过的功能已成功，你应该？',['照写结论','说明尚未验证并设法核查','编测试结果'],1]
+]) {
+ INTERVENTION_ORIENTATION[sid]={
+  supported:{key:'lesson6to10-guidance-v1-'+sid,title:'今天的求助小练习',intro:topic+'。用一个情境练习如何作出判断。',strategy_micro_lesson:true,allow_imperfect_quiz:true,reflection_activity:false,cards:[{title:topic,body:['根据自己的真实成果和检查情况表达问题；听到AI建议后仍需自行验证和决定。']}],checks:[{id:'practice_1',question,options,correct}],button:'进入今天的任务'},
+  control:{key:'lesson6to10-ready-v1-'+sid,title:'开始今天的任务',intro:'先查看已有成果，再按本节要求完成检查与任务。',cards:[{title:'记录真实情况',body:['没做完可以保存；没有测试过的部分请标明尚未验证。']}],acknowledgements:['我已了解今天的任务安排。'],button:'进入今天的任务'}
+ };
+}
+// 第6—10节每课仅在开始前学习一种求助策略；当堂聊天回顾放在课末完成。
+// 旧记录的 orientation_key 不改变，旧版资料仍然可读取。
+for (const [sid,topic,question,options,correct] of [
+ ['W8','先检查，再判断困难','设计图画完了，怎样知道还有没有问题？',['说自己的设计绝对没问题','查看固定位置、佩戴要求和材料，再向AI提出需要确认的事项','让AI直接替自己设计一套'],1],
+ ['W9','说清制作中的现象','固定部位容易松动，怎样求助更有用？',['只说做不出来','说明连接位置、材料和尝试过的办法','让AI直接写好总结'],1],
+ ['W10','利用测试证据追问','AI说结构稳定，但实际画线时会松，应该怎么办？',['保留测试结果并向AI描述具体情况继续分析','相信AI不再检查','把问题删掉'],0],
+ ['W14','比较方法后自己决定','两种固定结构都能做时，怎样利用AI？',['请求比较风险、材料和效果，结合测试自己选择','让AI替我任选一个','只选最美观的'],0],
+ ['W15','核查结论是否有依据','AI说你的作品完全解决问题，但你没验证过，应该：',['直接写进总结','标注尚未验证，并明确下一步检查方法','编造一个效果数据'],1]
+]) INTERVENTION_ORIENTATION[sid]={
+ supported:{key:'lesson-help-v2-'+sid,title:'今天的求助方法',intro:topic+'。看一看情境，选择你认为合理的做法，再开始今天的任务。',strategy_micro_lesson:true,reflection_activity:false,allow_imperfect_quiz:true,cards:[{title:topic,body:['先根据真实作品确认问题，描述已尝试的做法；收到建议后，仍需要自己判断与验证。']}],checks:[{id:'q1',question,options,correct}],button:'开始今天的任务'},
+ control:{key:'lesson-ready-v2-'+sid,title:'今天的任务',intro:'先查看已保存的成果和今天的要求，再完成检查。',cards:[{title:'记录真实情况',body:['做过的如实记录，没做过或没测试的不要填写为已完成。']}],acknowledgements:['我知道要根据实际进度记录。'],button:'开始今天的任务'}
+};
 // W11—W12全体普通AI，无干预前置活动。
 export const INTERVENTION_SUPPORT_CARDS = {};
 
@@ -207,6 +232,7 @@ const field = (key, label, options = {}) => ({
   key,
   label,
   type: options.type || 'textarea',
+  choices: options.choices || [],
   required: options.required !== false,
   placeholder: options.placeholder || '',
   helper: options.helper || '',
@@ -481,7 +507,8 @@ export const SESSIONS = [
     ai_public_context:{task:'为精细动作受限的使用者设计辅助绘画装置。',stage:'W7测试V1、区分观察事实与解释、提出下一步修改。',public_constraints:['仅用铅笔测试，不能通过限制手指模拟障碍。','学生个人测试结果只能依据其实际提供的信息。']},
   },
   {
-    id:'W8', order:8, date:'11/9',
+    id:'W8', order:8, actual_lesson:6, date:'11/9',
+    paired_artifacts:[{overview:'w8_prototype_versions',wear:'w8_wear_versions'}],
     title:'辅助绘画装置：科学知识应用与第一版原型制作', subtitle:'第六节课｜先完善设计，再进入实物制作；未完成内容可保存后续做',
     student_label:'第6节课 · 科学知识与原型制作', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false, carry_from:'W7',
     brief:[
@@ -492,7 +519,7 @@ export const SESSIONS = [
     ],
     requirements:[
       '任务一：上传上一节课任务单/设计记录；在学习单上标注至少一个科学知识点的应用位置与作用，并标注材料及用途；同步填写平台记录，上传学习单和完善后的设计图。',
-      '任务二：说明第一版原型准备实现的关键功能；领取材料并制作；上传第一版原型或当前制作进度照片。',
+      '任务二：制作原型。正式提交版本时分别上传原型整体图和戴在手上的照片；未完成可保存制作进度。',
       '修改设计图或原型时，说明实际变化及其依据。新版本只追加保存，不覆盖旧版本。',
     ],
     materials:[
@@ -513,6 +540,18 @@ export const SESSIONS = [
       field('w8_material_plan','任务一｜从教师提供的材料中选择你准备使用的材料，并逐一标注用途。',{stage:'task1',placeholder:'材料名称—准备使用的位置—用途。可以选择多种材料。'}),
       field('w8_proto_focus','任务二｜第一版原型准备优先实现哪个关键功能？',{stage:'task2',placeholder:'例如：先实现画笔固定、装置与手/手腕的连接或支撑。'}),
       field('w8_proto_progress','任务二｜目前实际制作到哪一步？已经做出了什么？',{stage:'task2',placeholder:'按真实进度填写；未完成的部分可以写“尚未完成”。'}),
+      field('w8_check1',"设计图是否标出画笔固定位置？",{stage:'task1',type:'select',choices:["符合，已有依据","发现问题","尚未验证","尚未完成"]}),
+      field('w8_check2',"材料能否实现关键连接？",{stage:'task1',type:'select',choices:["符合，已有依据","发现问题","尚未验证","尚未完成"]}),
+      field('w8_check3',"是否考虑佩戴后活动与绘画？",{stage:'task1',type:'select',choices:["符合，已有依据","发现问题","尚未验证","尚未完成"]}),
+      field('w8_check_evidence','根据图纸或实际材料，你观察到什么？',{stage:'task1'}),
+      field('w8_peer','同伴发现什么？若无法互评，说明原因。',{stage:'task1'}),
+      field('w8_focus','你最想解决或继续验证的问题是什么？',{stage:'task1'}),
+      field('lesson_no_history_reason','本节无对话时的原因',{stage:'review',required:false}),
+      field('lesson_review_reference','选中的本节AI回复编号',{stage:'review',required:false}),
+      field('lesson_review_use','AI回复的帮助和我的处理',{stage:'review',required:false}),
+      field('lesson_review_next','下次我会怎样更清楚地求助',{stage:'review',required:false}),
+      field('lesson_no_history_reason','本节没有可回顾对话的原因',{stage:'review',required:false,type:'text'}),
+      field('lesson_exit_note','本节实际成果与进度',{stage:'review',required:false}),
       field('w8_proto_issue','任务二｜制作中遇到了什么问题，或接下来还需要解决什么？',{stage:'task2',required:false}),
       // v11.56 legacy keys retained for old records and exports; new W8 flow uses the task1/task2 fields above.
       field('w8_revision','旧版字段：V2最重要的实际修改是什么？',{required:false,stage:'legacy'}),
@@ -524,14 +563,15 @@ export const SESSIONS = [
       artifact('w8_science_learning_sheet','任务一｜上传填写完成的科学知识与材料选择学习单',{required:false,helper:'请拍清科学知识点应用位置和所选材料用途的标注。'}),
       artifact('w8_design_version','任务一｜上传加入科学知识并标注材料后的设计图',{required:false,helper:'这是相较上一课设计图完善后的版本。上传前填写修改记录；后续再次修改时继续追加新版本。',version_questionnaire:true,version_book:true,compare_previous_version:true,book_item_label:'设计图'}),
       artifact('w8_prototype_versions','任务二｜第一版原型及后续迭代版本',{required:false,helper:'先上传V1；之后点击“迭代”上传V2、V3……每次设计迭代都保留上一版。',version_questionnaire:true,version_book:true,book_item_label:'原型'}),
+      artifact('w8_wear_versions','任务二｜原型真实佩戴图',{required:false,version_book:false,book_item_label:'佩戴照片',helper:'与本版整体图成对上传，保留各版真实照片。'}),
       artifact('w8_build_progress','任务二｜本节制作进度照片（非设计迭代时使用）',{required:false,helper:'仅记录当前制作进度、不代表设计方案改变时上传这里；旧照片不会覆盖。',progress_only:true}),
       artifact('w8_v2_photo','旧版兼容：第二版关键结构照片',{required:false,helper:'历史兼容字段；本节新上传请使用上方“第一版原型及后续迭代版本”。'}),
     ],
     task_flow:{
       key:'w8_two_stage_design_prototype_v1',
       steps:[
-        {key:'task1',label:'任务一：科学知识应用与设计完善',task_phase:'task1_design',min_ai_exchanges:10,required_fields:['w8_science_point','w8_science_application','w8_material_plan'],artifact_keys:['w8_previous_task_sheet','w8_science_learning_sheet','w8_design_version'],required_artifacts:['w8_previous_task_sheet','w8_science_learning_sheet','w8_design_version']},
-        {key:'task2',label:'任务二：第一版原型制作',task_phase:'task2_prototype',min_ai_exchanges:5,required_fields:['w8_proto_focus','w8_proto_progress'],artifact_keys:['w8_prototype_versions','w8_build_progress','w8_v2_photo'],required_artifacts:['w8_prototype_versions']},
+        {key:'task1',label:'任务一：科学知识应用与设计完善',task_phase:'task1_design',min_ai_exchanges:10,required_fields:['w8_check1','w8_check2','w8_check3','w8_check_evidence','w8_peer','w8_focus','w8_science_point','w8_science_application','w8_material_plan'],artifact_keys:['w8_previous_task_sheet','w8_science_learning_sheet','w8_design_version'],required_artifacts:['w8_previous_task_sheet','w8_science_learning_sheet','w8_design_version']},
+        {key:'task2',label:'任务二：第一版原型制作',task_phase:'task2_prototype',min_ai_exchanges:5,required_fields:['w8_proto_focus','w8_proto_progress'],artifact_keys:['w8_prototype_versions','w8_build_progress','w8_v2_photo'],required_artifacts:['w8_prototype_versions','w8_wear_versions']},
       ],
     },
     ai_use_required_once:false,
@@ -540,96 +580,1304 @@ export const SESSIONS = [
     ai_public_context:{task:'为精细动作受限的使用者设计辅助绘画装置。',stage:'第六节课：先将教师提供的至少一个科学知识点应用到原设计图，注明材料选择与用途；随后制作第一版实体原型。',public_constraints:['材料清单沿用课堂实际发放清单：瓦楞纸板/厚卡纸、普通海绵、布/毛毡、雪糕棒、橡皮筋、宽松紧带、魔术贴、小夹子、美纹纸胶带；以教师现场发放为准。','科学知识点以教师发放的知识资料为准，不得编造教师未提供的材料内容。','学生个人设计、困难、材料选择、制作进度和测试结果只能依据学生实际表达或上传图片。','未完成的任务允许保存后续做；不得将未制作、未测试的内容写成已完成。']},
   },
   {
-    id:'W9', order:9, date:'11/16',
-    title:'辅助绘画装置：第二版再测试与项目总结', subtitle:'本任务阶段性整理',
-    student_label:'第9课 · 再测试与整理', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false, carry_from:'W8',
-    brief:['如果上节课的任务一或任务二尚未完成，先通过上方“查看上一阶段保存记录”核对真实进度，再从当前状态继续完善设计或制作原型；本课是新的W9记录，不回填W8对话轮次，也不把未完成内容写成已完成。','原型完成后，再用尽量可比的办法测试当前作品，比较真实表现并总结仍未解决的问题；没有测试的项目如实标为尚未测试。','如果本课继续修改，可以在版本页追加新图并说明实际变化；旧版本保留，不覆盖。课末小问卷安排在下一课完成后。'],
-    requirements:['记录V2实际测试结果。','比较哪些方面改善、未改善或不能确定。','保存最终方案、装置或图纸的真实证据。'],
-    fields:[
-      field('w9_continuation','如果上一节课的设计或制作还没有完成，今天准备从哪里接着做？（选填）',{required:false}),
-      field('w9_test_observation','如果已经测试：实际发生了什么？尚未测试可写“尚未测试”。',{required:false}),
-      field('w9_compare','相较此前版本，哪里更好、没有改善或尚未确定？依据是什么？尚未形成新版本可写“仍在制作”。',{required:false}),
-      field('w9_reflection','你目前决定保留什么、继续制作什么或准备改什么？为什么？',{required:false}),
+    "id": "W9",
+    "order": 7,
+    "actual_lesson": 7,
+    "date": "按学校实际课表",
+    "title": "继续制作与基础检查",
+    "subtitle": "继续制作可佩戴原型，检查连接、佩戴和画线功能，记录观察事实。",
+    "student_label": "第7节课 · 继续制作与基础检查",
+    "research_role": "intervention",
+    "phase": "intervention",
+    "ai_mode": "condition",
+    "candidate": false,
+    "carry_from": "W8",
+    "brief": [
+      "先调出已保存的作品，完成本节自检与同伴复核；发现问题或尚未验证都需要如实说明。",
+      "今天的主要任务：继续制作可佩戴原型，检查连接、佩戴和画线功能，记录观察事实。",
+      "当堂回顾自己本节课真实的AI交流，记录建议是否有用及自己怎样处理；未完成仍可保存。"
     ],
-    artifacts:[
-      artifact('w9_final_evidence','上传本次修改后的设计/原型新版本',{required:false,helper:'只有设计或结构确实发生变化时才上传新版本。每次新版本都要记录变化内容和形成依据；上一版会保留。',version_questionnaire:true,version_book:true,compare_previous_version:true,book_item_label:'设计/原型'}),
-      artifact('w9_progress_evidence','上传当前制作/测试进度照片（仅记录进度）',{required:false,helper:'如果只是继续制作、补充测试证据，设计本身没有形成新版本，请上传到这里；不需要填写设计修改问卷。',progress_only:true}),
+    "requirements": [
+      "完成3项检查，写明一个具体观察结果或尚未验证之处，记录同伴意见。",
+      "完成本节主要任务，并保存真实设计/制作/测试证据。",
+      "结束前完成本节对话回顾或学习记录；不需要为了迭代而重复上传相同照片。"
     ],
-    ai_instruction:'AI设计助手继续可用；请依据真实测试情况回答，不编造数据。',
-    prompt_context:'W9第二版测试与阶段性总结。',
-    ai_public_context:{task:'为精细动作受限的使用者设计辅助绘画装置。',stage:'W9再测试V2并比较V1/V2证据。',public_constraints:['只使用真实测试观察支持结论；无证据的部分明确标明待验证。']},
+    "fields": [
+      {
+        "key": "w9_check1",
+        "label": "1. 画笔固定是否牢靠？",
+        "type": "select",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": [
+          "符合，已有依据",
+          "发现问题",
+          "还没有验证",
+          "尚未完成，无法检查"
+        ]
+      },
+      {
+        "key": "w9_check2",
+        "label": "2. 装置是否能安全佩戴和取下？",
+        "type": "select",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": [
+          "符合，已有依据",
+          "发现问题",
+          "还没有验证",
+          "尚未完成，无法检查"
+        ]
+      },
+      {
+        "key": "w9_check3",
+        "label": "3. 完成画线动作后是否稳定？",
+        "type": "select",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": [
+          "符合，已有依据",
+          "发现问题",
+          "还没有验证",
+          "尚未完成，无法检查"
+        ]
+      },
+      {
+        "key": "w9_check_evidence",
+        "label": "自检发现的具体情况（未完成说明进度）",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": []
+      },
+      {
+        "key": "w9_peer",
+        "label": "同伴的具体观察（无法互评说明原因）",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": []
+      },
+      {
+        "key": "w9_focus",
+        "label": "本节最值得解决或验证的一件事",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": []
+      },
+      {
+        "key": "w9_work",
+        "label": "本节实际完成了什么",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task2",
+        "choices": []
+      },
+      {
+        "key": "w9_decision",
+        "label": "我为什么选择修改、验证或保留",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task2",
+        "choices": []
+      },
+      {
+        "key": "lesson_review_reference",
+        "label": "本节真实AI回复编号",
+        "type": "textarea",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      },
+      {
+        "key": "lesson_review_use",
+        "label": "AI回复有何帮助？我如何处理",
+        "type": "textarea",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      },
+      {
+        "key": "lesson_review_next",
+        "label": "下次如何把问题说清楚",
+        "type": "textarea",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      },
+      {
+        "key": "lesson_no_history_reason",
+        "label": "本节没有可回顾对话的原因",
+        "type": "text",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      },
+      {
+        "key": "lesson_exit_note",
+        "label": "今天实际完成的成果与进度",
+        "type": "textarea",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      }
+    ],
+    "artifacts": [
+      {
+        "key": "w9_prototype_overview",
+        "label": "新增原型版本：整体图",
+        "required": false,
+        "helper": "上传真实照片；已有照片不必反复上传。",
+        "version_questionnaire": true,
+        "version_book": true,
+        "progress_only": false,
+        "compare_previous_version": true,
+        "book_item_label": "原型"
+      },
+      {
+        "key": "w9_prototype_wear",
+        "label": "同一版本：实际佩戴图",
+        "required": false,
+        "helper": "上传真实照片；已有照片不必反复上传。",
+        "version_questionnaire": true,
+        "version_book": false,
+        "progress_only": false,
+        "compare_previous_version": true,
+        "book_item_label": "原型"
+      },
+      {
+        "key": "w9_process_photo",
+        "label": "过程／测试照片（不算新版本）",
+        "required": false,
+        "helper": "上传真实照片；已有照片不必反复上传。",
+        "version_questionnaire": false,
+        "version_book": false,
+        "progress_only": true,
+        "compare_previous_version": false,
+        "book_item_label": "记录"
+      }
+    ],
+    "paired_artifacts": [
+      {
+        "overview": "w9_prototype_overview",
+        "wear": "w9_prototype_wear"
+      }
+    ],
+    "prototype_version_predecessors": [
+      "W8"
+    ],
+    "task_flow": {
+      "key": "lesson_7_two_part_v1",
+      "steps": [
+        {
+          "key": "task1",
+          "label": "成果检查与问题确认",
+          "task_phase": "lesson7_check",
+          "min_ai_exchanges": 4,
+          "required_fields": [
+            "w9_check1",
+            "w9_check2",
+            "w9_check3",
+            "w9_check_evidence",
+            "w9_peer",
+            "w9_focus"
+          ],
+          "required_artifacts": []
+        },
+        {
+          "key": "task2",
+          "label": "完成本节新任务",
+          "task_phase": "lesson7_work",
+          "min_ai_exchanges": 3,
+          "required_fields": [
+            "w9_work",
+            "w9_decision"
+          ],
+          "required_artifacts": []
+        }
+      ]
+    },
+    "ai_use_required_once": false,
+    "ai_instruction": "自检与讨论阶段至少4轮完整AI问答，新任务阶段至少3轮。围绕真实作品、检查结果和任务交流；不要编造问题凑次数。",
+    "prompt_context": "第7节课：继续制作可佩戴原型，检查连接、佩戴和画线功能，记录观察事实。。本节求助策略：说清具体制作现象、材料和已尝试方法。",
+    "ai_public_context": {
+      "task": "为精细动作受限的使用者设计辅助绘画装置",
+      "stage": "继续制作可佩戴原型，检查连接、佩戴和画线功能，记录观察事实。",
+      "public_constraints": [
+        "不能假定学生已经制作或测试。",
+        "以学生提供的照片、测试和材料为准。",
+        "建议只能作为参考，最后由学生决定。"
+      ]
+    }
   },
   {
-    id:'W10', order:10, date:'12/7',
-    title:'辅助绘画装置：最终完善与设计证据整理', subtitle:'课末整理与展示准备',
-    student_label:'第10课 · 最终完善',research_role:'intervention',phase:'intervention',ai_mode:'condition',candidate:false,carry_from:'W9',questionnaire_slot:'post',questionnaire_after_submit:true,
-    brief:['根据此前真实测试记录持续完善原型，整理仍未解决的问题，完成有依据的修改或说明为何暂不修改。','如产生新设计版本，可以继续追加上传并说明变化；此前版本和制作进度照片保留。','总结最终装置/设计图和测试证据；提交本节任务后，按老师安排完成课末小问卷。'],
-    requirements:['准确说明尚待改进的一个问题或已有充分证据认为无需修改。','记录今天的判断和依据；可以按实际情况上传新的图纸/装置版本。','请继续按本节要求使用AI助手；不得虚构测试结果。'],
-    fields:[
-      field('w10_issue','综合已经做过的测试，目前最需要保留、验证或修改的问题是什么？'),
-      field('w10_decision','你决定如何处理这个问题？具体做了什么，或为什么暂时不改？'),
-      field('w10_evidence','你作出这个决定依据的是哪次观察、测试、对比或其他信息？'),
-      field('w10_remaining','仍无法确定的地方是什么？',{required:false}),
+    "id": "W10",
+    "order": 8,
+    "actual_lesson": 8,
+    "date": "按学校实际课表",
+    "title": "实际测试与同伴评价",
+    "subtitle": "用实际操作检验原型，收集同伴评价，分析事实和未验证的地方。",
+    "student_label": "第8节课 · 实际测试与同伴评价",
+    "research_role": "intervention",
+    "phase": "intervention",
+    "ai_mode": "condition",
+    "candidate": false,
+    "carry_from": "W9",
+    "brief": [
+      "先调出已保存的作品，完成本节自检与同伴复核；发现问题或尚未验证都需要如实说明。",
+      "今天的主要任务：用实际操作检验原型，收集同伴评价，分析事实和未验证的地方。",
+      "当堂回顾自己本节课真实的AI交流，记录建议是否有用及自己怎样处理；未完成仍可保存。"
     ],
-    artifacts:[
-      artifact('w10_final_evidence','上传本次修改后的最终设计/原型新版本',{required:false,helper:'只有设计或结构确实发生变化时才上传新版本。每次新版本都要记录变化内容和形成依据；上一版会保留。',version_questionnaire:true,version_book:true,compare_previous_version:true,book_item_label:'设计/原型'}),
-      artifact('w10_progress_evidence','上传当前作品/测试进度照片（仅记录进度）',{required:false,helper:'如果只是补充制作或测试记录、设计本身没有形成新版本，请上传到这里；不需要填写设计修改问卷。',progress_only:true}),
+    "requirements": [
+      "完成3项检查，写明一个具体观察结果或尚未验证之处，记录同伴意见。",
+      "完成本节主要任务，并保存真实设计/制作/测试证据。",
+      "结束前完成本节对话回顾或学习记录；不需要为了迭代而重复上传相同照片。"
     ],
-    ai_use_required_once:false,
-    ai_instruction:'AI设计助手继续可用；是否求助、问什么由你自己决定。',
-    prompt_context:'W10：最终设计证据整理、方案完善；课末小问卷由老师安排。',
-    ai_public_context:{task:'根据此前辅助绘画装置的真实测试结果整理并完善设计。',stage:'W10最终修改判断与证据整理。',public_constraints:['只依据学生实际描述和上传图片回答。','所有学生获得相同的任务背景信息。']},
+    "fields": [
+      {
+        "key": "w10_check1",
+        "label": "1. 是否以相同方式测试画线或画圆？",
+        "type": "select",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": [
+          "符合，已有依据",
+          "发现问题",
+          "还没有验证",
+          "尚未完成，无法检查"
+        ]
+      },
+      {
+        "key": "w10_check2",
+        "label": "2. 测试是否出现松动、滑动或不适？",
+        "type": "select",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": [
+          "符合，已有依据",
+          "发现问题",
+          "还没有验证",
+          "尚未完成，无法检查"
+        ]
+      },
+      {
+        "key": "w10_check3",
+        "label": "3. 自己判断与同伴观察是否一致？",
+        "type": "select",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": [
+          "符合，已有依据",
+          "发现问题",
+          "还没有验证",
+          "尚未完成，无法检查"
+        ]
+      },
+      {
+        "key": "w10_check_evidence",
+        "label": "自检发现的具体情况（未完成说明进度）",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": []
+      },
+      {
+        "key": "w10_peer",
+        "label": "同伴的具体观察（无法互评说明原因）",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": []
+      },
+      {
+        "key": "w10_focus",
+        "label": "本节最值得解决或验证的一件事",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": []
+      },
+      {
+        "key": "w10_work",
+        "label": "本节实际完成了什么",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task2",
+        "choices": []
+      },
+      {
+        "key": "w10_decision",
+        "label": "我为什么选择修改、验证或保留",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task2",
+        "choices": []
+      },
+      {
+        "key": "lesson_review_reference",
+        "label": "本节真实AI回复编号",
+        "type": "textarea",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      },
+      {
+        "key": "lesson_review_use",
+        "label": "AI回复有何帮助？我如何处理",
+        "type": "textarea",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      },
+      {
+        "key": "lesson_review_next",
+        "label": "下次如何把问题说清楚",
+        "type": "textarea",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      },
+      {
+        "key": "lesson_no_history_reason",
+        "label": "本节没有可回顾对话的原因",
+        "type": "text",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      },
+      {
+        "key": "lesson_exit_note",
+        "label": "今天实际完成的成果与进度",
+        "type": "textarea",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      }
+    ],
+    "artifacts": [
+      {
+        "key": "w10_prototype_overview",
+        "label": "新增原型版本：整体图",
+        "required": false,
+        "helper": "上传真实照片；已有照片不必反复上传。",
+        "version_questionnaire": true,
+        "version_book": true,
+        "progress_only": false,
+        "compare_previous_version": true,
+        "book_item_label": "原型"
+      },
+      {
+        "key": "w10_prototype_wear",
+        "label": "同一版本：实际佩戴图",
+        "required": false,
+        "helper": "上传真实照片；已有照片不必反复上传。",
+        "version_questionnaire": true,
+        "version_book": false,
+        "progress_only": false,
+        "compare_previous_version": true,
+        "book_item_label": "原型"
+      },
+      {
+        "key": "w10_test_photo",
+        "label": "过程／测试照片（不算新版本）",
+        "required": false,
+        "helper": "上传真实照片；已有照片不必反复上传。",
+        "version_questionnaire": false,
+        "version_book": false,
+        "progress_only": true,
+        "compare_previous_version": false,
+        "book_item_label": "记录"
+      }
+    ],
+    "paired_artifacts": [
+      {
+        "overview": "w10_prototype_overview",
+        "wear": "w10_prototype_wear"
+      }
+    ],
+    "prototype_version_predecessors": [
+      "W8",
+      "W9"
+    ],
+    "task_flow": {
+      "key": "lesson_8_two_part_v1",
+      "steps": [
+        {
+          "key": "task1",
+          "label": "成果检查与问题确认",
+          "task_phase": "lesson8_check",
+          "min_ai_exchanges": 4,
+          "required_fields": [
+            "w10_check1",
+            "w10_check2",
+            "w10_check3",
+            "w10_check_evidence",
+            "w10_peer",
+            "w10_focus"
+          ],
+          "required_artifacts": []
+        },
+        {
+          "key": "task2",
+          "label": "完成本节新任务",
+          "task_phase": "lesson8_work",
+          "min_ai_exchanges": 3,
+          "required_fields": [
+            "w10_work",
+            "w10_decision"
+          ],
+          "required_artifacts": []
+        }
+      ]
+    },
+    "ai_use_required_once": false,
+    "ai_instruction": "自检与讨论阶段至少4轮完整AI问答，新任务阶段至少3轮。围绕真实作品、检查结果和任务交流；不要编造问题凑次数。",
+    "prompt_context": "第8节课：用实际操作检验原型，收集同伴评价，分析事实和未验证的地方。。本节求助策略：带着测试证据进行追问与核查。",
+    "ai_public_context": {
+      "task": "为精细动作受限的使用者设计辅助绘画装置",
+      "stage": "用实际操作检验原型，收集同伴评价，分析事实和未验证的地方。",
+      "public_constraints": [
+        "不能假定学生已经制作或测试。",
+        "以学生提供的照片、测试和材料为准。",
+        "建议只能作为参考，最后由学生决定。"
+      ]
+    }
   },
   {
-    id:'W11', order:11, date:'12/14',
-    title:'新任务：小小作品策展人——互动展示设计', subtitle:'互动展示设计｜至少一次实际AI问答',
-    student_label:'第11课 · 新任务：作品策展',research_role:'transfer',phase:'transfer',ai_mode:'free',candidate:false,
-    source_course:'本研究设计的成果展示设计任务；不是其他研究的原版迁移测验',
-    brief:['你现在是“小小作品策展人”。你的任务不只是介绍最后的装置，而是设计一种展示，让不了解项目的人看懂：你们为什么开始设计、怎样从需求走到方案、做过哪些测试、依据什么修改，以及最终装置能做什么和还有哪些限制。','展示内容要尽量呈现真实的设计过程：①使用者与真实需求；②问题定义与最初想法；③初稿/原型；④测试中实际观察到的现象；⑤依据证据做出的重要修改；⑥最终装置的功能、使用限制和下一步改进。只展示自己真实保留的证据；缺失的环节可以说明，不要编造。','条件：展示空间约一张课桌；优先使用学校常见纸板、卡纸等材料；展示应清晰、安全、可在现有时间内布置。','这是与原作品设计相关但目标不同的新设计问题；AI助手会按你的问题正常回答。','本课至少完成一轮围绕真实展示设计问题的AI问答；可以结合自己的作品和材料条件来判断AI的建议。'],
-    requirements:['说明展示面对哪些参观者，以及他们需要理解哪些内容。','规划一条能呈现“需求—构思—原型—测试—修改—最终方案”的展示顺序，使用真实草图、测试记录或不同版本图片作证据。','提出并比较至少两种展示布局/叙事办法，说明为何选择当前方案。','至少进行一次与展示设计困难有关的AI问答并保存原始对话；AI建议必须结合真实作品和材料条件判断，不能把AI生成内容当作已经发生的设计过程。'],
-    fields:[
-      field('transfer_need','参观者是谁？他们需要看懂什么，为什么？'),
-      field('transfer_constraints','展示空间、材料、时间、安全方面有哪些约束？'),
-      field('curator_process_evidence','按时间顺序列出你能展示的真实过程证据：需求/问题、初稿、原型、测试、重要修改、最终方案。每一项写明对应的草图、照片、记录或版本；没有保存的证据请如实标注。'),
-      field('curator_storyline','你准备怎样把这些证据串成一条清楚的设计过程线？观众先看什么，再看什么？'),
-      field('transfer_plan','你考虑了哪些展示布局或叙事办法？初步方案是什么？还有什么不确定？'),
-      field('transfer_decision','你选择当前展示方案的依据是什么？哪些AI建议需要进一步核对？'),
+    "id": "W14",
+    "order": 9,
+    "actual_lesson": 9,
+    "date": "按学校实际课表",
+    "title": "新条件下的设计优化",
+    "subtitle": "共同新增约束：考虑手部尺寸差异时如何兼顾固定与调节。比较两种方案后决定保留、改进或进一步验证。",
+    "student_label": "第9节课 · 新条件下的设计优化",
+    "research_role": "intervention",
+    "phase": "intervention",
+    "ai_mode": "condition",
+    "candidate": false,
+    "carry_from": "W10",
+    "brief": [
+      "先调出已保存的作品，完成本节自检与同伴复核；发现问题或尚未验证都需要如实说明。",
+      "今天的主要任务：共同新增约束：考虑手部尺寸差异时如何兼顾固定与调节。比较两种方案后决定保留、改进或进一步验证。",
+      "当堂回顾自己本节课真实的AI交流，记录建议是否有用及自己怎样处理；未完成仍可保存。"
     ],
-    artifacts:[artifact('transfer_sketch','上传你的展示设计初稿或展台布局草图')],
-    ai_use_required_once:true,
-    ai_instruction:'W11课堂规定至少一次真实AI问答，请围绕展示设计中的实际困难提问。',
-    prompt_context:'W11关联新任务：为原辅助绘画装置设计向参观者解释功能和安全体验的展示方案。AI助手按普通方式回答。',
-    ai_public_context:{task:'为已经完成的辅助绘画装置设计一张课桌大小的互动展示方案。',stage:'W11新设计目标：参观者需要、约束、方案比较与草图。',public_constraints:['面向不熟悉原项目的参观者。','展示场地约一张课桌。','优先用现有纸板和卡纸等易获得材料，不要求新的复杂实体制作。','展示安全且不需要让他人模拟残障。','AI不得假设学生原作品实际结构或已有的测试结果；必须以学生描述/上传图片为依据。']},
+    "requirements": [
+      "完成3项检查，写明一个具体观察结果或尚未验证之处，记录同伴意见。",
+      "完成本节主要任务，并保存真实设计/制作/测试证据。",
+      "结束前完成本节对话回顾或学习记录；不需要为了迭代而重复上传相同照片。"
+    ],
+    "fields": [
+      {
+        "key": "w14_check1",
+        "label": "1. 结构能否适应不同松紧要求？",
+        "type": "select",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": [
+          "符合，已有依据",
+          "发现问题",
+          "还没有验证",
+          "尚未完成，无法检查"
+        ]
+      },
+      {
+        "key": "w14_check2",
+        "label": "2. 调节后画笔是否保持稳定？",
+        "type": "select",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": [
+          "符合，已有依据",
+          "发现问题",
+          "还没有验证",
+          "尚未完成，无法检查"
+        ]
+      },
+      {
+        "key": "w14_check3",
+        "label": "3. 是否兼顾佩戴便利和舒适？",
+        "type": "select",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": [
+          "符合，已有依据",
+          "发现问题",
+          "还没有验证",
+          "尚未完成，无法检查"
+        ]
+      },
+      {
+        "key": "w14_check_evidence",
+        "label": "自检发现的具体情况（未完成说明进度）",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": []
+      },
+      {
+        "key": "w14_peer",
+        "label": "同伴的具体观察（无法互评说明原因）",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": []
+      },
+      {
+        "key": "w14_focus",
+        "label": "本节最值得解决或验证的一件事",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": []
+      },
+      {
+        "key": "w14_work",
+        "label": "本节实际完成了什么",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task2",
+        "choices": []
+      },
+      {
+        "key": "w14_decision",
+        "label": "我为什么选择修改、验证或保留",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task2",
+        "choices": []
+      },
+      {
+        "key": "lesson_review_reference",
+        "label": "本节真实AI回复编号",
+        "type": "textarea",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      },
+      {
+        "key": "lesson_review_use",
+        "label": "AI回复有何帮助？我如何处理",
+        "type": "textarea",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      },
+      {
+        "key": "lesson_review_next",
+        "label": "下次如何把问题说清楚",
+        "type": "textarea",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      },
+      {
+        "key": "lesson_no_history_reason",
+        "label": "本节没有可回顾对话的原因",
+        "type": "text",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      },
+      {
+        "key": "lesson_exit_note",
+        "label": "今天实际完成的成果与进度",
+        "type": "textarea",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      }
+    ],
+    "artifacts": [
+      {
+        "key": "w14_prototype_overview",
+        "label": "新增原型版本：整体图",
+        "required": false,
+        "helper": "上传真实照片；已有照片不必反复上传。",
+        "version_questionnaire": true,
+        "version_book": true,
+        "progress_only": false,
+        "compare_previous_version": true,
+        "book_item_label": "原型"
+      },
+      {
+        "key": "w14_prototype_wear",
+        "label": "同一版本：实际佩戴图",
+        "required": false,
+        "helper": "上传真实照片；已有照片不必反复上传。",
+        "version_questionnaire": true,
+        "version_book": false,
+        "progress_only": false,
+        "compare_previous_version": true,
+        "book_item_label": "原型"
+      },
+      {
+        "key": "w14_process_photo",
+        "label": "过程／测试照片（不算新版本）",
+        "required": false,
+        "helper": "上传真实照片；已有照片不必反复上传。",
+        "version_questionnaire": false,
+        "version_book": false,
+        "progress_only": true,
+        "compare_previous_version": false,
+        "book_item_label": "记录"
+      }
+    ],
+    "paired_artifacts": [
+      {
+        "overview": "w14_prototype_overview",
+        "wear": "w14_prototype_wear"
+      }
+    ],
+    "prototype_version_predecessors": [
+      "W8",
+      "W9",
+      "W10"
+    ],
+    "task_flow": {
+      "key": "lesson_9_two_part_v1",
+      "steps": [
+        {
+          "key": "task1",
+          "label": "成果检查与问题确认",
+          "task_phase": "lesson9_check",
+          "min_ai_exchanges": 4,
+          "required_fields": [
+            "w14_check1",
+            "w14_check2",
+            "w14_check3",
+            "w14_check_evidence",
+            "w14_peer",
+            "w14_focus"
+          ],
+          "required_artifacts": []
+        },
+        {
+          "key": "task2",
+          "label": "完成本节新任务",
+          "task_phase": "lesson9_work",
+          "min_ai_exchanges": 3,
+          "required_fields": [
+            "w14_work",
+            "w14_decision"
+          ],
+          "required_artifacts": []
+        }
+      ]
+    },
+    "ai_use_required_once": false,
+    "ai_instruction": "自检与讨论阶段至少4轮完整AI问答，新任务阶段至少3轮。围绕真实作品、检查结果和任务交流；不要编造问题凑次数。",
+    "prompt_context": "第9节课：共同新增约束：考虑手部尺寸差异时如何兼顾固定与调节。比较两种方案后决定保留、改进或进一步验证。。本节求助策略：比较建议并保留自己的判断。",
+    "ai_public_context": {
+      "task": "为精细动作受限的使用者设计辅助绘画装置",
+      "stage": "共同新增约束：考虑手部尺寸差异时如何兼顾固定与调节。比较两种方案后决定保留、改进或进一步验证。",
+      "public_constraints": [
+        "不能假定学生已经制作或测试。",
+        "以学生提供的照片、测试和材料为准。",
+        "建议只能作为参考，最后由学生决定。"
+      ]
+    }
   },
   {
-    id:'W12', order:12, date:'12/21',
-    title:'作品策展：方案完善、布置与展示准备', subtitle:'作品策展继续｜本课可自愿使用AI',
-    student_label:'第12课 · 展示方案完善',research_role:'transfer',phase:'transfer',ai_mode:'free',candidate:false,carry_from:'W11',
-    brief:['依据W11的展示设计草图与实际可用材料，完善一条完整的设计过程展示线，而不只是美化最终作品。让参观者能顺着证据看懂：需求从哪里来、方案怎样形成、原型怎样被测试、哪些观察促成修改、最终结果有什么价值与限制。','需要时可以继续问AI，但本节不强制新增消息；不必为了次数重复发送内容相近的问题。','将最终辅助绘画装置与过程证据配合展示。若某阶段没有照片或原始记录，可用自己真实记得的情况作说明并标明是回忆，不得把AI生成的内容伪装成当时的真实记录。'],
-    requirements:['检查展示过程是否包含真实的需求、初始构思、原型、测试、重要修改和最终方案证据；缺失环节明确标出。','完成清楚、安全的展示布置计划或纸质过程展板/过程时间线。','继续上传展示方案或展示材料的新版本，填写这版实际修改了什么及原因；误传更正不算设计改进。'],
-    fields:[
-      field('transfer_revision_w12','和上一版展示方案相比，你实际修改了什么？为什么？如果没改，请说明原因。',{required:false}),
-      field('transfer_question_w12','准备展示整个设计过程时，哪一步最难讲清楚？如果没有困难，请如实填写。',{required:false}),
-      field('display_message','观众看完后，你希望他们理解的核心信息是什么？'),
-      field('display_process_check','请逐项核对：需求/问题、初始想法、原型、测试证据、重要修改、最终方案与限制。每项对应哪张图、哪条记录或哪段真实说明？',{required:false}),
-      field('display_evidence','展示时你会用哪条真实测试或修改证据说明装置的功能？',{required:false}),
+    "id": "W15",
+    "order": 10,
+    "actual_lesson": 10,
+    "date": "按学校实际课表",
+    "title": "最终验证与设计证据整理",
+    "subtitle": "核对需求、方案、原型、测试、重要修改与最终结果，补充必要验证，形成真实作品说明。",
+    "student_label": "第10节课 · 最终验证与设计证据整理",
+    "questionnaire_slot": "post",
+    "questionnaire_after_submit": true,
+    "research_role": "intervention",
+    "phase": "intervention",
+    "ai_mode": "condition",
+    "candidate": false,
+    "carry_from": "W14",
+    "brief": [
+      "先调出已保存的作品，完成本节自检与同伴复核；发现问题或尚未验证都需要如实说明。",
+      "今天的主要任务：核对需求、方案、原型、测试、重要修改与最终结果，补充必要验证，形成真实作品说明。",
+      "当堂回顾自己本节课真实的AI交流，记录建议是否有用及自己怎样处理；未完成仍可保存。"
     ],
-    artifacts:[artifact('transfer_final','上传修改后的展示方案、展台布局或图纸',{required:false}),artifact('display_draft','上传展示材料、说明卡或布置照片',{required:false})],
-    ai_instruction:'AI助手可自由使用，本节不强制新消息；请按你的实际需要提问。',
-    prompt_context:'W12延续W11作品策展任务：修改展台设计、准备实际展示；与原辅助绘画装置历史记录分别保存。',
-    ai_public_context:{task:'完善原辅助绘画装置的互动展示设计，并准备展示布置。',stage:'W12依据实际条件修改展示方案。',public_constraints:['只依据学生真实作品、实际材料与真实测试证据回答；不得虚构功能。','所有学生获得相同的任务背景信息。']},
+    "requirements": [
+      "完成3项检查，写明一个具体观察结果或尚未验证之处，记录同伴意见。",
+      "完成本节主要任务，并保存真实设计/制作/测试证据。",
+      "结束前完成本节对话回顾或学习记录；不需要为了迭代而重复上传相同照片。"
+    ],
+    "fields": [
+      {
+        "key": "w15_check1",
+        "label": "1. 重要功能是否有真实测试依据？",
+        "type": "select",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": [
+          "符合，已有依据",
+          "发现问题",
+          "还没有验证",
+          "尚未完成，无法检查"
+        ]
+      },
+      {
+        "key": "w15_check2",
+        "label": "2. 能否说明一次关键设计判断？",
+        "type": "select",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": [
+          "符合，已有依据",
+          "发现问题",
+          "还没有验证",
+          "尚未完成，无法检查"
+        ]
+      },
+      {
+        "key": "w15_check3",
+        "label": "3. 哪些效果还未验证？",
+        "type": "select",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": [
+          "符合，已有依据",
+          "发现问题",
+          "还没有验证",
+          "尚未完成，无法检查"
+        ]
+      },
+      {
+        "key": "w15_check_evidence",
+        "label": "自检发现的具体情况（未完成说明进度）",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": []
+      },
+      {
+        "key": "w15_peer",
+        "label": "同伴的具体观察（无法互评说明原因）",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": []
+      },
+      {
+        "key": "w15_focus",
+        "label": "本节最值得解决或验证的一件事",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task1",
+        "choices": []
+      },
+      {
+        "key": "w15_work",
+        "label": "本节实际完成了什么",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task2",
+        "choices": []
+      },
+      {
+        "key": "w15_decision",
+        "label": "我为什么选择修改、验证或保留",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "task2",
+        "choices": []
+      },
+      {
+        "key": "lesson_review_reference",
+        "label": "本节真实AI回复编号",
+        "type": "textarea",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      },
+      {
+        "key": "lesson_review_use",
+        "label": "AI回复有何帮助？我如何处理",
+        "type": "textarea",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      },
+      {
+        "key": "lesson_review_next",
+        "label": "下次如何把问题说清楚",
+        "type": "textarea",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      },
+      {
+        "key": "lesson_no_history_reason",
+        "label": "本节没有可回顾对话的原因",
+        "type": "text",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      },
+      {
+        "key": "lesson_exit_note",
+        "label": "今天实际完成的成果与进度",
+        "type": "textarea",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      }
+    ],
+    "artifacts": [
+      {
+        "key": "w15_prototype_overview",
+        "label": "新增原型版本：整体图",
+        "required": false,
+        "helper": "上传真实照片；已有照片不必反复上传。",
+        "version_questionnaire": true,
+        "version_book": true,
+        "progress_only": false,
+        "compare_previous_version": true,
+        "book_item_label": "原型"
+      },
+      {
+        "key": "w15_prototype_wear",
+        "label": "同一版本：实际佩戴图",
+        "required": false,
+        "helper": "上传真实照片；已有照片不必反复上传。",
+        "version_questionnaire": true,
+        "version_book": false,
+        "progress_only": false,
+        "compare_previous_version": true,
+        "book_item_label": "原型"
+      },
+      {
+        "key": "w15_evidence_photo",
+        "label": "过程／测试照片（不算新版本）",
+        "required": false,
+        "helper": "上传真实照片；已有照片不必反复上传。",
+        "version_questionnaire": false,
+        "version_book": false,
+        "progress_only": true,
+        "compare_previous_version": false,
+        "book_item_label": "记录"
+      }
+    ],
+    "paired_artifacts": [
+      {
+        "overview": "w15_prototype_overview",
+        "wear": "w15_prototype_wear"
+      }
+    ],
+    "prototype_version_predecessors": [
+      "W8",
+      "W9",
+      "W10",
+      "W14"
+    ],
+    "task_flow": {
+      "key": "lesson_10_two_part_v1",
+      "steps": [
+        {
+          "key": "task1",
+          "label": "成果检查与问题确认",
+          "task_phase": "lesson10_check",
+          "min_ai_exchanges": 4,
+          "required_fields": [
+            "w15_check1",
+            "w15_check2",
+            "w15_check3",
+            "w15_check_evidence",
+            "w15_peer",
+            "w15_focus"
+          ],
+          "required_artifacts": []
+        },
+        {
+          "key": "task2",
+          "label": "完成本节新任务",
+          "task_phase": "lesson10_work",
+          "min_ai_exchanges": 3,
+          "required_fields": [
+            "w15_work",
+            "w15_decision"
+          ],
+          "required_artifacts": []
+        }
+      ]
+    },
+    "ai_use_required_once": false,
+    "ai_instruction": "自检与讨论阶段至少4轮完整AI问答，新任务阶段至少3轮。围绕真实作品、检查结果和任务交流；不要编造问题凑次数。",
+    "prompt_context": "第10节课：核对需求、方案、原型、测试、重要修改与最终结果，补充必要验证，形成真实作品说明。。本节求助策略：评价AI帮助并核对实际证据。",
+    "ai_public_context": {
+      "task": "为精细动作受限的使用者设计辅助绘画装置",
+      "stage": "核对需求、方案、原型、测试、重要修改与最终结果，补充必要验证，形成真实作品说明。",
+      "public_constraints": [
+        "不能假定学生已经制作或测试。",
+        "以学生提供的照片、测试和材料为准。",
+        "建议只能作为参考，最后由学生决定。"
+      ]
+    }
   },
   {
-    id:'W13', order:13, date:'展示日',
-    title:'全校成果展示', subtitle:'课程成果归档',
-    student_label:'第13课 · 全校展示', research_role:'presentation', phase:'presentation', ai_mode:'none', candidate:false,
-    brief:['进行课程成果展示并保存最终档案。','本课用于整理和展示完整的设计过程。'],
-    requirements:['展示真实的完整设计过程：使用者需求、初始构思、原型、测试、关键修改和最终方案；每一步尽量对应实际草图、照片或记录。','清楚说明装置功能、真实测试结果和仍有限制，不把推测说成测试事实。','保存最终装置、过程展板/时间线和展示材料照片。'],
-    fields:[field('presentation_summary','最终展示一句话介绍',{required:false})],
-    artifacts:[artifact('final_device_photo','上传最终装置展示照片',{required:false}),artifact('final_poster_photo','上传展示说明纸/海报照片',{required:false})],
-    prompt_context:'',
+    "id": "W11",
+    "order": 11,
+    "actual_lesson": 11,
+    "date": "按学校实际课表",
+    "title": "全校舞台讲解方案设计",
+    "subtitle": "为第13节全校上台展示设计清晰、有证据的表达",
+    "student_label": "第11节课 · 舞台讲解设计",
+    "research_role": "transfer",
+    "phase": "transfer",
+    "ai_mode": "free",
+    "candidate": false,
+    "carry_from": "W15",
+    "brief": [
+      "第13节课你将面对全校师生上台展示自己的辅助绘画装置。今天需要设计讲解方式，让没有参加课程的同学也听得懂。",
+      "请在约90秒内说明：使用者需求、作品功能、一次真实测试或修改、仍存在的局限。",
+      "这是上台讲解，不是课桌展台设计；投影、话筒和大屏是否可用要听老师通知，不能擅自假设。"
+    ],
+    "requirements": [
+      "明确全校观众的需要、时间和安全限制。",
+      "比较两种讲解顺序或演示方式，选一种并说明依据。",
+      "完成约90秒舞台讲解提纲，使用真实作品与测试证据。"
+    ],
+    "fields": [
+      {
+        "key": "stage_audience",
+        "label": "全校观众最需要先听懂什么",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "before_update",
+        "choices": []
+      },
+      {
+        "key": "stage_constraints",
+        "label": "讲解时间、安全和已知／未知设备条件",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "before_update",
+        "choices": []
+      },
+      {
+        "key": "stage_options",
+        "label": "比较两种讲解顺序或演示方式",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "before_update",
+        "choices": []
+      },
+      {
+        "key": "stage_choice",
+        "label": "最终选择及依据",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "before_update",
+        "choices": []
+      },
+      {
+        "key": "stage_outline",
+        "label": "约90秒讲解提纲",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "before_update",
+        "choices": []
+      }
+    ],
+    "artifacts": [
+      {
+        "key": "stage_sketch",
+        "label": "讲解卡或顺序草图",
+        "required": false,
+        "helper": "上传真实照片；已有照片不必反复上传。",
+        "version_questionnaire": false,
+        "version_book": false,
+        "progress_only": false,
+        "compare_previous_version": false,
+        "book_item_label": "记录"
+      }
+    ],
+    "ai_use_required_once": true,
+    "ai_instruction": "至少进行1轮真实AI问答；你可以自主决定求助内容和方式。",
+    "prompt_context": "第11节迁移任务：面向全校上台展示的讲解方案设计。",
+    "ai_public_context": {
+      "task": "面向全校师生设计约90秒的舞台讲解",
+      "stage": "比较讲解方式、核对作品证据",
+      "public_constraints": [
+        "不是课桌展台。",
+        "不假定现场设备。",
+        "不能虚构作品效果和测试结果。"
+      ]
+    }
+  },
+  {
+    "id": "W12",
+    "order": 12,
+    "actual_lesson": 12,
+    "date": "按学校实际课表",
+    "title": "舞台讲解排练与优化",
+    "subtitle": "依据计时和同伴反馈完善第13节上台讲解",
+    "student_label": "第12节课 · 舞台排练",
+    "research_role": "transfer",
+    "phase": "transfer",
+    "ai_mode": "free",
+    "candidate": false,
+    "carry_from": "W11",
+    "brief": [
+      "第13节课将在全校师生面前上台。本节先在小组内计时试讲，再依据同伴反馈修改讲解。",
+      "每人都要有真实的试讲与反馈记录，不能把同伴建议当成自己的测试结果。",
+      "根据实际学校条件准备；设备不确定时保留不用设备也可完成的讲解方案。"
+    ],
+    "requirements": [
+      "完成一次试讲，记录真实用时或未计时的原因。",
+      "记录同伴提出的一项具体反馈。",
+      "根据反馈调整或保留方案，完成最终讲解卡。"
+    ],
+    "fields": [
+      {
+        "key": "rehearsal_time",
+        "label": "真实试讲用时或未计时的原因",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "before_update",
+        "choices": []
+      },
+      {
+        "key": "rehearsal_peer",
+        "label": "同伴观察与建议",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "before_update",
+        "choices": []
+      },
+      {
+        "key": "rehearsal_decision",
+        "label": "如何处理反馈及理由",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "before_update",
+        "choices": []
+      },
+      {
+        "key": "rehearsal_final",
+        "label": "最终舞台讲解提纲",
+        "type": "textarea",
+        "required": true,
+        "placeholder": "",
+        "helper": "",
+        "stage": "before_update",
+        "choices": []
+      }
+    ],
+    "artifacts": [
+      {
+        "key": "stage_final_card",
+        "label": "最终讲解卡照片",
+        "required": false,
+        "helper": "上传真实照片；已有照片不必反复上传。",
+        "version_questionnaire": false,
+        "version_book": false,
+        "progress_only": false,
+        "compare_previous_version": false,
+        "book_item_label": "记录"
+      }
+    ],
+    "ai_use_required_once": false,
+    "ai_instruction": "可以根据需要向AI提问，不强制提问次数。",
+    "prompt_context": "第12节迁移任务：全校舞台讲解排练和优化。",
+    "ai_public_context": {
+      "task": "为全校舞台讲解准备真实、可执行的展示",
+      "stage": "根据实际排练和同伴评价调整",
+      "public_constraints": [
+        "不能假设现场一定有投影或话筒。",
+        "不能虚构试讲结果和反馈。"
+      ]
+    }
+  },
+  {
+    "id": "W13",
+    "order": 13,
+    "actual_lesson": 13,
+    "date": "学校展示日",
+    "title": "全校舞台成果展示",
+    "subtitle": "在全校师生面前上台呈现设计成果",
+    "student_label": "第13节课 · 全校上台展示",
+    "research_role": "presentation",
+    "phase": "presentation",
+    "ai_mode": "none",
+    "candidate": false,
+    "brief": [
+      "按照学校现场安排，面向全校师生上台讲解辅助绘画装置。",
+      "重点讲清使用者需求、作品功能、真实测试或修改经历，以及仍有的限制。",
+      "遵守学校舞台安全要求，不假定现场一定有特定设备。"
+    ],
+    "requirements": [
+      "携带作品和讲解提纲，按安排依次上台。",
+      "用事实说明功能与设计判断，不编造数据。",
+      "有真实现场照片时再存档；不得补造。"
+    ],
+    "fields": [
+      {
+        "key": "presentation_summary",
+        "label": "我的舞台讲解要点",
+        "type": "textarea",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "before_update",
+        "choices": []
+      }
+    ],
+    "artifacts": [
+      {
+        "key": "final_device_photo",
+        "label": "最终作品照片",
+        "required": false,
+        "helper": "上传真实照片；已有照片不必反复上传。",
+        "version_questionnaire": false,
+        "version_book": false,
+        "progress_only": false,
+        "compare_previous_version": false,
+        "book_item_label": "记录"
+      },
+      {
+        "key": "final_stage_photo",
+        "label": "实际舞台展示照片",
+        "required": false,
+        "helper": "上传真实照片；已有照片不必反复上传。",
+        "version_questionnaire": false,
+        "version_book": false,
+        "progress_only": false,
+        "compare_previous_version": false,
+        "book_item_label": "记录"
+      }
+    ],
+    "prompt_context": ""
   },
 ];
+
+for(const sid of ['W9','W10','W14','W15']){
+ const session=SESSIONS.find(x=>x.id===sid);
+ if(session && !session.fields.some(x=>x.key==='lesson_no_history_reason'))
+   session.fields.push(field('lesson_no_history_reason','没有可回顾AI记录时的实际原因',{stage:'review',required:false,type:'select',choices:['今天没有向AI提问','提问了，但没收到有效回复','平台记录没有显示','其他原因']}));
+}
+// 已有存储用W8表示实际第6节。保留W6/W7旧课次只供历史读取，勿将其当作目前的第6、7节。
 
 export function getSessionConfig(id) { return SESSIONS.find(s => s.id === id) || null; }
 

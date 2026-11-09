@@ -55,7 +55,8 @@ function restoreTaskField(){
   try{ const k=lastTaskFieldStorageKey(); if(k) lastTaskFieldKey=sessionStorage.getItem(k)||''; }catch{}
 }
 function currentW8ChatStep(){
-  return state?.session?.id==='W8' && state?.session?.task_flow && w8StepDone('task1') ? 'task2' : 'task1';
+  if(!state?.session?.task_flow)return 'task1';
+  return w8StepDone('task1') ? 'task2' : 'task1';
 }
 function chatTaskContext(){
   const vals=collectFields();
@@ -70,8 +71,7 @@ function chatTaskContext(){
   });
   let field=fields.find(f=>f.key===lastTaskFieldKey);
   if(!field || !visible.some(v=>v.key===field.key)) field=visible.find(f=>!String(vals?.[f.key]||'').trim()) || visible.at(-1);
-  const taskPhase = state?.session?.id === 'W8' && state?.session?.task_flow
-    ? (currentW8ChatStep() === 'task2' ? 'task2_prototype' : 'task1_design') : '';
+  const taskPhase = state?.session?.task_flow?.steps?.find(x=>x.key===currentW8ChatStep())?.task_phase || '';
   return {
     field_key:field?.key||'',
     task_phase:taskPhase,
@@ -227,6 +227,7 @@ function materialBankHtml(groups=[]){
 function taskCard(s){
   const resources=(s.resources||[]).length && !s.task_flow ? `<div class="resource-pack"><div class="resource-pack-head"><span class="eyebrow">任务资料包</span><h3>先看共同资料，再开始判断</h3><p class="small">所有同学看到相同资料。请根据资料完成任务；右侧AI助手全程可用。</p></div><div class="resource-grid">${s.resources.map(r=>`<article class="resource-card"><h4>${esc(r.title)}</h4><ul>${(r.items||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></article>`).join('')}</div></div>` : '';
   const materials=!s.task_flow?materialBankHtml(s.materials||[]):'';
+  if(s.task_flow)return `<section class="task-box"><h1>${esc(s.title)}</h1><p class="lead">${esc(s.subtitle)}</p><p class="small">每节先检查真实成果，再完成当前任务；下课前回顾今天的AI交流。没做完可以保存。</p></section>`;
   return `<section class="task-box"><span class="eyebrow">${esc(s.student_label)}</span><h1>${esc(s.title)}</h1><p class="lead">${esc(s.subtitle)}</p><div class="brief-list">${s.brief.map(x=>`<p>${esc(x)}</p>`).join('')}</div>${resources}${materials}<h3>本节你需要完成的内容</h3><ul class="requirements">${s.requirements.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section>`;
 }
 
@@ -241,6 +242,7 @@ function fieldHtml(f, value='', forceDisabled=false){
   const req = f.required ? '<span class="req">必填</span>' : '<span class="optional">选填</span>';
   const disabled=(state.record.submitted_at||state.session_locked||forceDisabled)?'disabled':'';
   if(f.type==='text') return `<label>${esc(f.label)} ${req}<input data-field="${esc(f.key)}" value="${esc(value)}" placeholder="${esc(f.placeholder)}" ${disabled}></label>`;
+  if(f.type==='select')return `<label>${esc(f.label)} ${req}<select data-field="${esc(f.key)}" ${disabled}><option value="">请选择实际情况</option>${(f.choices||[]).map(x=>`<option value="${esc(x)}" ${String(value)===String(x)?'selected':''}>${esc(x)}</option>`).join('')}</select></label>`;
   return `<label>${esc(f.label)} ${req}<textarea data-field="${esc(f.key)}" placeholder="${esc(f.placeholder)}" ${disabled}>${esc(value)}</textarea>${f.helper?`<span class="small">${esc(f.helper)}</span>`:''}</label>`;
 }
 function artifactStepForKey(key){
@@ -255,27 +257,24 @@ function artifactRequiredForCurrentFlow(key){
 }
 function artifactQuestionnaireHtml(a, versions, carryOptions, options){
   const disabled=(state.record.submitted_at||state.session_locked||artifactStepCompleted(a.key))?'disabled':'';
-  const first=!versions.length;
-  const comparePrevious=Boolean(a.compare_previous_version);
-  const statusOptions=first&&!comparePrevious
-    ? '<option value="first_version" selected>首次提交该原型版本</option>'
-    : '<option value="modified" selected>相较上一版，设计/结构发生了修改</option><option value="not_modified">设计没有改变，仅补充或重新呈现</option><option value="tested_no_change">进行了尝试或测试，但暂未修改设计</option>';
-  const basisOptions=['AI建议','科学知识学习','用户测试或反馈','教师建议','同伴建议','自己的想法','材料/制作条件','其他'];
-  const replyChecks=options.map(m=>`<label class="ai-link-option"><input type="checkbox" data-artifact-ai="${esc(a.key)}" value="${esc(m.message_id)}" ${disabled}><span><strong>${esc(String(m.content||'').slice(0,74))}</strong><small>${esc(String(m.created_at||'').slice(0,16))}</small></span></label>`).join('');
-  return `<div class="form version-questionnaire" style="margin-top:12px;gap:10px">
-    <label>本次提交性质<select data-artifact-kind="${esc(a.key)}" ${disabled}><option value="${first?'draft':'revision'}">${first?'首次提交':'新增设计版本'}</option>${first?'':'<option value="correction">更正误传图片（旧记录保留）</option>'}</select></label>
-    <label>本次与上一版相比的情况<select data-artifact-status="${esc(a.key)}" ${disabled}>${statusOptions}</select></label>
-    <fieldset class="basis-fieldset"><legend>本次设计/原型形成主要依据（可多选；是否参考AI，请勾选“AI建议”）</legend>${basisOptions.map(x=>`<label class="basis-option"><input type="checkbox" data-artifact-basis="${esc(a.key)}" value="${esc(x)}" ${disabled}><span>${esc(x)}</span></label>`).join('')}</fieldset>
-    <label>如果参考了AI建议，你是怎样处理的？<select data-artifact-ai-role="${esc(a.key)}" ${disabled}><option value="not_used">没有参考AI建议</option><option value="direct_adopt">直接采用</option><option value="adapted">结合自己的想法调整后采用</option><option value="inspired">受到启发，但采用了不同方案</option><option value="viewed_not_adopted">看过建议，但没有采用</option><option value="unsure">不确定/无法判断</option></select></label>
-    <label>本次具体做了什么变化？或这版原型目前做出了什么？<span class="req">必填</span><textarea data-artifact-note="${esc(a.key)}" rows="2" maxlength="500" placeholder="请描述真实变化；首次原型可写目前实现了哪些结构、哪些部分还未完成。" ${disabled}></textarea></label>
-    <label>关联上一课的相关作品版本（可选）<select data-artifact-based-on="${esc(a.key)}" ${disabled}><option value="">不关联/无法确定</option>${carryOptions}</select></label>
-    <div><strong class="small">如有与本次修改直接相关的AI回复，可选择关联（可多选，不强制）</strong><div class="ai-link-list">${replyChecks||'<p class="small">目前没有可关联的AI回复。</p>'}</div></div>
+  const first=!versions.length, key=esc(a.key);
+  const statusOptions=first?'<option value="first_version">第一次记录这版原型</option>':'<option value="modified">结构或设计确实有修改</option><option value="not_modified">没有修改，仅补充资料</option><option value="tested_no_change">测试后暂时不改</option>';
+  const bases=['自己判断','实际测试','同伴建议','AI建议','材料条件','科学知识'];
+  return `<div class="form version-questionnaire" style="margin-top:10px;gap:9px">
+    <input type="hidden" data-artifact-kind="${key}" value="${first?'draft':'revision'}">
+    <label>这次记录是什么情况？<select data-artifact-status="${key}" ${disabled}>${statusOptions}</select></label>
+    <label>本版具体做出了什么？和上一版相比改了什么？<textarea data-artifact-note="${key}" rows="2" maxlength="500" placeholder="写一句真实变化；还没完成可说明做到了哪一步" ${disabled}></textarea></label>
+    <fieldset class="basis-fieldset"><legend>主要参考了什么？（可多选）</legend>${bases.map(x=>`<label class="basis-option"><input type="checkbox" data-artifact-basis="${key}" value="${esc(x)}" ${disabled}><span>${esc(x)}</span></label>`).join('')}</fieldset>
+    <label>如果看了AI建议，最后怎样处理？<select data-artifact-ai-role="${key}" ${disabled}><option value="not_used">没有使用AI建议</option><option value="direct_adopt">直接采用</option><option value="adapted">修改后采用</option><option value="inspired">受到启发但用了不同方法</option><option value="viewed_not_adopted">看过但没有采用</option><option value="unsure">不确定</option></select></label>
+    <details><summary>关联一条具体AI回复（选填）</summary><select data-artifact-ai-single="${key}" ${disabled}><option value="">不关联</option>${options.slice(0,6).map(m=>`<option value="${esc(m.message_id)}">${esc(String(m.content||'').slice(0,65))}</option>`).join('')}</select></details>
+    <input type="hidden" data-artifact-based-on="${key}" value="">
   </div>`;
 }
 function artifactUploadPanelHtml(a, versions, carryOptions, options, hidden=false){
   const disabled=(state.record.submitted_at||state.session_locked||artifactStepCompleted(a.key))?'disabled':'';
+  if(String(a.key||'').includes('wear'))return `<div class="prototype-upload-editor ${hidden?'hidden':''}" data-prototype-upload="${esc(a.key)}" data-artifact-card="${esc(a.key)}"><p class="small">只需上传与该版对应的真实佩戴照片，不用重复填写修改说明。</p><input type="hidden" data-artifact-kind="${versions.length?'revision':'draft'}"><div class="row"><input type="file" data-artifact="${esc(a.key)}" accept="image/jpeg,image/png,image/webp" ${disabled}><span class="small" data-upload-status="${esc(a.key)}">${versions.length?'继续上传配套照片':'尚未上传'}</span></div><button type="button" class="btn ghost mini" data-cancel-prototype="${esc(a.key)}">取消</button></div>`;
   return `<div class="prototype-upload-editor ${hidden?'hidden':''}" data-prototype-upload="${esc(a.key)}" data-artifact-card="${esc(a.key)}">
-    <h4>${versions.length?'上传下一版':`上传第一版${esc(a.book_item_label||'设计/原型')}`}</h4>
+    <h4>${versions.length?'上传新增版本':`上传${esc(a.book_item_label||'设计/原型')}`}</h4>
     <p class="small">请先填写本次版本记录，再选择照片。照片和版本说明会追加保存，旧版不会被覆盖。</p>
     ${artifactQuestionnaireHtml(a,versions,carryOptions,options)}
     <div class="row"><input type="file" data-artifact="${esc(a.key)}" accept="image/jpeg,image/png,image/webp" ${disabled}><span class="small" data-upload-status="${esc(a.key)}">${versions.length?`已有${versions.length}条版本记录`:'尚未上传'}</span></div>
@@ -283,7 +282,7 @@ function artifactUploadPanelHtml(a, versions, carryOptions, options, hidden=fals
   </div>`;
 }
 function prototypeVersionPageHtml(versions, index, itemLabel='作品'){
-  if(!versions.length) return `<div class="prototype-empty"><div class="prototype-empty-icon">V1</div><h3>还没有上传第一版${esc(itemLabel)}</h3><p class="small">上传当前真实的设计/制作状态。未完成的部分如实说明，之后可以继续迭代。</p></div>`;
+  if(!versions.length) return `<div class="prototype-empty"><div class="prototype-empty-icon"><icon>+</icon></div><h3>尚未上传${esc(itemLabel)}</h3><p class="small">上传当前真实的设计/制作状态。未完成的部分如实说明，之后可以继续迭代。</p></div>`;
   const v=versions[index]||versions[versions.length-1];
   const label=v.kind==='correction'?'误传更正记录':`${itemLabel}版本记录 ${v.version_no||index+1}`;
   const bases=Array.isArray(v.change_bases)?v.change_bases:[];
@@ -303,9 +302,9 @@ function prototypeVersionBookHtml(a, meta){
   const carryVersions=Object.entries(state.carry_artifact_versions||{}).flatMap(([key,entries])=>entries.map((v,i)=>({...v,carry_key:key,ordinal:i+1})));
   const carryOptions=carryVersions.map(v=>`<option value="${esc(`${carryId}:${v.version_id}`)}">${esc(carryId)} · ${esc(v.carry_key)} · ${v.original_order_unknown?'旧图（顺序未知）':`第${v.ordinal}版`}</option>`).join('');
   const viewer=prototypeVersionPageHtml(versions,safeIndex,itemLabel);
-  return `<div class="upload-card prototype-book-card" data-prototype-book="${esc(a.key)}" data-prototype-item-label="${esc(itemLabel)}"><div class="row between"><div><strong>${esc(a.label)} ${required}</strong><p class="small">${esc(a.helper)}；每次真实设计迭代新增一个版本页，不覆盖旧版。</p></div><span class="badge">${versions.length?`已保存 ${versions.length} 个版本记录`:'等待V1'}</span></div>
+  return `<div class="upload-card prototype-book-card" data-prototype-book="${esc(a.key)}" data-prototype-item-label="${esc(itemLabel)}"><div class="row between"><div><strong>${esc(a.label)} ${required}</strong><p class="small">${esc(a.helper)}；每次真实设计迭代新增一个版本页，不覆盖旧版。</p></div><span class="badge">${versions.length?`已保存 ${versions.length} 张照片`:'尚无记录'}</span></div>
     <div data-prototype-viewer="${esc(a.key)}">${viewer}</div>
-    <div class="row prototype-page-controls"><button type="button" class="btn secondary mini" data-prototype-prev="${esc(a.key)}" ${!versions.length||safeIndex===0?'disabled':''}>上一版</button><button type="button" class="btn secondary mini" data-prototype-next="${esc(a.key)}" ${!versions.length||safeIndex>=versions.length-1?'disabled':''}>下一版</button><button type="button" class="btn orange mini" data-prototype-iterate="${esc(a.key)}" ${disabled}>${versions.length?'迭代：上传下一版':`上传第一版${esc(itemLabel)}（V1）`}</button></div>
+    <div class="row prototype-page-controls"><button type="button" class="btn secondary mini" data-prototype-prev="${esc(a.key)}" ${!versions.length||safeIndex===0?'disabled':''}>上一版</button><button type="button" class="btn secondary mini" data-prototype-next="${esc(a.key)}" ${!versions.length||safeIndex>=versions.length-1?'disabled':''}>下一版</button><button type="button" class="btn orange mini" data-prototype-iterate="${esc(a.key)}" ${disabled}>${versions.length?'上传更新后的照片':`上传${esc(itemLabel)}`}</button></div>
     ${artifactUploadPanelHtml(a,versions,carryOptions,recentReplies,!(!versions.length))}
   </div>`;
 }
@@ -319,6 +318,10 @@ function artifactHtml(a, meta){
   const carryVersions=Object.entries(state.carry_artifact_versions||{}).flatMap(([key,entries])=>entries.map((v,i)=>({...v,carry_key:key,ordinal:i+1})));
   const carryOptions=carryVersions.map(v=>`<option value="${esc(`${carryId}:${v.version_id}`)}">${esc(carryId)} · ${esc(v.carry_key)} · ${v.original_order_unknown?'旧图（顺序未知）':`第${v.ordinal}版`}</option>`).join('');
   if(a.version_book) return prototypeVersionBookHtml(a,meta);
+  if((state.session?.paired_artifacts||[]).some(p=>p.wear===a.key)){
+    const gallery=versions.map((v,i)=>`<div class="upload-preview"><img src="${artifactUrl(v)}" alt="第${i+1}版佩戴图"><p class="small">第${i+1}版佩戴图</p></div>`).join('');
+    return `<div class="upload-card" data-artifact-card="${esc(a.key)}"><strong>${esc(a.label)}</strong><p class="small">请把对应原型真正戴在手上拍摄，与本版整体图配对保存。不要上传未佩戴的照片。</p><div class="photo-grid">${gallery}</div><input type="hidden" data-artifact-kind="${esc(a.key)}" value="${versions.length?'revision':'draft'}"><input type="file" data-artifact="${esc(a.key)}" accept="image/jpeg,image/png,image/webp" ${disabled}><span class="small" data-upload-status="${esc(a.key)}">${versions.length?'已有'+versions.length+'张':'尚未上传'}</span></div>`;
+  }
   if(a.progress_only){
     const gallery=versions.length?`<div class="photo-grid" style="margin:10px 0">${versions.map((v,i)=>`<div class="upload-preview"><img src="${artifactUrl(v)}" alt="制作进度记录"><p class="small">进度记录 ${i+1} · ${esc(String(v.uploaded_at||'').slice(0,16))}</p>${v.change_note?`<p class="small">${esc(v.change_note)}</p>`:''}</div>`).join('')}</div>`:'';
     return `<div class="upload-card" data-artifact-card="${esc(a.key)}"><strong>${esc(a.label)} ${req}</strong><p class="small">${esc(a.helper)}；仅用于记录制作进度，不代表设计发生迭代。</p>${gallery}<label>当前制作进度简述<textarea data-artifact-note="${esc(a.key)}" rows="2" maxlength="300" placeholder="例如：已完成底部支撑，夹笔部分尚未完成。" ${disabled}></textarea></label><div class="row"><input type="file" data-artifact="${esc(a.key)}" accept="image/jpeg,image/png,image/webp" ${disabled}><span class="small" data-upload-status="${esc(a.key)}">${versions.length?`已保存${versions.length}条进度记录`:'尚未上传'}</span></div><input type="hidden" data-artifact-kind="${esc(a.key)}" value="progress"></div>`;
@@ -338,7 +341,7 @@ function chatPanel(){
   const variantBlocked=state.ai_variant==='unassigned';
   const variantLabel=state.participant.is_test ? `${id}测试预览` : 'AI设计助手';
   const requiredOnce=Boolean(state.session.ai_use_required_once);
-  const activeFlowStep=state.session.task_flow?.steps?.find(x=>x.key===(currentW8ChatStep()==='task2'?'task2':'task1'));
+  const activeFlowStep=state.session.task_flow?.steps?.find(x=>x.key===currentW8ChatStep());
   const flowBadge=activeFlowStep?`本阶段至少${Number(activeFlowStep.min_ai_exchanges||0)}轮完整对话`:'';
   const policyText=state.session.ai_instruction || '本节任务中可以使用AI设计助手，也可以不使用。';
   const chatImageEnabled=state.session.chat_image_enabled!==false;
@@ -633,25 +636,39 @@ async function revealBonusUpdate(){
 function w8StepDone(stepKey){return Boolean(state?.task_progress?.completed_steps?.includes(stepKey));}
 function w8Count(stepKey){return Number(state?.task_progress?.ai_exchange_counts?.[stepKey]||0);}
 function updateW8ExchangeCounter(){
-  if(state?.session?.id!=='W8'||!state?.session?.task_flow)return;
+  if(!state?.session?.task_flow)return;
   for(const step of state.session.task_flow.steps||[]){
     const el=document.querySelector(`[data-w8-exchange-count="${step.key}"]`);
     if(el)el.textContent=String(w8Count(step.key));
   }
 }
 function w8Artifact(key){return (state?.session?.artifacts||[]).find(a=>a.key===key);}
+
+function scienceDiagramCardsHtml(){
+ const cards=[
+  ['摩擦与防滑','<svg viewBox="0 0 230 100" aria-label="摩擦与防滑示意图"><rect x="42" y="23" width="145" height="52" rx="18" fill="#e3e9e7"/><rect x="68" y="40" width="98" height="17" rx="7" fill="#d5a76a"/><path d="M78 40v17m16-17v17m16-17v17m16-17v17m16-17v17" stroke="#8a6e45" stroke-width="2"/><text x="115" y="17" text-anchor="middle">接触与固定</text><text x="115" y="95" text-anchor="middle">检查是否滑动</text></svg>','接触面间的摩擦可帮助固定，是否防滑需实际检验。'],
+  ['弹性与松紧','<svg viewBox="0 0 230 100" aria-label="弹性示意图"><rect x="26" y="30" width="32" height="42" rx="8" fill="#c8dce8"/><rect x="174" y="30" width="32" height="42" rx="8" fill="#c8dce8"/><path d="M57 49Q75 15 93 49T129 49T175 49" fill="none" stroke="#c98d64" stroke-width="8"/><text x="115" y="17" text-anchor="middle">松紧带</text><text x="115" y="95" text-anchor="middle">过紧过松都要调整</text></svg>','弹性材料可拉伸和恢复，固定时也要兼顾舒适。'],
+  ['接触面积与压力','<svg viewBox="0 0 230 100" aria-label="接触面积示意图"><rect x="25" y="38" width="70" height="33" rx="14" fill="#eeddb8"/><rect x="40" y="49" width="43" height="10" rx="5" fill="#cc875d"/><rect x="137" y="32" width="70" height="45" rx="14" fill="#eeddb8"/><rect x="152" y="40" width="43" height="28" rx="5" fill="#cc875d"/><text x="61" y="23" text-anchor="middle">窄带</text><text x="172" y="23" text-anchor="middle">宽带</text><text x="115" y="95" text-anchor="middle">比较压力与接触面积</text></svg>','在受力相近时，扩大接触面积通常能减小平均压强。'],
+  ['结构与支撑','<svg viewBox="0 0 230 100" aria-label="结构支撑示意图"><rect x="30" y="48" width="70" height="10" fill="#d2b18c"/><path d="M133 65L145 38L159 65L173 38L187 65L201 38L212 65" fill="none" stroke="#b68c65" stroke-width="6"/><text x="66" y="24" text-anchor="middle">平板</text><text x="175" y="24" text-anchor="middle">折叠结构</text><text x="115" y="95" text-anchor="middle">比较形状与支撑效果</text></svg>','材料和结构形状都会影响支撑效果，需要实际比较。']
+ ];
+ return '<div class="science-mini-grid">'+cards.map(x=>'<article class="science-mini-card"><strong>'+x[0]+'</strong>'+x[1]+'<p>'+x[2]+'</p></article>').join('')+'</div>';
+}
+function compactTaskHeader(s){return '<section class="card lesson-compact-head"><span class="eyebrow">'+esc(s.student_label||'本节任务')+'</span><h1>'+esc(s.title)+'</h1><p>'+esc(s.subtitle||'按实际进度继续。')+'</p></section>';}
 function w8TaskFlowHtml(s,r){
   const done1=w8StepDone('task1'),done2=w8StepDone('task2');
   if(!done1)activeW8Step='task1';
   else if(!activeW8Step)activeW8Step='task2';
   const step=activeW8Step;
   const step1ScienceFields=(s.fields||[]).filter(f=>f.stage==='task1'&&['w8_science_point','w8_science_application'].includes(f.key)).map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'',done1)).join('');
+  const checkFields=(s.fields||[]).filter(f=>f.stage==='task1'&&f.key.startsWith('w8_check')).map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'',done1)).join('');
+  const peerFields=(s.fields||[]).filter(f=>f.stage==='task1'&&['w8_check_evidence','w8_peer','w8_focus'].includes(f.key)).map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'',done1)).join('');
   const step1MaterialFields=(s.fields||[]).filter(f=>f.stage==='task1'&&f.key==='w8_material_plan').map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'',done1)).join('');
   const step2Fields=(s.fields||[]).filter(f=>f.stage==='task2').map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'',!done1||done2)).join('');
   const previousSheet=w8Artifact('w8_previous_task_sheet');
   const scienceSheet=w8Artifact('w8_science_learning_sheet');
   const designVersion=w8Artifact('w8_design_version');
   const prototypeVersions=w8Artifact('w8_prototype_versions');
+  const prototypeWear=w8Artifact('w8_wear_versions');
   const buildProgress=w8Artifact('w8_build_progress');
   const counts1=w8Count('task1'),counts2=w8Count('task2');
   const min1=Number(s.task_flow?.steps?.find(x=>x.key==='task1')?.min_ai_exchanges||10);
@@ -661,8 +678,8 @@ function w8TaskFlowHtml(s,r){
     <div class="row between"><div><span class="eyebrow">任务一 · 设计完善</span><h2>把科学知识用进自己的设计图</h2></div><span class="badge">${done1?'已提交':'进行中'}</span></div>
     <p>先上传上一节课的任务单/设计记录，再阅读教师提供的科学知识资料。至少选择一个知识点，标注它在设计图中的具体位置和作用；随后从教师提供的材料中选择要使用的材料，并写明用途。</p>
     <div class="notice">AI助手在本任务全程可用。提交前必须完成至少10轮完整对话（你发送一条消息并收到AI回复算一轮）。清楚的问题直接问，不要为了次数发送无意义内容。</div>
-    <h3>1. 上传上一节课任务单</h3><div class="artifact-list">${previousSheet?artifactHtml(previousSheet,r.artifacts?.[previousSheet.key]):''}</div>
-    <h3>2. 学习科学知识并标注应用</h3><p class="small">先阅读下面的简明知识卡，再对照教师发放的课堂资料。至少选择一个确实适用于自己设计的知识点；不要只抄名称，要说明它用在图纸的哪个位置、帮助解决什么问题。</p><div class="resource-pack"><div class="resource-pack-head"><span class="eyebrow">科学知识</span><h3>本节可参考的知识点</h3><p class="small">以下为平台简明参考；教师现场发放资料如有不同，以教师资料为准。</p></div><div class="resource-grid">${(s.resources||[]).map(r=>`<article class="resource-card"><h4>${esc(r.title)}</h4><ul>${(r.items||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></article>`).join('')}</div></div><div class="form">${step1ScienceFields}</div>
+    <h3>1. 查看已有成果并检查</h3><p class="small">先检查原图和材料，再请同伴提出一条具体意见。没有发现缺点时，说清哪些还没有验证。</p><div class="artifact-list">${previousSheet?artifactHtml(previousSheet,r.artifacts?.[previousSheet.key]):''}</div><div class="form">${checkFields}${peerFields}</div>
+    <h3>2. 学习科学知识并标注应用</h3>${scienceDiagramCardsHtml()}<p class="small">先阅读下面的简明知识卡，再对照教师发放的课堂资料。至少选择一个确实适用于自己设计的知识点；不要只抄名称，要说明它用在图纸的哪个位置、帮助解决什么问题。</p><div class="resource-pack"><div class="resource-pack-head"><span class="eyebrow">科学知识</span><h3>本节可参考的知识点</h3><p class="small">配图和说明全部使用中文；请选择真正能用在自己设计中的知识。</p><img src="/assets/science-guide-zh.svg" alt="中文科学图示：摩擦与防滑、弹性与固定、接触面积与压强、材料结构支撑" style="width:100%;height:auto;border-radius:12px;display:block;margin:12px 0"></div><div class="resource-grid">${(s.resources||[]).map(r=>`<article class="resource-card"><h4>${esc(r.title)}</h4><ul>${(r.items||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></article>`).join('')}</div></div><div class="form">${step1ScienceFields}</div>
     <h3>3. 选择材料并标注用途</h3><p class="small">材料不要求全部使用。请先查看教师提供的材料清单，再选择真正需要的材料，并在学习单和设计图上标出使用位置和用途。</p>${materialBankHtml(s.materials||[])}<div class="form">${step1MaterialFields}</div><h3>4. 上传完成标注的学习单</h3><p class="small">请上传已写明科学知识应用位置、材料选择和用途的学习单照片。纸质学习单原件请保留。</p><div class="artifact-list">${scienceSheet?artifactHtml(scienceSheet,r.artifacts?.[scienceSheet.key]):''}</div>
     <h3>5. 上传完善后的设计图</h3><div class="artifact-list">${designVersion?artifactHtml(designVersion,r.artifacts?.[designVersion.key]):''}</div>
     <div class="w8-counter"><div><strong>AI完整对话轮次</strong><span><b data-w8-exchange-count="task1">${counts1}</b> / ${min1}</span></div><div class="w8-meter"><i style="width:${Math.min(100,counts1/min1*100)}%"></i></div><p class="small">只有学生消息和对应AI回复都成功保存，才计为一轮。历史课次聊天、AI单独回复和未成功获得回复的消息不计入；轮次门槛只用于本节提交，不代表求助质量。</p></div>
@@ -674,16 +691,56 @@ function w8TaskFlowHtml(s,r){
     <p>任务一提交后，到老师处领取材料。根据完善后的设计图制作第一版实体原型。制作过程中遇到真实问题，可以随时向AI求助。</p>
     <div class="notice">制作阶段提交前必须完成至少5轮完整AI对话（你发送一条消息并收到AI回复算一轮）。未完成可以保存进度，下一节课继续制作。</div>
     <div class="form">${step2Fields}</div>${materialBankHtml(s.materials||[])}
-    <h3>原型版本页</h3><p class="small">第一页是V1。实际修改了设计或结构后，点击“迭代”上传V2、V3……逐版记录变化。不要覆盖上一版。若只是记录当前制作进度、设计本身没有变化，请使用下面的“制作进度照片”。</p>
-    <div class="artifact-list">${prototypeVersions?artifactHtml(prototypeVersions,r.artifacts?.[prototypeVersions.key]):''}</div>
+    <h3>原型版本页</h3><p class="small">作品确实发生结构变化后再上传新版本，系统自动编号并保留以前的照片。每个正式版本都需要整体图和戴在手上的照片；只是制作进度时，使用“进度照片”。</p>
+    <div class="artifact-list">${prototypeVersions?artifactHtml(prototypeVersions,r.artifacts?.[prototypeVersions.key]):''}${prototypeWear?artifactHtml(prototypeWear,r.artifacts?.[prototypeWear.key]):''}${prototypeWear?artifactHtml(prototypeWear,r.artifacts?.[prototypeWear.key]):''}</div><p class="small">同一版必须同时保存整体图和佩戴图；尚未完成时可以先保存进度照片，不用冒充正式版本。</p>
     <h3>本节制作进度（非设计迭代）</h3><div class="artifact-list">${buildProgress?artifactHtml(buildProgress,r.artifacts?.[buildProgress.key]):''}</div>
     <div class="w8-counter"><div><strong>AI完整对话轮次</strong><span><b data-w8-exchange-count="task2">${counts2}</b> / ${min2}</span></div><div class="w8-meter"><i style="width:${Math.min(100,counts2/min2*100)}%"></i></div><p class="small">本阶段累计统计；上传V2、V3不需要每次重新累计5轮。只有学生消息和AI回复成功配对才计数；轮次门槛只用于本节提交，不代表求助质量。</p></div>
-    ${done2?'<div class="notice ok">任务二已提交。本节记录已完成；后续课时仍可继续追加新的设计/原型版本。</div>':`<div class="row"><button type="button" class="btn orange" id="submitW8Task2" ${!done1||disabled?'disabled':''}>提交任务二，完成本节记录</button></div><p class="small">提交时平台会检查任务记录、至少一张V1/当前原型版本照片，以及5轮完整AI对话。单独的进度照片可作为补充记录，不能替代V1版本页。未达到条件时仍可保存退出，下一节课继续。</p>`}
+    ${done2?'<div class="notice ok">任务二已提交。本节记录已完成；后续课时仍可继续追加新的设计/原型版本。</div>':`<div class="row"><button type="button" class="btn orange" id="submitW8Task2" ${!done1||disabled?'disabled':''}>提交任务二，完成本节记录</button></div><p class="small">提交时检查真实的原型整体图、对应佩戴图、5轮完整AI对话及本节回顾。只做了部分的可保存进度。未达到条件时仍可保存退出，下一节课继续。</p>`}
   </section>`;
   const exitAction=state.record.submitted_at&&!state.session_locked
     ? '<button type="button" class="btn secondary" id="reopenSession">继续修改本课记录</button>'
     : '<button type="button" class="btn secondary" id="saveAndExit" '+(state.session_locked?'disabled':'')+'>保存进度并退出</button>';
-  return `<section class="card w8-flow-shell"><div class="w8-step-tabs"><button type="button" class="w8-step-tab ${step==='task1'?'active':''} ${done1?'done':''}" id="w8GoTask1">1. 设计完善 ${done1?'✓':''}</button><button type="button" class="w8-step-tab ${step==='task2'?'active':''} ${done1?'':'locked'}" id="w8GoTask2" ${done1?'':'disabled'}>2. 原型制作 ${done2?'✓':''}</button></div>${task1Panel}${task2Panel}<div class="row between w8-save-row"><span id="saveStatus" class="small"></span>${exitAction}</div></section>`;
+  return `<section class="card w8-flow-shell"><div class="w8-step-tabs"><button type="button" class="w8-step-tab ${step==='task1'?'active':''} ${done1?'done':''}" id="w8GoTask1">1. 设计完善 ${done1?'✓':''}</button><button type="button" class="w8-step-tab ${step==='task2'?'active':''} ${done1?'':'locked'}" id="w8GoTask2" ${done1?'':'disabled'}>2. 原型制作 ${done2?'✓':''}</button></div>${task1Panel}${task2Panel}${lessonReviewHtml(s)}<div class="row between w8-save-row"><span id="saveStatus" class="small"></span>${exitAction}</div></section>`;
+}
+
+// 每节课结束前只回顾当前真实对话，不回忆一周前的对话。课中可以随时保存反思，不影响保存未完成任务。
+function lessonReviewHtml(s){
+  if(!s?.task_flow || !['W8','W9','W10','W14','W15'].includes(s.id))return '';
+  const saved=displayTextFields(),disabled=(state.record.submitted_at||state.session_locked)?'disabled':'';
+  const messages=(state.chat_messages||[]).filter(m=>m.role==='assistant' && m.message_id);
+  const chosen=String(saved.lesson_review_reference||'');
+  const selected=messages.filter((m,i)=>i>=messages.length-8 || m.message_id===chosen);
+  const has=messages.length>0;
+  const neutral=state.ai_variant!=='supported';
+  const personal=neutral ? `<p class="small">今天做到了什么、还准备做什么？</p><div class="form">${fieldHtml((s.fields||[]).find(f=>f.key==='lesson_exit_note')||{key:'lesson_exit_note',label:'本节进度简述',required:false},saved.lesson_exit_note||'')}</div>` :
+    `<p class="small">选一段本节真实AI回答，简单写下有没有帮助、你怎样处理，以及下次如何把问题说清楚。</p>
+     ${has?`<label>本节要回顾的AI回答<select data-field="lesson_review_reference" ${disabled}><option value="">选择真实回答</option>${selected.map(m=>`<option value="${esc(m.message_id)}" ${chosen===m.message_id?'selected':''}>${esc(String(m.content||'').slice(0,70))}</option>`).join('')}</select></label>`:
+     `<label>本节未找到可回顾的AI对话<select data-field="lesson_no_history_reason" ${disabled}><option value="">请选择实际原因</option>${['今天没有向AI提问','提问了，但没收到有效回复','平台记录没有显示','其他原因'].map(x=>`<option value="${esc(x)}" ${saved.lesson_no_history_reason===x?'selected':''}>${esc(x)}</option>`).join('')}</select></label>`}
+     <div class="form">${(s.fields||[]).filter(f=>(has?['lesson_review_use','lesson_review_next']:['lesson_review_next']).includes(f.key)).map(f=>fieldHtml(f,saved[f.key]||'')).join('')}</div>`;
+  return `<section class="card lesson-review" id="lessonReview"><span class="eyebrow">下课前</span><h2>回顾今天的AI交流</h2>${personal}
+   <div class="row"><button type="button" class="btn secondary" id="saveLessonReview" ${disabled}>保存本节回顾</button><button type="button" class="btn ghost mini" id="refreshLessonReview">更新本节对话</button><span id="reviewSaveStatus" class="small">${(saved.lesson_review_use||saved.lesson_exit_note)?'已填写':'待填写'}</span></div></section>`;
+}
+function weeklyTaskFlowHtml(s,r){
+  const done1=w8StepDone('task1'),done2=w8StepDone('task2');
+  if(!done1)activeW8Step='task1'; else if(!activeW8Step)activeW8Step='task2';
+  const selected=activeW8Step||'task1',steps=s.task_flow.steps||[],vals=displayTextFields();
+  const panels=steps.map(step=>{
+    const done=w8StepDone(step.key),unlocked=step.key==='task1'||done1,disabled=(state.session_locked||r.submitted_at||done||!unlocked);
+    const fields=(s.fields||[]).filter(f=>f.stage===step.key).map(f=>fieldHtml(f,vals[f.key]||'',disabled)).join('');
+    const related=step.key==='task2'?(s.artifacts||[]).map(a=>artifactHtml(a,r.artifacts?.[a.key])).join(''):'';
+    const count=w8Count(step.key),minimum=Number(step.min_ai_exchanges||0);
+    const message=step.key==='task1'?'查看已保存的成果，按观察事实自检；与同伴复核，再和AI讨论需要解决或验证的事项。':s.subtitle;
+    return `<section class="card w8-step-panel ${selected===step.key?'':'hidden'}">
+      <div class="row between"><h2>${esc(step.label)}</h2><span class="badge">${done?'已完成':'进行中'}</span></div>
+      <p>${esc(message)}</p><div class="form">${fields}</div>
+      ${related?`<div class="artifact-list">${related}</div><p class="small">如产生新版本，请配套上传原型整体图与佩戴图；未改动不必虚构新版本。</p>`:''}
+      <div class="w8-counter"><div><strong>本任务已完成AI问答</strong><span><b data-w8-exchange-count="${step.key}">${count}</b> / ${minimum}</span></div></div>
+      ${done?'<p class="small">本任务已经完成。</p>':`<div class="row"><button type="button" class="btn orange" id="${step.key==='task1'?'submitW8Task1':'submitW8Task2'}" ${disabled?'disabled':''}>${step.key==='task1'?'完成检查，进入本节任务':'完成本节任务'}</button></div>`}
+    </section>`;
+  }).join('');
+  const tabs=`<div class="w8-step-tabs">${steps.map((step,i)=>`<button type="button" class="w8-step-tab ${selected===step.key?'active':''}" id="${step.key==='task1'?'w8GoTask1':'w8GoTask2'}" ${i>0&&!done1?'disabled':''}>${i+1}. ${esc(step.label)} ${w8StepDone(step.key)?'✓':''}</button>`).join('')}</div>`;
+  const exitAction=r.submitted_at&&!state.session_locked?'<button type="button" class="btn secondary" id="reopenSession">继续修改本课记录</button>':`<button type="button" class="btn secondary" id="saveAndExit" ${state.session_locked?'disabled':''}>保存进度并退出</button>`;
+  return `<section class="card w8-flow-shell">${tabs}${panels}${lessonReviewHtml(s)}<div class="row between w8-save-row"><span id="saveStatus" class="small"></span>${exitAction}</div></section>`;
 }
 async function submitW8Step(stepKey){
   if(state.session_locked||state.record.submitted_at)return;
@@ -701,7 +758,7 @@ async function submitW8Step(stepKey){
   }catch(e){alert(e.message);await load(false);}
 }
 function wireTaskFlowControls(){
-  if(state?.session?.id!=='W8'||!state?.session?.task_flow)return;
+  if(!state?.session?.task_flow)return;
   const done1=w8StepDone('task1');
   const t1=document.getElementById('w8GoTask1'),t2=document.getElementById('w8GoTask2');
   if(t1)t1.onclick=()=>{if(!done1){activeW8Step='task1';render();}else{activeW8Step='task1';render();}};
@@ -740,24 +797,24 @@ function render(){
   const s=state.session,r=state.record;
   document.title=`${s.id} ${s.title}`;
   if(state.learning_gate==='orientation'){
-    document.getElementById('app').innerHTML=`<div class="course-header"><span class="eyebrow">${esc(s.id)} · ${esc(s.date)}</span><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div></div>${orientationHtml()}`;
+    document.getElementById('app').innerHTML=`<div class="course-header"><span class="eyebrow">${esc(s.student_label||s.title)}</span><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div></div>${orientationHtml()}`;
     wireOrientation();
     return;
   }
   if(state.task_gate){
-    document.getElementById('app').innerHTML=`<div class="course-header"><span class="eyebrow">${esc(s.id)} · ${esc(s.date)}</span><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div></div>${gateHtml()}`;
+    document.getElementById('app').innerHTML=`<div class="course-header"><span class="eyebrow">${esc(s.student_label||s.title)}</span><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div></div>${gateHtml()}`;
     if(document.getElementById('questionnaireForm')) document.getElementById('questionnaireForm').onsubmit=e=>{e.preventDefault();submitQuestionnaire(state.task_gate==='questionnaire_post'?'post':'pre');};
     if(document.getElementById('refreshAssignment')) document.getElementById('refreshAssignment').onclick=()=>load();
     return;
   }
-  const isW8Flow=s.id==='W8'&&Boolean(s.task_flow);
+  const isW8Flow=Boolean(s.task_flow);
   if(isW8Flow){
     if(!w8StepDone('task1'))activeW8Step='task1';else if(!activeW8Step)activeW8Step='task2';
   }
   document.getElementById('app').innerHTML=`
-    <div class="course-header"><span class="eyebrow">${esc(s.student_label||s.id)} · ${esc(s.date)} · 平台记录 ${esc(s.id)}</span><div class="row between"><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div>${state.session_locked?'<span class="badge big">教师已结束本阶段</span>':r.submitted_at?'<span class="badge big">已标记完成</span>':''}</div></div>
-    <div class="course-grid"><div class="course-main">${taskCard(s)}${carryCard(state.carry_from)}
-      ${isW8Flow?`<form id="taskForm" class="form">${w8TaskFlowHtml(s,r)}</form>`:`<section class="card"><span class="eyebrow">我的任务记录</span><h2>边做边记录，内容会及时自动保存</h2><p class="small">今天没做完就点“保存进度并退出”，下次老师继续开放本任务时，用同一编号和姓名进入即可接着做。完成按钮只是标记你认为本阶段已完成；在老师统一结束并锁定前，即使误点，也可以回来继续修改。</p>${state.session_locked?'<div class="notice"><strong>本阶段已由老师结束并锁定。</strong>现在可以查看已有记录，但不能继续修改。</div>':r.submitted_at?'<div class="notice"><strong>你已将本阶段标记为完成。</strong>如需继续修改，请点击“继续修改”。</div>':''}<form id="taskForm" class="form">${taskFieldsHtml(s)}${bonusTaskHtml(s)}<div class="artifact-list">${s.artifacts.map(a=>artifactHtml(a,r.artifacts?.[a.key])).join('')}</div><div id="saveStatus" class="small"></div><div class="row">${r.submitted_at&&!state.session_locked?'<button type="button" class="btn secondary" id="reopenSession">继续修改</button>':`<button type="button" class="btn secondary" id="saveAndExit" ${state.session_locked?'disabled':''}>保存进度并退出</button><button type="submit" class="btn orange" ${(r.submitted_at||state.session_locked)?'disabled':''}>${state.session_locked?'教师已结束本阶段':'完成本阶段'}</button>`}</div></form></section>`}
+    <div class="course-header"><span class="eyebrow">${esc(s.student_label||s.title)}</span><div class="row between"><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div>${state.session_locked?'<span class="badge big">教师已结束本阶段</span>':r.submitted_at?'<span class="badge big">已标记完成</span>':''}</div></div>
+    <div class="course-grid"><div class="course-main">${isW8Flow?compactTaskHeader(s):taskCard(s)}${carryCard(state.carry_from)}
+      ${isW8Flow?`<form id="taskForm" class="form">${s.id==='W8'?w8TaskFlowHtml(s,r):weeklyTaskFlowHtml(s,r)}</form>`:`<section class="card"><span class="eyebrow">我的任务记录</span><h2>边做边记录，内容会及时自动保存</h2><p class="small">今天没做完就点“保存进度并退出”，下次老师继续开放本任务时，用同一编号和姓名进入即可接着做。完成按钮只是标记你认为本阶段已完成；在老师统一结束并锁定前，即使误点，也可以回来继续修改。</p>${state.session_locked?'<div class="notice"><strong>本阶段已由老师结束并锁定。</strong>现在可以查看已有记录，但不能继续修改。</div>':r.submitted_at?'<div class="notice"><strong>你已将本阶段标记为完成。</strong>如需继续修改，请点击“继续修改”。</div>':''}<form id="taskForm" class="form">${taskFieldsHtml(s)}${bonusTaskHtml(s)}<div class="artifact-list">${s.artifacts.map(a=>artifactHtml(a,r.artifacts?.[a.key])).join('')}</div><div id="saveStatus" class="small"></div><div class="row">${r.submitted_at&&!state.session_locked?'<button type="button" class="btn secondary" id="reopenSession">继续修改</button>':`<button type="button" class="btn secondary" id="saveAndExit" ${state.session_locked?'disabled':''}>保存进度并退出</button><button type="submit" class="btn orange" ${(r.submitted_at||state.session_locked)?'disabled':''}>${state.session_locked?'教师已结束本阶段':'完成本阶段'}</button>`}</div></form></section>`}
     </div><aside class="course-side">${chatPanel()}</aside></div>`;
   wire();
 }
@@ -883,7 +940,7 @@ async function send(){
     state.chat_messages=[...(state.chat_messages||[]),userRow,assistantRow];
     const sentPhase=userRow?.task_context?.task_phase||chatTaskContext().task_phase;
     if(state.task_progress?.ai_exchange_counts && sentPhase){
-      const stepKey=sentPhase==='task1_design'?'task1':sentPhase==='task2_prototype'?'task2':'';
+      const stepKey=state.session.task_flow?.steps?.find(x=>x.task_phase===sentPhase)?.key||'';
       if(stepKey)state.task_progress.ai_exchange_counts[stepKey]=Number(state.task_progress.ai_exchange_counts[stepKey]||0)+1;
     }
     updateW8ExchangeCounter();
@@ -900,11 +957,11 @@ async function send(){
   finally{sending=false;document.getElementById('thinking')?.classList.add('hidden');if(document.getElementById('send'))document.getElementById('send').disabled=false;}
 }
 function wire(){
-  document.querySelectorAll('[data-field]').forEach(x=>{x.addEventListener('focus',()=>{rememberTaskField(x.dataset.field);startTaskFieldTrace(x);});x.addEventListener('input',()=>{rememberTaskField(x.dataset.field);bumpTaskFieldTrace(x);writeLocalDraft(collectFields());queueAutoSave();});x.addEventListener('paste',e=>postTraceEvent('task_field_paste',{field_key:x.dataset.field||'',pasted_chars:String(e.clipboardData?.getData('text')||'').length}));x.addEventListener('blur',()=>{rememberTaskField(x.dataset.field);endTaskFieldTrace(x,'blur');if(!state.record.submitted_at)persistCurrentFields({saveReason:'blur'}).then(()=>setSaveStatus('已自动保存 ✓')).catch(e=>setSaveStatus(`自动保存失败：${e.message}`));});});
+  document.querySelectorAll('[data-field]').forEach(x=>{if(x.tagName==='SELECT')x.addEventListener('change',()=>{writeLocalDraft(collectFields());queueAutoSave();});x.addEventListener('focus',()=>{rememberTaskField(x.dataset.field);startTaskFieldTrace(x);});x.addEventListener('input',()=>{rememberTaskField(x.dataset.field);bumpTaskFieldTrace(x);writeLocalDraft(collectFields());queueAutoSave();});x.addEventListener('paste',e=>postTraceEvent('task_field_paste',{field_key:x.dataset.field||'',pasted_chars:String(e.clipboardData?.getData('text')||'').length}));x.addEventListener('blur',()=>{rememberTaskField(x.dataset.field);endTaskFieldTrace(x,'blur');if(!state.record.submitted_at)persistCurrentFields({saveReason:'blur'}).then(()=>setSaveStatus('已自动保存 ✓')).catch(e=>setSaveStatus(`自动保存失败：${e.message}`));});});
   document.querySelectorAll('[data-artifact]').forEach(x=>x.onchange=()=>uploadArtifact(x));
   if(document.getElementById('saveAndExit'))document.getElementById('saveAndExit').onclick=saveAndExit;
   if(document.getElementById('reopenSession'))document.getElementById('reopenSession').onclick=async()=>{try{await App.api('/session/reopen',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id})});await load();}catch(x){alert(x.message);}};
-  document.getElementById('taskForm').onsubmit=async e=>{e.preventDefault();if(state.session_locked)return;if(state.session.id==='W8'&&state.session.task_flow)return;if(!confirm('确认将本阶段标记为“已完成”吗？\n\n如果今天还没做完，请选择“取消”，再点“保存进度并退出”。\n\n即使误点，在老师统一结束并锁定本阶段前，你仍可以回来点击“继续修改”。'))return;try{cancelQueuedAutoSave();await saveChain;markAiDraftLeft('session_mark_complete');await App.api('/session/submit',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,textFields:collectFields(),saveContext:saveContext('mark_complete')})});clearLocalDraft();await load();}catch(x){alert(x.message);}};
+  document.getElementById('taskForm').onsubmit=async e=>{e.preventDefault();if(state.session_locked)return;if(state.session.task_flow)return;if(!confirm('确认将本阶段标记为“已完成”吗？\n\n如果今天还没做完，请选择“取消”，再点“保存进度并退出”。\n\n即使误点，在老师统一结束并锁定本阶段前，你仍可以回来点击“继续修改”。'))return;try{cancelQueuedAutoSave();await saveChain;markAiDraftLeft('session_mark_complete');await App.api('/session/submit',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,textFields:collectFields(),saveContext:saveContext('mark_complete')})});clearLocalDraft();await load();}catch(x){alert(x.message);}};
   if(document.getElementById('revealUpdate'))document.getElementById('revealUpdate').onclick=revealMidTaskUpdate;
   if(document.getElementById('revealBonus'))document.getElementById('revealBonus').onclick=revealBonusTask;
   if(document.getElementById('revealBonusUpdate'))document.getElementById('revealBonusUpdate').onclick=revealBonusUpdate;
@@ -918,6 +975,22 @@ function wire(){
     msgBox.addEventListener('input',()=>onAiDraftInput(msgBox));
     msgBox.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}};
   }
+  if(document.getElementById('saveLessonReview'))document.getElementById('saveLessonReview').onclick=async()=>{
+    const indicator=document.getElementById('reviewSaveStatus');
+    try{
+      const vals=collectFields();
+      if(state.ai_variant==='supported'){
+        const has=(state.chat_messages||[]).some(m=>m.role==='assistant');
+        if(has&&!String(vals.lesson_review_reference||'').trim())throw new Error('请从本节真实对话中选择一条AI回复。');
+        if(!has&&!String(vals.lesson_no_history_reason||'').trim())throw new Error('请说明本节没有可回顾对话的原因。');
+        if(has&&(!String(vals.lesson_review_use||'').trim()||!String(vals.lesson_review_next||'').trim()))throw new Error('请简短说明AI帮助与下次如何求助。');
+      }else if(!String(vals.lesson_exit_note||'').trim())throw new Error('请写一句今天的实际进度。');
+      await persistCurrentFields({saveReason:'lesson_review'});
+      await postTraceEvent('lesson_review_saved',{message_id:vals.lesson_review_reference||'',reflection_type:state.ai_variant==='supported'?'ai_help_review':'task_progress_review',has_personal_chat:Boolean((state.chat_messages||[]).length)});
+      if(indicator)indicator.textContent='本节回顾已保存 ✓';
+    }catch(e){if(indicator)indicator.textContent=e.message;}
+  };
+  if(document.getElementById('refreshLessonReview'))document.getElementById('refreshLessonReview').onclick=async()=>{try{await persistCurrentFields({saveReason:'refresh_lesson_reflection'});await load();}catch(e){alert(e.message);}};
   wireTaskFlowControls();
   wirePrototypeBook();
   wireChatRevisit();
