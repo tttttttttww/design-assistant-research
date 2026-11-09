@@ -6,24 +6,33 @@ import assert from 'node:assert/strict';
 const {researchService}=await import('../src/services/researchService.js');
 const {getSessionConfig}=await import('../src/config/researchConfig.js');
 
-// No historical chat: standard case is visible, source is explicitly labeled, and the activity can be completed.
+// v11.58 情况B：没有历史对话时不展示统一示例，只按真实情况选择原因即可完成。
 await researchService.createParticipant('S01',{grade:'7',condition:'A'});
 const noChat=await researchService.orientationPublicState('S01','W7');
 assert.equal(noChat.mode,'supported');
 assert.equal(noChat.personal_query_options.length,0);
-assert.equal(noChat.reflection_fallback_case.source,'standard_case');
-assert.ok(noChat.reflection_fallback_case.body.length>=2);
+assert.equal(noChat.has_prior_history,false);
+assert.equal(noChat.reflection_fallback_case,undefined);
 assert.equal(noChat.cards.length,0);
-assert.equal(noChat.case_selection_reason,'no_prior_chat');
+assert.equal(noChat.no_history_reason_options.length,4);
+assert.equal(noChat.checks.every(q=>!('correct' in q)&&!('explanation' in q)),true);
 await researchService.startOrientation('S01','W7');
 const completedSample=await researchService.completeOrientation('S01','W7',{
-  practice_1:1,practice_2:0,personal_ref:'', reflection_difficulty:'原提问要求直接给完整方案，但没有说明具体使用者和困难。',
-  reflection_reply_review:'AI追问使用者困难和已尝试方法；还需要结合实际材料确认。',
-  revised_question:'请根据我描述的具体困难，帮我比较两种局部固定办法，不要直接替我决定整套设计。',
-  reflection_reason:'这样能把问题说具体，并保留我自己比较和选择方案的责任。',
+  practice_1:1,practice_2:0,no_history_reason:'other',no_history_reason_detail:'上次我用的是纸质学习单，没有在平台上提问。',
 });
-assert.equal(completedSample.answers.reflection_source,'standard_case');
+assert.equal(completedSample.answers.reflection_source,'no_prior_chat');
+assert.equal(completedSample.answers.no_history_reason,'other');
+assert.equal(completedSample.answers.no_history_reason_detail,'上次我用的是纸质学习单，没有在平台上提问。');
 assert.equal(completedSample.answers.had_original_question,false);
+assert.equal(completedSample.answers.revised_question,undefined,'学生未看到的字段不得强制生成');
+// 补充说明只有选择“其他原因”时才必填
+await researchService.createParticipant('S03',{grade:'7',condition:'A'});
+await researchService.startOrientation('S03','W7');
+let otherRequired=false;
+try{await researchService.completeOrientation('S03','W7',{practice_1:1,practice_2:1,no_history_reason:'other'});}catch(e){otherRequired=e.status===400;}
+assert.equal(otherRequired,true);
+const plain=await researchService.completeOrientation('S03','W7',{practice_1:1,practice_2:1,no_history_reason:'no_question',no_history_reason_detail:'这段内容不应被保存'});
+assert.equal(plain.answers.no_history_reason_detail,'');
 
 // Has real prior dialogue: the student must choose one actual message and the source is recorded as personal_chat.
 await researchService.createParticipant('S02',{grade:'7',condition:'A'});
@@ -46,4 +55,4 @@ const w11=getSessionConfig('W11'),w12=getSessionConfig('W12');
 assert.ok(w11.fields.some(f=>f.key==='curator_process_evidence'));
 assert.ok(w12.fields.some(f=>f.key==='display_process_check'));
 assert.ok(w11.brief.some(x=>x.includes('原型')&&x.includes('测试')));
-console.log('REFLECTION/CURATOR OK v11.51: personal-chat and standard-case sources distinguished; W11/W12 whole-process exhibition fields present.');
+console.log('REFLECTION/CURATOR OK v11.58: real personal-chat review vs no-history reason branch; other-reason detail conditional; W11/W12 whole-process exhibition fields present.');

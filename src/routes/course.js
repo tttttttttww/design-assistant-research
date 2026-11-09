@@ -39,7 +39,7 @@ router.post('/session/orientation/start', async (req, res) => {
     const settings = await cohortGuard(req, id, res); if (!settings) return;
     if (!settings.session_open || settings.active_session_id !== sid) return res.status(409).json({ error: '当前不是这个课次。' });
     res.json({ orientation: await researchService.startOrientation(id, sid) });
-  } catch (e) { res.status(e.status || 500).json({ error: e.message || '开始平台小练习失败' }); }
+  } catch (e) { res.status(e.status || 500).json({ error: e.message || '打开本节内容失败，请刷新页面重试。' }); }
 });
 
 router.post('/session/orientation/complete', async (req, res) => {
@@ -48,8 +48,10 @@ router.post('/session/orientation/complete', async (req, res) => {
     const sid = String(req.body?.sessionId || '').toUpperCase();
     const settings = await cohortGuard(req, id, res); if (!settings) return;
     if (!settings.session_open || settings.active_session_id !== sid) return res.status(409).json({ error: '当前不是这个课次。' });
-    res.json({ orientation: await researchService.completeOrientation(id, sid, req.body?.answers || {}) });
-  } catch (e) { res.status(e.status || 500).json({ error: e.message || '提交平台小练习失败' }); }
+    const orientation = await researchService.completeOrientation(id, sid, req.body?.answers || {});
+    // 明确返回完成状态，前端据此清除 learning_gate 并进入下一环节；不依赖页面自行猜测。
+    res.json({ orientation, completed: Boolean(orientation.completed_at), learning_gate: '' });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message || '保存失败，请稍后重试。' }); }
 });
 
 router.post('/session/save', async (req, res) => {

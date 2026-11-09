@@ -5,6 +5,7 @@ import {
   aiVariantFor, hiddenAiContext, PROMPT_VERSION_FREE, PROMPT_VERSION_SUPPORTED,
   QUESTIONNAIRE_ITEMS, QUESTIONNAIRE_META, QUESTIONNAIRE_VERSION,
   INTERVENTION_ORIENTATION, INTERVENTION_SUPPORT_CARDS,
+  NO_HISTORY_NOTE, NO_HISTORY_REASON_OPTIONS,
 } from '../config/researchConfig.js';
 import { isTestParticipant, testParticipantCondition, forcedParticipantCondition, hashStudentName } from '../utils/validators.js';
 
@@ -301,23 +302,46 @@ class ResearchService {
         session_id:x.row.prior_sid,message_index:x.row.message_index,
         selection_basis:x.selection_basis,agent_route:x.row.agent_route || '',
       }));
+      // v11.58: 只有真实配对的历史对话才算“有可回顾记录”。没有记录的学生走原因选择分支，
+      // 不再展示系统生成的示例，也不把示例写进学生自己的 displayed_cards。
+      config.has_prior_history = picked.length > 0;
+      config.no_history_note = NO_HISTORY_NOTE;
+      config.no_history_reason_options = NO_HISTORY_REASON_OPTIONS;
     }
     return { session, participant, variant, mode, config };
   }
 
+  // v11.58: 学生端公开状态只包含实际展示、需要作答的内容。
+  // correct / explanation 只留在服务端配置与教师端导出，绝不随 /session/current 下发。
   async orientationPublicState(id, sid) {
     const resolved = await this.orientationConfigFor(id, sid);
     if (!resolved) return null;
     const { mode, config } = resolved;
     const stored = await this.getOrientation(id, sid);
     const compatible = stored?.mode === mode && stored?.orientation_key === config.key ? stored : null;
+    const selectionMeta = compatible?.selection_meta ?? config._selection_meta ?? [];
+    const hasPriorHistory = selectionMeta.length > 0;
+    const storedCards = compatible?.displayed_cards ?? config.cards ?? [];
+    // 旧版本可能在无历史时把统一示例存进 displayed_cards；这里统一过滤掉，避免把示例当成学生自己的对话。
+    const cards = (config.dynamic_personal_queries && !hasPriorHistory) ? [] : storedCards;
+    const answers = compatible?.answers || {};
+    const savedAnswers = {
+      ...Object.fromEntries((config.checks || []).map(item => [item.id, Number.isInteger(answers[item.id]) ? answers[item.id] : null])),
+      personal_ref: String(answers.personal_ref || ''),
+      no_history_reason: String(answers.no_history_reason || ''),
+      no_history_reason_detail: String(answers.no_history_reason_detail || ''),
+      reflection_difficulty: String(answers.reflection_difficulty || ''),
+      reflection_reply_review: String(answers.reflection_reply_review || ''),
+      revised_question: String(answers.revised_question || ''),
+      reflection_reason: String(answers.reflection_reason || ''),
+    };
     return {
       mode,
       key: config.key,
       title: config.title,
       intro: config.intro,
-      cards: compatible?.displayed_cards ?? config.cards ?? [],
-      checks: config.checks || [],
+      cards,
+      checks: (config.checks || []).map(item => ({ id:item.id, question:item.question, options:item.options })),
       acknowledgements: config.acknowledgements || [],
       button: config.button,
       reflection_activity: Boolean(config.reflection_activity),
@@ -325,11 +349,12 @@ class ResearchService {
       previous_session_id: config.previous_session_id || '',
       neutral_label_1: config.neutral_label_1 || '',
       neutral_label_2: config.neutral_label_2 || '',
-      personal_query_options: (compatible?.selection_meta ?? config._selection_meta ?? []).map(x=>({session_id:x.session_id,message_index:x.message_index})),
-      reflection_fallback_case: config.reflection_fallback_case || null,
-      prior_chat_count: compatible?.prior_chat_count ?? config._prior_chat_count ?? null,
-      case_selection_reason: compatible?.case_selection_reason || config._case_selection_reason || '',
+      personal_query_options: selectionMeta.map(x=>({session_id:x.session_id,message_index:x.message_index})),
+      has_prior_history: hasPriorHistory,
+      no_history_note: config.no_history_note || NO_HISTORY_NOTE,
+      no_history_reason_options: config.no_history_reason_options || NO_HISTORY_REASON_OPTIONS,
       neutral_design_note_required: Boolean(config.neutral_design_note_required),
+      saved_answers: savedAnswers,
       started_at: compatible?.started_at || null,
       completed_at: compatible?.completed_at || null,
       duration_seconds: compatible?.duration_seconds ?? null,
@@ -358,7 +383,9 @@ class ResearchService {
       completed_at: null,
       duration_seconds: null,
       answers: {},
-      displayed_cards: config.dynamic_personal_queries ? ((config.cards || []).length ? config.cards : [config.reflection_fallback_case]) : [],
+      // v11.58: 只保存真实展示过的卡片；无历史对话时为空数组，绝不写入统一示例。
+      displayed_cards: config.cards || [],
+      has_prior_history: Boolean(config.has_prior_history),
       selection_meta: config.dynamic_personal_queries ? (config._selection_meta || []) : [],
       prior_chat_count: config._prior_chat_count ?? null,
       case_selection_reason: config._case_selection_reason || '',
@@ -379,6 +406,8 @@ class ResearchService {
 
   async completeOrientation(id, sid, answers = {}) {
     const row = await this.startOrientation(id, sid);
+    // 兼容 v11.57 已开始但未完成的记录：补齐分支标记，不改写原有答案或历史字段。
+    if (typeof row.has_prior_history !== 'boolean') row.has_prior_history = (row.selection_meta || []).length > 0;
     if (row.completed_at) return row;
     const resolved = await this.orientationConfigFor(id, sid);
     const config = resolved?.config;
@@ -386,30 +415,53 @@ class ResearchService {
     const clean = {};
     if (row.mode === 'supported') {
       if(config.reflection_activity) {
-        const ref=String(answers.personal_ref||'').slice(0,80);
-        const allowedRefs=(row.selection_meta||[]).map(x=>`${x.session_id}:${x.message_index}`);
-        if(ref && !allowedRefs.includes(ref))throw Object.assign(new Error('历史提问关联无效。'),{status:400});
-        if(allowedRefs.length && !ref)throw Object.assign(new Error('请从上方真实历史对话中选择一条作为主要回顾对象。'),{status:400});
-        const difficulty=String(answers.reflection_difficulty||'').trim().slice(0,600);
-        const replyReview=String(answers.reflection_reply_review||'').trim().slice(0,600);
-        const revised=String(answers.revised_question||'').trim().slice(0,600);
-        const rationale=String(answers.reflection_reason||'').trim().slice(0,600);
-        if(difficulty.length<4 || replyReview.length<4 || revised.length<6 || rationale.length<6)throw Object.assign(new Error('请完成三个核心回顾：明确问题、判断回复后采取的行动、改写提问并说明理由。'),{status:400});
-        clean.personal_ref=ref;clean.reflection_source=ref?'personal_chat':'standard_case';clean.reflection_difficulty=difficulty;clean.reflection_reply_review=replyReview;clean.revised_question=revised;clean.reflection_reason=rationale;
-        clean.had_original_question=Boolean(ref);
-        clean.prior_chat_count=Number(row.prior_chat_count ?? config._prior_chat_count ?? 0);
-        clean.case_selection_reason=row.case_selection_reason || config._case_selection_reason || '';
-        clean.selected_case_basis=ref?(row.selection_meta||[]).find(x=>`${x.session_id}:${x.message_index}`===ref)?.selection_basis||'':'';
+        // 是否显示回顾表单由服务端保存的 selection_meta 决定，与学生端实际展示的分支一致。
+        // 旧版本记录没有 has_prior_history 字段，用 selection_meta 兼容推导，不改动历史对象。
+        const selectionMeta = row.selection_meta || [];
+        const hasPriorHistory = typeof row.has_prior_history === 'boolean' ? row.has_prior_history : selectionMeta.length > 0;
+        const count=Number(row.prior_chat_count ?? config._prior_chat_count ?? 0);
+        if (hasPriorHistory) {
+          const ref=String(answers.personal_ref||'').slice(0,80);
+          const allowedRefs=selectionMeta.map(x=>`${x.session_id}:${x.message_index}`);
+          if(ref && !allowedRefs.includes(ref))throw Object.assign(new Error('所选对话无效，请重新选择一条。'),{status:400});
+          if(!ref)throw Object.assign(new Error('请先选择一条上次与 AI 的对话。'),{status:400});
+          const difficulty=String(answers.reflection_difficulty||'').trim().slice(0,600);
+          const replyReview=String(answers.reflection_reply_review||'').trim().slice(0,600);
+          const revised=String(answers.revised_question||'').trim().slice(0,600);
+          const rationale=String(answers.reflection_reason||'').trim().slice(0,600);
+          if(difficulty.length<2)throw Object.assign(new Error('请简单写下当时遇到的具体困难。'),{status:400});
+          if(replyReview.length<2)throw Object.assign(new Error('请简单写下AI回复帮到了什么、你后来怎样处理。'),{status:400});
+          if(revised.length<2)throw Object.assign(new Error('请写一句如果再问一次你会怎样问。'),{status:400});
+          if(rationale.length<2)throw Object.assign(new Error('请简单说明为什么这样改。'),{status:400});
+          clean.personal_ref=ref;clean.reflection_source='personal_chat';
+          clean.reflection_difficulty=difficulty;clean.reflection_reply_review=replyReview;clean.revised_question=revised;clean.reflection_reason=rationale;
+          clean.had_original_question=true;
+          clean.prior_chat_count=count;
+          clean.case_selection_reason=row.case_selection_reason || config._case_selection_reason || '';
+          clean.selected_case_basis=selectionMeta.find(x=>`${x.session_id}:${x.message_index}`===ref)?.selection_basis||'';
+        } else {
+          // 情况B：没有可用历史对话。只校验实际展示的原因选项；未展示的字段一律不要求。
+          const reason=String(answers.no_history_reason||'').trim().slice(0,40);
+          if(!NO_HISTORY_REASON_OPTIONS.some(x=>x.value===reason))throw Object.assign(new Error('请选择一个符合自己实际情况的原因。'),{status:400});
+          const detail=String(answers.no_history_reason_detail||'').trim().slice(0,300);
+          if(reason==='other' && detail.length<2)throw Object.assign(new Error('选择了“其他原因”，请简单补充说明。'),{status:400});
+          clean.no_history_reason=reason;
+          clean.no_history_reason_detail=reason==='other'?detail:'';
+          clean.reflection_source='no_prior_chat';
+          clean.had_original_question=false;
+          clean.prior_chat_count=count;
+          clean.case_selection_reason=row.case_selection_reason || config._case_selection_reason || '';
+        }
       }
       for (const item of config.checks || []) {
         const v = Number(answers[item.id]);
         if (!Number.isInteger(v) || v < 0 || v >= item.options.length) {
-          throw Object.assign(new Error('请先完成全部小练习。'), { status: 400 });
+          throw Object.assign(new Error('请先完成全部求助小练习。'), { status: 400 });
         }
         clean[item.id] = v;
       }
       const wrong = (config.checks || []).find(item => clean[item.id] !== Number(item.correct));
-      if (wrong && !config.allow_imperfect_quiz) throw Object.assign(new Error('还有一题需要重新判断，请看完提示后再试一次。'), { status: 422 });
+      if (wrong && !config.allow_imperfect_quiz) throw Object.assign(new Error('还有一题需要再想一想，请重新选择后再试一次。'), { status: 422 });
       if (config.strategy_micro_lesson) {
         clean.strategy_practice_count = (config.checks || []).length;
         clean.strategy_practice_correct_count = (config.checks || []).filter(item => clean[item.id] === Number(item.correct)).length;
@@ -532,7 +584,7 @@ class ResearchService {
     }
     if (slot === 'post') {
       const w10 = await this.getSessionRecord(id, 'W10');
-      if (!w10.submitted_at) throw Object.assign(new Error('请先提交W10正式干预任务，再完成后测问卷。'), { status: 409 });
+      if (!w10.submitted_at) throw Object.assign(new Error('请先完成并提交本节任务，再填写课末小问卷。'), { status: 409 });
     }
     const row = {
       participant_id: id, slot, questionnaire_version: QUESTIONNAIRE_VERSION,
@@ -547,10 +599,12 @@ class ResearchService {
 
   async questionnairePublicState(id, slot) {
     const q = await this.getQuestionnaire(id, slot);
+    // v11.58: source_note 属于教师/研究者说明，不随公开状态下发给学生端。
+    const { title, instruction, scale } = QUESTIONNAIRE_META;
     return {
       slot, submitted: Boolean(q?.submitted_at), submitted_at: q?.submitted_at || null,
       scores: q?.scores || null,
-      meta: QUESTIONNAIRE_META, items: QUESTIONNAIRE_ITEMS,
+      meta: { title, instruction, scale }, items: QUESTIONNAIRE_ITEMS,
     };
   }
 
@@ -559,7 +613,7 @@ class ResearchService {
     const session = getSessionConfig(sid);
     if (!session) throw Object.assign(new Error('课次不存在'), { status: 404 });
     if (session.ai_mode === 'condition' && !participant.is_test && participant.condition === 'unassigned') {
-      throw Object.assign(new Error('正式干预课次尚未设置实验组/对照组，请联系老师。'), { status: 409 });
+      throw Object.assign(new Error('本节内容还在准备中，请稍等老师完成课堂设置。'), { status: 409 });
     }
     if (INTERVENTION_ORIENTATION[sid]) {
       const orientation = await this.orientationPublicState(id, sid);
@@ -569,8 +623,8 @@ class ResearchService {
     }
     if (session.require_questionnaire_before_task) {
       const pre = await this.getQuestionnaire(id, 'pre');
-      if (!pre?.submitted_at) throw Object.assign(new Error('请先完成前测问卷。'), { status: 409 });
-      if (!participant.is_test && participant.condition === 'unassigned') throw Object.assign(new Error('前测已完成，等待老师完成随机分组后再开始正式任务。'), { status: 409 });
+      if (!pre?.submitted_at) throw Object.assign(new Error('请先完成课堂小问卷。'), { status: 409 });
+      if (!participant.is_test && participant.condition === 'unassigned') throw Object.assign(new Error('小问卷已完成，请稍等老师完成课堂设置后再继续。'), { status: 409 });
     }
     return true;
   }
@@ -938,7 +992,7 @@ class ResearchService {
     const config = getSessionConfig(sid);
     const variant = aiVariantFor({ session: config, condition: p.condition, isTest: p.is_test });
     if (variant === 'none') throw Object.assign(new Error('本节课没有AI助手。'), { status: 409 });
-    if (variant === 'unassigned') throw Object.assign(new Error('本课已进入分组阶段，但你的组别尚未配置，请联系老师。'), { status: 409 });
+    if (variant === 'unassigned') throw Object.assign(new Error('本节内容还在准备中，请稍等老师完成课堂设置。'), { status: 409 });
     let s = await this.getChatSession(id, sid);
     if (!s) {
       s = {
@@ -1169,15 +1223,24 @@ class ResearchService {
     let carry = null;
     if (session.carry_from) carry = await this.getSessionRecord(id, session.carry_from);
     const publicParticipant = { ...participant };
-    delete publicParticipant.login_name_hash;
+    // v11.58: 学生端 /session/current 不下发分组编码与研究字段；教师端仍通过独立后台接口读取完整信息。
+    // ai_variant 仅用于前端判断"AI 是否可用"，其取值为技术枚举，学生页面不会展示。
+    for (const key of ['login_name_hash','condition','condition_fixed','condition_fixed_reason','condition_change_history']) delete publicParticipant[key];
+    // v11.58: 仅剥离公开接口中供教师/研究者使用的配置字段；不改动 getSessionConfig 与任何存储对象。
+    const publicSession = (cfg) => {
+      if (!cfg) return null;
+      const out = { ...cfg };
+      for (const key of ['research_role','phase','prompt_context','ai_public_context','source_course','source_note','questionnaire_slot','questionnaire_after_submit','require_questionnaire_before_task','candidate']) delete out[key];
+      return out;
+    };
     return {
-      settings, participant: publicParticipant, session, session_locked, record, questionnaire, task_gate, learning_gate, orientation,
+      settings, participant: publicParticipant, session: publicSession(session), session_locked, record, questionnaire, task_gate, learning_gate, orientation,
       support_card: null, task_progress,
       artifact_versions: await this.getArtifactVersions(id, session.id, record),
       carry_artifact_versions: carry ? await this.getArtifactVersions(id,session.carry_from,carry) : {},
       ai_variant,
       chat_session: chat, chat_messages: messages,
-      carry_from: session.carry_from ? { session: getSessionConfig(session.carry_from), record: carry } : null,
+      carry_from: session.carry_from ? { session: publicSession(getSessionConfig(session.carry_from)), record: carry } : null,
     };
   }
 

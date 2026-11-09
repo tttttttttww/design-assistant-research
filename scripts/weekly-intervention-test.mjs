@@ -21,7 +21,9 @@ const preState=await researchService.orientationPublicState('S01','W5');
 assert.equal(preState.strategy_micro_lesson,true);
 assert.equal(preState.previous_session_id,'W4');
 assert.equal(preState.personal_query_options.length,1);
-assert.equal(preState.case_selection_reason,'personal_EHS_candidate');
+assert.equal(preState.has_prior_history,true);
+assert.equal(preState.checks.every(q=>!('correct' in q)&&!('explanation' in q)),true,'学生端公开状态不得包含正确答案或解析');
+assert.equal(preState.reflection_fallback_case,undefined,'学生端不得下发统一示例');
 await researchService.startOrientation('S01','W5');
 let locked=false;try{await researchService.assertTaskAccess('S01','W5')}catch(e){locked=e.status===409}
 assert.equal(locked,true);
@@ -35,23 +37,28 @@ const w5Prior=await addPair('S01','W5','IHS','我做了两种连接，有哪些�
 const w6State=await researchService.orientationPublicState('S01','W6');
 assert.equal(w6State.personal_query_options.length,1);
 assert.equal(w6State.personal_query_options[0].session_id,'W5');
-assert.equal(w6State.case_selection_reason,'personal_IHS_neutral_review');
+assert.equal(w6State.has_prior_history,true);
 await researchService.startOrientation('S01','W6');
 await researchService.completeOrientation('S01','W6',{practice_1:1,practice_2:0,personal_ref:`W5:${w5Prior.message_index}`,reflection_difficulty:'我的问题已经说了在比较两种连接方式',reflection_reply_review:'AI提到需要检查稳定性，但我还没有测试',revised_question:'两种连接方法在稳固性上应该怎样做对比测试？',reflection_reason:'继续明确需要怎样比较，而不是让AI替我决定'});
-// If prior messages have no valid help request, display an explicitly labeled standard case.
+// v11.58: 没有真实历史对话的学生只选原因，不分析虚构案例，也不填写未展示的回顾文本。
 await researchService.createParticipant('S02',{grade:'7',condition:'A'});
 const noChat=await researchService.orientationPublicState('S02','W5');
-assert.equal(noChat.case_selection_reason,'no_prior_chat');
+assert.equal(noChat.has_prior_history,false);
+assert.equal(noChat.cards.length,0);
+assert.equal(noChat.no_history_reason_options.length,4);
+assert.equal(noChat.reflection_fallback_case,undefined);
 await researchService.startOrientation('S02','W5');
-const fallback=await researchService.completeOrientation('S02','W5',{practice_1:1,practice_2:1,reflection_difficulty:'案例直接索取全部结果',reflection_reply_review:'案例没有真实验证，仍需检查',revised_question:'请帮我比较局部方法有哪些优缺点',reflection_reason:'把要解决的局部需求交代清楚'});
-assert.equal(fallback.answers.reflection_source,'standard_case');
+const fallback=await researchService.completeOrientation('S02','W5',{practice_1:1,practice_2:1,no_history_reason:'no_ai'});
+assert.equal(fallback.answers.reflection_source,'no_prior_chat');
+assert.equal(fallback.answers.no_history_reason,'no_ai');
 assert.equal(fallback.answers.prior_chat_count,0);
+assert.equal(fallback.answers.reflection_difficulty,undefined,'未展示的回顾字段不得被写入');
 // Human IHS overrides mistaken route label, preventing disparaging normal questions.
 await researchService.createParticipant('S03',{grade:'7',condition:'A'});
 const misroute=await addPair('S03','W4','EHS','我想对比固定位置的两个方案','badroute');
 await putMessageCoding({participant_id:'S03',session_id:'W4',message_index:misroute.message_index,help_type:'IHS',process_codes:['H'],primary_process_code:'H',coder:'r1'});
 const corrected=await researchService.orientationPublicState('S03','W5');
-assert.equal(corrected.case_selection_reason,'personal_IHS_neutral_review');
+assert.equal(corrected.has_prior_history,true);
 // A pre-existing work record is never retroactively blocked by a newly added lesson opener.
 await researchService.createParticipant('S07',{grade:'7',condition:'A'});
 await researchService.ensureStarted('S07','W5');
@@ -87,4 +94,4 @@ const archived=await storageService.listObjects('orientation-archives/S08/W7/');
 assert.equal(archived.length,1);
 const archiveText=await storageService.getObject(archived[0].key);
 assert.equal(JSON.parse(archiveText).answers.legacy,'original');
-console.log('WEEKLY INTERVENTION v11.54 PASS: last-session review; wrong quiz accepted as teaching; no-chat & IHS fallbacks; old W4 chat byte-identical; control neutral; prior W7 archived; W11-12 no training.');
+console.log('WEEKLY INTERVENTION v11.58 PASS: real prior-chat review; no-history reason branch; no answer explanations shipped; old W4 chat byte-identical; control neutral; prior W7 archived; W11-12 no training.');

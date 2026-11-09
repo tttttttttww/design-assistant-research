@@ -6,7 +6,9 @@ import { readFile } from 'node:fs/promises';
 const config = getSessionConfig('W8');
 assert.ok(config, 'W8 config exists');
 assert.equal(config.date, '11/9');
-assert.equal(config.student_label, '第6节课 · 正式干预（平台记录 W8）');
+assert.equal(config.id, 'W8', 'W8 内部任务标识与存储映射保持不变');
+assert.equal(config.student_label, '第6节课 · 科学知识与原型制作');
+assert.ok(!/实验组|对照组|正式干预|研究/.test(config.student_label), '学生端标签不得暴露研究设计');
 assert.deepEqual(config.task_flow.steps.map(x => [x.key, x.task_phase, x.min_ai_exchanges]), [
   ['task1', 'task1_design', 10],
   ['task2', 'task2_prototype', 5],

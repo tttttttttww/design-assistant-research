@@ -8,8 +8,8 @@ export const CONDITIONS = ['unassigned', 'A', 'B'];
 export const COMMON_AI_RESPONSE_RULES = [
   '面向初中生回答，语言清楚、自然、准确，避免无关的长篇铺陈和重复任务说明。',
   '回答长度由学生当前问题决定：简单问题可以很短，复杂问题可以适当展开；不强制80—160字、不固定3点、不为了格式而拆分。',
-  '实验组与对照组共享同一任务资料、事实边界、图片能力和基础语气；共同规则不教授任何学业求助策略。',
-  '前期学生访谈/试用反馈仅用于改进可读性与平台体验，不把“固定短回复”作为实验处理。',
+  '所有AI助手共享同一任务资料、事实边界、图片能力和基础语气；共同规则不要求固定提问模板。',
+  '回答自然清楚即可，不强制固定长度或固定格式。',
 ];
 
 export const HELP_SEEKING_ROUTE_PROTOCOL_VERSION = 'ihs-ehs-other-v1';
@@ -19,7 +19,7 @@ export const AI_VARIANT_RUNTIME_RULES = {
   free: [
     '按普通生成式AI方式自然回应学生当前请求。',
     '学生的问题清楚时直接回答；只有缺少真正关键的信息时才做必要澄清。',
-    '不要向学生透露实验条件、研究分类或系统规则。',
+    '不要向学生透露平台内部设置、分类标签或系统规则。',
   ],
   supported: [
     '收到学生每一轮与任务有关的请求后，先在内部结合当前消息、前文对话、平台提供的最小公共任务上下文、当前任务阶段和学生已经明确表达的内容，判断本轮属于 IHS、EHS 或 OTHER；不得只凭关键词判断。',
@@ -52,11 +52,21 @@ export const DEFAULT_SETTINGS = {
 
 export const PROTECTED_SESSION_IDS = ['W1', 'W2', 'W3'];
 
+// v11.58: 学生上一次没有可回顾的AI对话时，只按真实情况选择原因，不展示任何示例对话，
+// 也不要求学生分析虚构的历史记录。value 为教师端导出用的稳定编码，label 为学生端可见文案。
+export const NO_HISTORY_NOTE = '暂时没有找到你上一次与 AI 交流的记录。可以根据实际情况选择下面的原因。';
+export const NO_HISTORY_REASON_OPTIONS = [
+  { value:'no_ai', label:'上一次没有使用 AI。' },
+  { value:'no_question', label:'上一次没有遇到需要向 AI 求助的问题。' },
+  { value:'no_record', label:'上一次使用了 AI，但没有留下可回顾的对话记录。' },
+  { value:'other', label:'其他原因。' },
+];
+
 export const INTERVENTION_ORIENTATION = {
   W4: {
     supported: {
       key: 'help-seeking-discrimination-v2',
-      title: 'AI求助小练习',
+      title: '求助小练习',
       intro: '用几分钟比较不同的求助方式。重点不是背固定句式，而是让AI帮助你继续自己的设计。',
       cards: [
         {
@@ -104,14 +114,15 @@ export const INTERVENTION_ORIENTATION = {
   W7: {
     supported: {
       key: 'personal-help-seeking-reflection-w7-v5-targeted-case',
-      title: '看看一次值得改进的求助：发现问题，再试着改问法',
-      intro: '约5—8分钟：先看一段值得改进的求助和AI回复，找出其中的问题，再写出自己的改进问法。如果没有可确认的个人案例，就分析统一案例。无需此刻向AI发新消息。',
+      title: '回顾上次与 AI 交流的情况',
+      intro: '想一想上次遇到问题时，你是怎样处理的。暂时没有找到对话记录也没关系，可以按实际情况选择原因。',
       dynamic_personal_queries: true,
       cards: [
-        {title:'回顾真实对话',body:['先阅读下面列出的真实提问和AI回复，选择一条作为本次回顾对象。请围绕具体消息回答，不要笼统评价“AI好不好用”。']},
+        {title:'回顾真实对话',body:['先看看你上一次与AI的真实对话，选择一条作为本次回顾对象。']},
       ],
+      // v11.58 起学生端不再展示任何统一示例；此字段仅为兼容 v11.57 及更早的历史记录/导出而保留。
       reflection_fallback_case: {
-        title:'标准练习案例（不是你的真实对话）',
+        title:'统一练习案例（不是你的真实对话）',
         body:[
           '学生：直接给我一个能帮助人画画的完整装置，材料和制作步骤都写好。',
           'AI：我可以帮你分析，但要先了解实际需要。你希望装置帮助使用者完成画画的哪一步？目前最困难的动作是什么？你已经尝试过什么？',
@@ -120,7 +131,7 @@ export const INTERVENTION_ORIENTATION = {
       },
       checks:[],
       reflection_activity:true,
-      button:'保存回顾，进入本节测试任务',
+      button:'保存，进入下一节',
     },
     control: {
       key:'neutral-v1-design-check-w7',
@@ -143,11 +154,15 @@ const WEEKLY_HELP_LESSON_BANK = {"W5":[["已经画好了初稿，但铅笔固定
 const WEEKLY_HELP_CASE_BANK = {"W5":["我想要一个完整的辅助绘画装置，你把所有结构和制作方法直接给我。","AI：可以讨论具体结构。先告诉我你目前设计的目标和最难确定的部分。"],"W6":["我不想自己动手分析了，你直接告诉我最终固定结构和全部制作步骤。","AI：我能先帮你分析现在最容易松脱的一个部位，再由你决定下一步。"],"W7":["你直接告诉我原型是不是成功了，所有测试结论都替我写好。","AI：你已经测试到什么现象？我可以帮你根据记录分析。"],"W8":["不管之前什么问题，请AI直接把第二版方案全部画好，我照抄。","AI：先确认上次测试发现的一个具体问题，再讨论对应修改。"],"W9":["帮我写出完美的测试结果，就说所有问题都解决了。","AI：应依据真实测试记录说明变化和仍存在的不足。"],"W10":["你把最终作品说明全部写好，不用我提供实际数据。","AI：请以你的实际作品与测试记录为依据，我可以帮你检查表达。"]};
 for(const sid of ['W5','W6','W7','W8','W9','W10']) {
   const priorSid=`W${Number(sid.slice(1))-1}`;
+  // correct / explanation 仅用于教师端评分与研究记录；公开 state 会剥离这两个字段，学生端永不返回。
   const promptRows=WEEKLY_HELP_LESSON_BANK[sid].map((entry,i)=>({id:`practice_${i+1}`,question:entry[0],options:entry[1],correct:entry[2],explanation:entry[3]}));
   const fallback=WEEKLY_HELP_CASE_BANK[sid];
   INTERVENTION_ORIENTATION[sid]={
-    supported:{key:`weekly-help-strategy-and-reflection-v1-${sid}`,title:"求助小练习与上次求助回顾",intro:"先练习判断怎样得到真正有用的帮助，再看看上一节课的一次求助；本活动约6—8分钟，提交后继续设计任务。",strategy_micro_lesson:true,allow_imperfect_quiz:true,previous_session_id:priorSid,dynamic_personal_queries:true,reflection_activity:true,checks:promptRows,reflection_fallback_case:{title:"统一练习案例（不是你的历史记录）",body:[`学生：${fallback[0]}`,fallback[1]],source:"standard_case"},button:"保存练习与回顾，开始本节设计任务"},
-    control:{key:`neutral-weekly-readiness-v1-${sid}`,title:"设计任务开始前的记录确认",intro:"请简单核对进度和本次准备完成的工作，然后继续原设计任务。",neutral_design_note_required:true,neutral_label_1:"上一节任务结束时，你完成了哪些具体内容？",neutral_label_2:"这节课你准备优先完成哪一项设计或制作工作？",acknowledgements:[],button:"保存本节准备，进入设计任务"}
+    // key 必须保持 v11.57 原值：已有学生完成后，改 key 会让学习环节重新锁上。
+    supported:{key:`weekly-help-strategy-and-reflection-v1-${sid}`,title:"求助小练习与上次交流回顾",intro:"先完成两道求助小练习，再回顾上次与 AI 交流的情况。选择符合自己实际情况的选项，保存后继续下一项任务。",strategy_micro_lesson:true,allow_imperfect_quiz:true,previous_session_id:priorSid,dynamic_personal_queries:true,reflection_activity:true,checks:promptRows,no_history_note:NO_HISTORY_NOTE,no_history_reason_options:NO_HISTORY_REASON_OPTIONS,
+      // 兼容 v11.57 历史记录保留，但 v11.58 学生端不再展示、不再下发此示例。
+      reflection_fallback_case:{title:"统一练习案例（不是你的历史记录）",body:[`学生：${fallback[0]}`,fallback[1]],source:"standard_case"},button:"保存，进入下一节"},
+    control:{key:`neutral-weekly-readiness-v1-${sid}`,title:"设计任务开始前的记录确认",intro:"请简单核对进度和本次准备完成的工作，然后继续原设计任务。",neutral_design_note_required:true,neutral_label_1:"上一节任务结束时，你完成了哪些具体内容？",neutral_label_2:"这节课你准备优先完成哪一项设计或制作工作？",acknowledgements:[],button:"保存，进入下一节"}
   };
 }
 // W4为既有单次辨析；W5—W10每节为短策略练习＋前一课求助回顾＋正常AI即时反馈。
@@ -176,8 +191,8 @@ export const QUESTIONNAIRE_ITEMS = [
 
 export const QUESTIONNAIRE_META = {
   version: QUESTIONNAIRE_VERSION,
-  title: '设计任务中的生成式AI学业求助意图问卷（候选）',
-  instruction: '在完成设计任务的过程中，你可能会遇到各种困难，也可能会使用生成式AI寻求帮助。请判断在出现下列情况时，你采取相应做法的可能性。没有正确或错误答案，请按真实情况选择。',
+  title: '课堂小问卷：遇到设计困难时我会怎么做',
+  instruction: '下面是课堂设计中可能遇到的情况。请按自己的真实想法选择，没有正确或错误答案。',
   scale: [
     { value:1, label:'极不可能' },
     { value:2, label:'不可能' },
@@ -212,7 +227,7 @@ const artifact = (key, label, options = {}) => ({
 export const SESSIONS = [
   {
     id:'W1', order:1, date:'9/14',
-    title:'椅子快速设计挑战', subtitle:'Pilot｜测试平台、AI使用与数据记录',
+    title:'椅子快速设计挑战', subtitle:'平台试用｜熟悉任务与记录方式',
     student_label:'第1课 · 设计热身', research_role:'pilot', phase:'pilot', ai_mode:'free', candidate:false,
     brief:[
       '小林喜欢坐着画画。画画时，他经常同时使用画本、画笔和水杯。',
@@ -222,7 +237,7 @@ export const SESSIONS = [
     requirements:['至少解决一个真实问题。','功能要能说明大概如何实现。','草图不比画功，只要别人能看懂想法。'],
     fields:[field('need_statement','你认为小林最需要解决的问题是什么？'),field('design_note','用一句话说明你的设计思路')],
     artifacts:[artifact('design_sketch','上传你的设计草图')],
-    prompt_context:'这是Pilot，不进入正式干预效果分析。学生可自由使用普通AI。',
+    prompt_context:'本课是平台试用，学生可自由使用AI设计助手。',
   },
   {
     id:'W2', order:2, date:'9/21',
@@ -322,17 +337,17 @@ export const SESSIONS = [
     artifacts:[],
     ai_use_required_once:false,
     ai_instruction:'本节AI设计助手可用，但不强制提问次数。是否使用、什么时候使用、问什么、是否继续追问，由你自己决定。',
-    prompt_context:'当前是正式分组前的共同AI试用任务。主任务改编自 Stanford d.school 的 Redesign the School Lunch Experience；有时间时可进入 TeachEngineering 的 Marisol 储物柜案例加练。所有学生本节都使用同一个普通AI，不提供实验性学业求助支持。平台已经给出完成任务所需的共同资料，不要求外部检索。AI根据学生实际问题正常帮助，可以解释、比较、给设计想法或反馈；不要主动套用工具性/执行性分类，不要透露研究设计。',
+    prompt_context:'当前是全班共同的AI试用任务。主任务改编自 Stanford d.school 的 Redesign the School Lunch Experience；有时间时可进入 TeachEngineering 的 Marisol 储物柜案例加练。所有学生本节都使用同一个AI设计助手。平台已经给出完成任务所需的共同资料，不要求外部检索。AI根据学生实际问题正常帮助，可以解释、比较、给设计想法或反馈；不要主动套用固定分类，不要提及平台内部设置。',
   },
   {
     id:'W3', order:3, date:'9/28',
-    title:'辅助绘画装置：理解使用者与设计要求', subtitle:'共同准备阶段｜普通AI｜正式干预尚未开始',
+    title:'辅助绘画装置：理解使用者与设计要求', subtitle:'共同准备阶段｜普通AI助手',
     student_label:'第3课 · 正式项目准备', research_role:'pre_intervention', phase:'pre_intervention', ai_mode:'free', candidate:false,
     source_course:'TeachEngineering: An Assistive Artistic Device（Grades 7–8）',
     brief:[
       '进入正式主项目：为手部精细动作受限、难以稳定握笔但希望参与绘画的使用者设计辅助绘画装置。',
-      '本节为两组共同准备阶段：理解使用者需要、明确设计标准和限制条件，并形成至少两个初步方案。',
-      '本节所有学生使用相同普通AI，不提供实验性学业求助支持。',
+      '本节为全班共同准备阶段：理解使用者需要、明确设计标准和限制条件，并形成至少两个初步方案。',
+      '本节所有学生使用相同的AI设计助手。',
     ],
     materials:[
       { group:'支撑 / 成形', items:[{icon:'📦',label:'瓦楞纸板 / 厚卡纸'},{icon:'🧽',label:'普通海绵'},{icon:'🧵',label:'布 / 毛毡片'},{icon:'🪵',label:'雪糕棒'}]},
@@ -355,12 +370,12 @@ export const SESSIONS = [
     artifacts:[artifact('idea_sketch','上传两个初步方案的草图 / 结构示意')],
     ai_use_required_once:false,
     ai_instruction:'本节普通AI全程可用，但不强制提问次数。是否使用、何时使用、问什么由你自己决定。',
-    prompt_context:'正式主项目共同准备阶段。所有学生均使用普通AI，不提供实验性求助支持。',
+    prompt_context:'主项目共同准备阶段。所有学生均使用同一个AI设计助手。',
   },
   {
     id:'W4', order:4, date:'10/12',
-    title:'辅助绘画装置：理解需要、明确要求与纸质原型图', subtitle:'正式干预第1轮｜统一进度节点｜本节不制作',
-    student_label:'第4课 · 正式干预', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false, carry_from:'W3',
+    title:'辅助绘画装置：理解需要、明确要求与纸质原型图', subtitle:'统一进度节点｜本节不制作实体装置',
+    student_label:'第4课 · 设计推进', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false, carry_from:'W3',
     brief:[
       '本节把全班统一推进到同一个节点：理解使用者需要 → 明确设计要求与本版重点 → 绘制第一版纸质原型图（V1）。',
       '如果W3已经有记录，可以直接参考并完善；如果W3没有完成，也可以从本节重新完成。W3原有文字、图片和AI记录不会被本节覆盖。',
@@ -384,8 +399,8 @@ export const SESSIONS = [
       field('prototype_focus','这版V1最想优先解决哪个具体困难？关键结构准备怎样工作？',{placeholder:'简要写即可，主要结构请画在纸质学习单上。'}),
     ],
     artifacts:[artifact('v1_paper_sketch','上传纸质V1原型图照片',{helper:'请把整张纸拍清楚，确保原型图和标注都能看见。纸质原图请保留。'})],
-    ai_instruction:'AI设计助手可用，不强制提问次数。实验组仅在明确EHS时获得条件性支架；对照组使用普通AI。两组AI都只获得相同的最小公共任务背景。',
-    prompt_context:'正式干预W4：理解使用者需要、明确设计要求与V1优先重点，并绘制纸质V1原型图。本节不制作实体装置。W3历史记录保留，仅供学生自行参考。',
+    ai_instruction:'AI设计助手可用，不强制提问次数。遇到具体问题时可以随时提问，AI会结合你说明的情况回答。',
+    prompt_context:'W4：理解使用者需要、明确设计要求与V1优先重点，并绘制纸质V1原型图。本节不制作实体装置。W3历史记录保留，仅供学生自行参考。',
     ai_public_context:{
       task:'为手部精细动作受限、难以稳定握笔但希望参与绘画的使用者设计辅助绘画装置。',
       stage:'理解使用者需要、明确设计要求与V1优先重点，并绘制第一版纸质原型图（V1）；本节不制作实体装置。',
@@ -394,8 +409,8 @@ export const SESSIONS = [
   },
   {
     id:'W5', order:5, date:'10/19',
-    title:'辅助绘画装置：制作前设计审查', subtitle:'正式干预第2轮｜从V1草图到可制作的准备图（本节不制作）',
-    student_label:'第5课 · 正式干预', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false, carry_from:'W4',
+    title:'辅助绘画装置：制作前设计审查', subtitle:'从V1草图到可制作的准备图（本节不制作）',
+    student_label:'第5课 · 设计推进', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false, carry_from:'W4',
     brief:[
       '上一节已经画出了纸质V1原型图；本节先把草图中没有说清楚的结构想明白，再修改为能够指导制作的准备图。',
       '先在平台记录自己的七项设计审查和真正不确定的地方；如有需要可在任何环节向AI求助，不强制问AI，也不强制回看聊天记录。',
@@ -424,18 +439,18 @@ export const SESSIONS = [
     ],
     artifacts:[artifact('w5_preparation_drawing','上传A4制作准备图（含至少一处关键连接放大图）')],
     ai_use_required_once:false,
-    ai_instruction:'学生可自主在设计审查中寻求材料、结构、连接或测试方法帮助。两组AI都能正常回答设计问题；实验组仅在明确执行性求助时触发条件性元认知反馈。不得强制求助、回看聊天或生成整个成品。',
-    prompt_context:'正式干预W5：制作前七项设计审查；完成纸质制作准备图并上传。本节不制作实体。',
+    ai_instruction:'设计审查中可以随时向AI询问材料、结构、连接或测试方法；是否提问、问什么由你自己决定。',
+    prompt_context:'W5：制作前七项设计审查；完成纸质制作准备图并上传。本节不制作实体。',
     ai_public_context:{
       task:'为手部精细动作受限、难以稳定握笔但希望参与绘画的使用者设计辅助绘画装置。',
       stage:'W5制作前设计审查与准备图：铅笔固定、身体连接、部件功能、材料、连接方式、风险、首次测试。本节只审图，不制作。',
-      public_constraints:['两组使用相同九种材料范围：瓦楞纸板/厚卡纸、普通海绵、布/毛毡、雪糕棒、橡皮筋、宽松紧带、魔术贴、小夹子、美纹纸胶带；测试工具仅为铅笔。','学生个人设计、问题和检查结果只能依据学生在聊天中提供的文字或上传图片。','AI正常解释结构和材料，不虚构真实制作或测试；对照组不实施求助类型元认知干预。'],
+      public_constraints:['全班使用相同九种材料范围：瓦楞纸板/厚卡纸、普通海绵、布/毛毡、雪糕棒、橡皮筋、宽松紧带、魔术贴、小夹子、美纹纸胶带；测试工具仅为铅笔。','学生个人设计、问题和检查结果只能依据学生在聊天中提供的文字或上传图片。','AI正常解释结构和材料，不虚构真实制作或测试。'],
     },
   },
   {
     id:'W6', order:6, date:'10/26',
-    title:'辅助绘画装置：制作第一版实体原型', subtitle:'正式干预第3轮｜依据制作准备图尝试制作',
-    student_label:'第6课 · 正式干预', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false, carry_from:'W5',
+    title:'辅助绘画装置：制作第一版实体原型', subtitle:'依据制作准备图尝试制作',
+    student_label:'第6课 · 实物制作', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false, carry_from:'W5',
     brief:['以W5制作准备图为依据，制作第一版低保真实体原型。','优先实现铅笔固定与装置连接等关键功能；材料与加工进度因实际准备情况而定。'],
     requirements:['说明首先制作和验证哪个关键功能。','记录关键连接如何实施，及真实遇到的问题。','如与W5准备图不同，说明变化原因。'],
     fields:[
@@ -450,9 +465,9 @@ export const SESSIONS = [
   },
   {
     id:'W7', order:7, date:'11/2',
-    title:'辅助绘画装置：测试第一版并分析问题', subtitle:'正式干预第4轮｜依据测试证据发现问题',
-    student_label:'第7课 · 正式干预', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false, carry_from:'W6',
-    brief:['用铅笔做一个可观察的功能测试，先写下事实，再讨论原因与下一步修改。','实验组在本课开始前完成一次已标记的个人AI求助回顾；对照组完成同等时长的普通设计测试准备。均不强制课内发送AI问题。'],
+    title:'辅助绘画装置：测试第一版并分析问题', subtitle:'依据测试证据发现问题',
+    student_label:'第7课 · 测试与诊断', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false, carry_from:'W6',
+    brief:['用铅笔做一个可观察的功能测试，先写下事实，再讨论原因与下一步修改。','进入任务前，先花几分钟回顾或确认本节的准备情况；本节不强制向AI提问。'],
     requirements:['先记录V1真实测试现象。','分析关键困难可能由哪里产生。','提出至少一种有依据的修改思路。'],
     fields:[
       field('w7_test_goal','你用铅笔测试什么？怎样测试？'),
@@ -462,13 +477,13 @@ export const SESSIONS = [
     ],
     artifacts:[artifact('w7_test_image','上传V1测试过程或关键现象照片')],
     ai_instruction:'AI可基于学生实际报告的观察提供解释和比较，不能将猜测冒充测试证据。',
-    prompt_context:'W7测试第一版原型并诊断实际问题。实验组开始前完成个人历史求助反思；对照组完成普通设计检查。',
+    prompt_context:'W7测试第一版原型并诊断实际问题。',
     ai_public_context:{task:'为精细动作受限的使用者设计辅助绘画装置。',stage:'W7测试V1、区分观察事实与解释、提出下一步修改。',public_constraints:['仅用铅笔测试，不能通过限制手指模拟障碍。','学生个人测试结果只能依据其实际提供的信息。']},
   },
   {
     id:'W8', order:8, date:'11/9',
     title:'辅助绘画装置：科学知识应用与第一版原型制作', subtitle:'第六节课｜先完善设计，再进入实物制作；未完成内容可保存后续做',
-    student_label:'第6节课 · 正式干预（平台记录 W8）', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false, carry_from:'W7',
+    student_label:'第6节课 · 科学知识与原型制作', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false, carry_from:'W7',
     brief:[
       '任务一：先上传上一节课的任务单/设计记录，阅读教师提供的科学知识材料，在原设计图中加入至少一个科学知识点，并标出具体应用位置和作用。',
       '根据教师发放的材料清单选择本次准备使用的材料，在学习记录中写明材料用途。设计完善过程中可以随时使用右侧AI助手。',
@@ -526,9 +541,9 @@ export const SESSIONS = [
   },
   {
     id:'W9', order:9, date:'11/16',
-    title:'辅助绘画装置：第二版再测试与项目总结', subtitle:'正式干预第6轮｜本任务阶段性整理',
-    student_label:'第9课 · 正式干预', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false, carry_from:'W8',
-    brief:['如果上节课的任务一或任务二尚未完成，先通过上方“查看上一阶段保存记录”核对真实进度，再从当前状态继续完善设计或制作原型；本课是新的W9记录，不回填W8对话轮次，也不把未完成内容写成已完成。','原型完成后，再用尽量可比的办法测试当前作品，比较真实表现并总结仍未解决的问题；没有测试的项目如实标为尚未测试。','如果本课继续修改，可以在版本页追加新图并说明实际变化；旧版本保留，不覆盖。后测问卷移至W10干预结束后。'],
+    title:'辅助绘画装置：第二版再测试与项目总结', subtitle:'本任务阶段性整理',
+    student_label:'第9课 · 再测试与整理', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false, carry_from:'W8',
+    brief:['如果上节课的任务一或任务二尚未完成，先通过上方“查看上一阶段保存记录”核对真实进度，再从当前状态继续完善设计或制作原型；本课是新的W9记录，不回填W8对话轮次，也不把未完成内容写成已完成。','原型完成后，再用尽量可比的办法测试当前作品，比较真实表现并总结仍未解决的问题；没有测试的项目如实标为尚未测试。','如果本课继续修改，可以在版本页追加新图并说明实际变化；旧版本保留，不覆盖。课末小问卷安排在下一课完成后。'],
     requirements:['记录V2实际测试结果。','比较哪些方面改善、未改善或不能确定。','保存最终方案、装置或图纸的真实证据。'],
     fields:[
       field('w9_continuation','如果上一节课的设计或制作还没有完成，今天准备从哪里接着做？（选填）',{required:false}),
@@ -540,18 +555,18 @@ export const SESSIONS = [
       artifact('w9_final_evidence','上传本次修改后的设计/原型新版本',{required:false,helper:'只有设计或结构确实发生变化时才上传新版本。每次新版本都要记录变化内容和形成依据；上一版会保留。',version_questionnaire:true,version_book:true,compare_previous_version:true,book_item_label:'设计/原型'}),
       artifact('w9_progress_evidence','上传当前制作/测试进度照片（仅记录进度）',{required:false,helper:'如果只是继续制作、补充测试证据，设计本身没有形成新版本，请上传到这里；不需要填写设计修改问卷。',progress_only:true}),
     ],
-    ai_instruction:'两组维持正式干预条件；不编造效果数据。',
-    prompt_context:'W9第二版测试与阶段性总结；继续正式干预，不在本课施测后测。',
+    ai_instruction:'AI设计助手继续可用；请依据真实测试情况回答，不编造数据。',
+    prompt_context:'W9第二版测试与阶段性总结。',
     ai_public_context:{task:'为精细动作受限的使用者设计辅助绘画装置。',stage:'W9再测试V2并比较V1/V2证据。',public_constraints:['只使用真实测试观察支持结论；无证据的部分明确标明待验证。']},
   },
   {
     id:'W10', order:10, date:'12/7',
-    title:'辅助绘画装置：最终完善与设计证据整理', subtitle:'正式干预第7轮｜课末进行学业求助倾向后测',
-    student_label:'第10课 · 正式干预＋后测',research_role:'intervention',phase:'intervention',ai_mode:'condition',candidate:false,carry_from:'W9',questionnaire_slot:'post',questionnaire_after_submit:true,
-    brief:['根据此前真实测试记录持续完善原型，整理仍未解决的问题，完成有依据的修改或说明为何暂不修改。','如产生新设计版本，可以继续追加上传并说明变化；此前版本和制作进度照片保留。','总结最终装置/设计图和测试证据；提交本节任务后，按照教师安排填写学业求助倾向后测。'],
-    requirements:['准确说明尚待改进的一个问题或已有充分证据认为无需修改。','记录今天的判断和依据；可以按实际情况上传新的图纸/装置版本。','此课继续原来的实验组/对照组AI条件；不得虚构测试结果。'],
+    title:'辅助绘画装置：最终完善与设计证据整理', subtitle:'课末整理与展示准备',
+    student_label:'第10课 · 最终完善',research_role:'intervention',phase:'intervention',ai_mode:'condition',candidate:false,carry_from:'W9',questionnaire_slot:'post',questionnaire_after_submit:true,
+    brief:['根据此前真实测试记录持续完善原型，整理仍未解决的问题，完成有依据的修改或说明为何暂不修改。','如产生新设计版本，可以继续追加上传并说明变化；此前版本和制作进度照片保留。','总结最终装置/设计图和测试证据；提交本节任务后，按老师安排完成课末小问卷。'],
+    requirements:['准确说明尚待改进的一个问题或已有充分证据认为无需修改。','记录今天的判断和依据；可以按实际情况上传新的图纸/装置版本。','请继续按本节要求使用AI助手；不得虚构测试结果。'],
     fields:[
-      field('w10_issue','综合此前测试，目前最需要保留、验证或修改的问题是什么？'),
+      field('w10_issue','综合已经做过的测试，目前最需要保留、验证或修改的问题是什么？'),
       field('w10_decision','你决定如何处理这个问题？具体做了什么，或为什么暂时不改？'),
       field('w10_evidence','你作出这个决定依据的是哪次观察、测试、对比或其他信息？'),
       field('w10_remaining','仍无法确定的地方是什么？',{required:false}),
@@ -561,16 +576,16 @@ export const SESSIONS = [
       artifact('w10_progress_evidence','上传当前作品/测试进度照片（仅记录进度）',{required:false,helper:'如果只是补充制作或测试记录、设计本身没有形成新版本，请上传到这里；不需要填写设计修改问卷。',progress_only:true}),
     ],
     ai_use_required_once:false,
-    ai_instruction:'同W4–W9持续实验条件。学生可以自由求助；实验组对明确执行性求助给条件性元认知反馈，对照组正常帮助。',
-    prompt_context:'正式干预W10：最终设计证据整理、方案完善；课末候选问卷由老师启用，不向AI泄露分组。',
-    ai_public_context:{task:'根据此前辅助绘画装置的真实测试结果整理并完善设计。',stage:'W10最终修改判断与证据整理。',public_constraints:['两组AI具备同等任务知识能力。','只能依据学生实际描述的测试和图片回答。']},
+    ai_instruction:'AI设计助手继续可用；是否求助、问什么由你自己决定。',
+    prompt_context:'W10：最终设计证据整理、方案完善；课末小问卷由老师安排。',
+    ai_public_context:{task:'根据此前辅助绘画装置的真实测试结果整理并完善设计。',stage:'W10最终修改判断与证据整理。',public_constraints:['只依据学生实际描述和上传图片回答。','所有学生获得相同的任务背景信息。']},
   },
   {
     id:'W11', order:11, date:'12/14',
-    title:'新任务：小小作品策展人——互动展示设计', subtitle:'撤架后相关新任务的求助策略近迁移探索｜两组普通AI｜至少一次实际AI问答',
-    student_label:'第11课 · 相关新任务',research_role:'transfer',phase:'transfer',ai_mode:'free',candidate:false,
+    title:'新任务：小小作品策展人——互动展示设计', subtitle:'互动展示设计｜至少一次实际AI问答',
+    student_label:'第11课 · 新任务：作品策展',research_role:'transfer',phase:'transfer',ai_mode:'free',candidate:false,
     source_course:'本研究设计的成果展示设计任务；不是其他研究的原版迁移测验',
-    brief:['你现在是“小小作品策展人”。你的任务不只是介绍最后的装置，而是设计一种展示，让不了解项目的人看懂：你们为什么开始设计、怎样从需求走到方案、做过哪些测试、依据什么修改，以及最终装置能做什么和还有哪些限制。','展示内容要尽量呈现真实的设计过程：①使用者与真实需求；②问题定义与最初想法；③初稿/原型；④测试中实际观察到的现象；⑤依据证据做出的重要修改；⑥最终装置的功能、使用限制和下一步改进。只展示自己真实保留的证据；缺失的环节可以说明，不要编造。','条件：展示空间约一张课桌；优先使用学校常见纸板、卡纸等材料；展示应清晰、安全、可在现有时间内布置。','这是与原产品设计相关但目标不同的新设计问题；两组都使用普通AI，不提供专门的求助策略提示。','本课至少完成一轮围绕真实展示设计问题的AI问答；这是课堂规定的首轮交互，不能用作学生自主求助意愿增加的证据。'],
+    brief:['你现在是“小小作品策展人”。你的任务不只是介绍最后的装置，而是设计一种展示，让不了解项目的人看懂：你们为什么开始设计、怎样从需求走到方案、做过哪些测试、依据什么修改，以及最终装置能做什么和还有哪些限制。','展示内容要尽量呈现真实的设计过程：①使用者与真实需求；②问题定义与最初想法；③初稿/原型；④测试中实际观察到的现象；⑤依据证据做出的重要修改；⑥最终装置的功能、使用限制和下一步改进。只展示自己真实保留的证据；缺失的环节可以说明，不要编造。','条件：展示空间约一张课桌；优先使用学校常见纸板、卡纸等材料；展示应清晰、安全、可在现有时间内布置。','这是与原作品设计相关但目标不同的新设计问题；AI助手会按你的问题正常回答。','本课至少完成一轮围绕真实展示设计问题的AI问答；可以结合自己的作品和材料条件来判断AI的建议。'],
     requirements:['说明展示面对哪些参观者，以及他们需要理解哪些内容。','规划一条能呈现“需求—构思—原型—测试—修改—最终方案”的展示顺序，使用真实草图、测试记录或不同版本图片作证据。','提出并比较至少两种展示布局/叙事办法，说明为何选择当前方案。','至少进行一次与展示设计困难有关的AI问答并保存原始对话；AI建议必须结合真实作品和材料条件判断，不能把AI生成内容当作已经发生的设计过程。'],
     fields:[
       field('transfer_need','参观者是谁？他们需要看懂什么，为什么？'),
@@ -582,15 +597,15 @@ export const SESSIONS = [
     ],
     artifacts:[artifact('transfer_sketch','上传你的展示设计初稿或展台布局草图')],
     ai_use_required_once:true,
-    ai_instruction:'W11课堂规定至少一次真实AI问答，要求有实际帮助需求；两组普通AI，不能出现实验组专用求助元认知提示。',
-    prompt_context:'W11关联新任务：为原辅助绘画装置设计向参观者解释功能和安全体验的展示方案。普通AI。首轮为课堂要求，不能解释为自发求助。',
+    ai_instruction:'W11课堂规定至少一次真实AI问答，请围绕展示设计中的实际困难提问。',
+    prompt_context:'W11关联新任务：为原辅助绘画装置设计向参观者解释功能和安全体验的展示方案。AI助手按普通方式回答。',
     ai_public_context:{task:'为已经完成的辅助绘画装置设计一张课桌大小的互动展示方案。',stage:'W11新设计目标：参观者需要、约束、方案比较与草图。',public_constraints:['面向不熟悉原项目的参观者。','展示场地约一张课桌。','优先用现有纸板和卡纸等易获得材料，不要求新的复杂实体制作。','展示安全且不需要让他人模拟残障。','AI不得假设学生原作品实际结构或已有的测试结果；必须以学生描述/上传图片为依据。']},
   },
   {
     id:'W12', order:12, date:'12/21',
-    title:'作品策展：方案完善、布置与展示准备', subtitle:'撤架后相关新任务继续｜两组普通AI｜本课对话自愿',
+    title:'作品策展：方案完善、布置与展示准备', subtitle:'作品策展继续｜本课可自愿使用AI',
     student_label:'第12课 · 展示方案完善',research_role:'transfer',phase:'transfer',ai_mode:'free',candidate:false,carry_from:'W11',
-    brief:['依据W11的展示设计草图与实际可用材料，完善一条完整的设计过程展示线，而不只是美化最终作品。让参观者能顺着证据看懂：需求从哪里来、方案怎样形成、原型怎样被测试、哪些观察促成修改、最终结果有什么价值与限制。','需要时可以继续问AI，但本节不强制新增消息；不要为了完成研究而凑提问次数。','将最终辅助绘画装置与过程证据配合展示。若某阶段没有照片或原始记录，可用自己真实记得的情况作说明并标明是回忆，不得把AI生成的内容伪装成当时的真实记录。'],
+    brief:['依据W11的展示设计草图与实际可用材料，完善一条完整的设计过程展示线，而不只是美化最终作品。让参观者能顺着证据看懂：需求从哪里来、方案怎样形成、原型怎样被测试、哪些观察促成修改、最终结果有什么价值与限制。','需要时可以继续问AI，但本节不强制新增消息；不必为了次数重复发送内容相近的问题。','将最终辅助绘画装置与过程证据配合展示。若某阶段没有照片或原始记录，可用自己真实记得的情况作说明并标明是回忆，不得把AI生成的内容伪装成当时的真实记录。'],
     requirements:['检查展示过程是否包含真实的需求、初始构思、原型、测试、重要修改和最终方案证据；缺失环节明确标出。','完成清楚、安全的展示布置计划或纸质过程展板/过程时间线。','继续上传展示方案或展示材料的新版本，填写这版实际修改了什么及原因；误传更正不算设计改进。'],
     fields:[
       field('transfer_revision_w12','和上一版展示方案相比，你实际修改了什么？为什么？如果没改，请说明原因。',{required:false}),
@@ -600,15 +615,15 @@ export const SESSIONS = [
       field('display_evidence','展示时你会用哪条真实测试或修改证据说明装置的功能？',{required:false}),
     ],
     artifacts:[artifact('transfer_final','上传修改后的展示方案、展台布局或图纸',{required:false}),artifact('display_draft','上传展示材料、说明卡或布置照片',{required:false})],
-    ai_instruction:'统一普通AI；学生可自由求助，本节不强制新消息；不教授求助类别或求助策略。',
+    ai_instruction:'AI助手可自由使用，本节不强制新消息；请按你的实际需要提问。',
     prompt_context:'W12延续W11作品策展任务：修改展台设计、准备实际展示；与原辅助绘画装置历史记录分别保存。',
-    ai_public_context:{task:'完善原辅助绘画装置的互动展示设计，并准备展示布置。',stage:'W12依据实际条件修改展示方案。',public_constraints:['两组普通AI，无实验组专用支架。','优先基于学生真实作品、实际材料与真实测试证据；不得虚构功能。']},
+    ai_public_context:{task:'完善原辅助绘画装置的互动展示设计，并准备展示布置。',stage:'W12依据实际条件修改展示方案。',public_constraints:['只依据学生真实作品、实际材料与真实测试证据回答；不得虚构功能。','所有学生获得相同的任务背景信息。']},
   },
   {
     id:'W13', order:13, date:'展示日',
     title:'全校成果展示', subtitle:'课程成果归档',
     student_label:'第13课 · 全校展示', research_role:'presentation', phase:'presentation', ai_mode:'none', candidate:false,
-    brief:['进行课程成果展示并保存最终档案。','本课不作为新的干预或迁移测量。'],
+    brief:['进行课程成果展示并保存最终档案。','本课用于整理和展示完整的设计过程。'],
     requirements:['展示真实的完整设计过程：使用者需求、初始构思、原型、测试、关键修改和最终方案；每一步尽量对应实际草图、照片或记录。','清楚说明装置功能、真实测试结果和仍有限制，不把推测说成测试事实。','保存最终装置、过程展板/时间线和展示材料照片。'],
     fields:[field('presentation_summary','最终展示一句话介绍',{required:false})],
     artifacts:[artifact('final_device_photo','上传最终装置展示照片',{required:false}),artifact('final_poster_photo','上传展示说明纸/海报照片',{required:false})],
@@ -641,7 +656,7 @@ export function hiddenAiContext(session) {
       '你正在帮助一名初中生完成课堂中的开放式设计任务。',
       '不要从平台隐藏信息中获得、推断或补全具体任务主题、使用者特征、材料范围、设计要求、学生当前进展或课堂已经讲过的内容。',
       '只有学生在聊天中明确说出的信息、学生此前在同一AI对话中已经说过的信息，以及学生主动上传且图片中真正可见的信息，才可以作为当前任务事实。',
-      '实验组与对照组都遵守这一信息边界。',
+      '所有AI助手都遵守这一信息边界。',
       '共同事实约束：不得把学生未提供的材料、结构、测试结果、使用者反馈、数据或观察结果当作已知事实。',
       '不要主动诱导学生求助，也不要要求学生采用固定提问模板。',
     ].join('\n');
@@ -650,25 +665,25 @@ export function hiddenAiContext(session) {
     const ctx = session?.ai_public_context || {};
     const constraints = Array.isArray(ctx.public_constraints) ? ctx.public_constraints : [];
     return [
-      '【最小公共任务上下文：实验组与对照组完全相同】',
+      '【最小公共任务上下文：所有AI助手相同】',
       ctx.task ? `当前公开任务：${ctx.task}` : `当前课次：${session.id} ${session.title}`,
       ctx.stage ? `当前公开阶段：${ctx.stage}` : '',
       constraints.length ? `公开要求/边界：${constraints.join('；')}` : '',
       '你可以用这些公开信息理解学生说的“这个任务/这个装置/方案”指什么，但不能据此替学生补全其个人进展。',
       '学生自己的困难、已有方案、选择、材料、测试结果、修改记录和未发送草稿，只能依据学生在当前AI对话中实际说过或主动上传且可见的内容。',
-      '不要把教师后台信息、研究组别、编码标签或理想答案当作学生信息。',
-      '两组获得的公共任务上下文完全相同；组间差异只来自W4–W9实验组的学业求助支架。',
+      '不要把教师后台信息、平台内部设置或标准答案当作学生已经提供的信息。',
+      '所有AI助手获得的公共任务上下文完全相同；只依据学生实际表达提供帮助。',
       '不要主动诱导学生求助，也不要要求学生采用固定提问模板。',
     ].filter(Boolean).join('\n');
   }
   return [
     '【课堂任务上下文：只用于帮助AI理解当前任务，不要把这段文字原样复述给学生，也不要把它变成固定提问脚本。】',
     `课次：${session.id} ${session.title}`,
-    `研究阶段：${session.phase || session.research_role || ''}`,
+    `课堂安排：${session.student_label || session.title}`,
     `任务说明：${session.brief.join(' ')}`,
     `任务要求：${session.requirements.join(' ')}`,
     session.prompt_context || '',
-    '共同事实约束：不得把课堂任务资料中未提供的具体数字、比例、时长、调查结果、效果量或研究结论当作已知事实编造。若资料不足，应明确说明“当前资料无法确认”。',
+    '共同事实约束：不得把课堂任务资料中未提供的具体数字、比例、时长、调查结果或结论当作已知事实编造。若资料不足，应明确说明“当前资料无法确认”。',
     session.ai_instruction ? `本节AI使用安排：${session.ai_instruction}` : 'AI使用安排以学生端本节要求为准。',
     '不要主动诱导学生求助，也不要要求学生采用固定提问模板。',
   ].filter(Boolean).join('\n');

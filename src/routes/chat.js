@@ -35,7 +35,7 @@ async function access(req, id, sid) {
   await researchService.assertTaskAccess(id, sid);
   const state = await researchService.currentState(id);
   if (state.record.submitted_at) throw Object.assign(new Error('你已将本阶段标记为完成。如需继续，请先点击“继续修改”。'), { status: 409 });
-  if (state.ai_variant === 'unassigned') throw Object.assign(new Error('本课已进入分组阶段，但你的组别尚未配置，请联系老师。'), { status: 409 });
+  if (state.ai_variant === 'unassigned') throw Object.assign(new Error('本节内容还在准备中，请稍等老师完成课堂设置。'), { status: 409 });
   return state;
 }
 
@@ -137,9 +137,9 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
 
     const updatedRecord = await researchService.markFirstUserMessage(id, sid);
     const firstStudentTurn = (s.user_turn_count || 0) === 0;
-    const commonResponseRules = `【共同回答表达规则：两组一致】\n${COMMON_AI_RESPONSE_RULES.map(x => `- ${x}`).join('\n')}`;
+    const commonResponseRules = `【共同回答表达规则】\n${COMMON_AI_RESPONSE_RULES.map(x => `- ${x}`).join('\n')}`;
     const variantRules = AI_VARIANT_RUNTIME_RULES[state.ai_variant] || AI_VARIANT_RUNTIME_RULES.free;
-    const variantResponseRules = `【当前AI条件的运行规则】\n${variantRules.map(x => `- ${x}`).join('\n')}`;
+    const variantResponseRules = `【回答规则】\n${variantRules.map(x => `- ${x}`).join('\n')}`;
     const baseTaskContextText = firstStudentTurn ? `${await researchService.hiddenContextForChat(sid)}\n\n` : '';
     const phaseContext = taskContext.task_phase === 'task1_design'
       ? '当前活动阶段：任务一——上传上一课任务单，学习教师提供的科学知识，将至少一个知识点应用到设计图，并选择材料、标注用途。'

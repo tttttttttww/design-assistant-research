@@ -82,16 +82,20 @@ if (!adminHtml.includes('实时AI对话') || !admin.includes('refreshLiveMonitor
 if (!research.includes('condition_change_history') || !research.includes('orientation-archives')) throw new Error('Group-change audit missing');
 if (!cfg.SESSIONS.find(s=>s.id==='W11').title.includes('展示') || !cfg.SESSIONS.find(s=>s.id==='W12').title.includes('展示')) throw new Error('W11-W12 must be related exhibition-design task');
 if (!cfg.INTERVENTION_ORIENTATION.W7.supported.key.includes('weekly-help-strategy-and-reflection')) throw new Error('W7 recurring evidence-based reflection missing');
-if (!cfg.INTERVENTION_ORIENTATION.W7.supported.reflection_fallback_case?.body?.length) throw new Error('W7 standard case for students without personal chat missing');
+// v11.58: 统一示例仅为兼容 v11.57 已存档对象而保留在服务端配置中，绝不随公开状态下发。
+if (!cfg.INTERVENTION_ORIENTATION.W7.supported.reflection_fallback_case?.body?.length) throw new Error('W7 legacy fallback case config missing (kept for v11.57 archive compatibility)');
+if (research.includes('reflection_fallback_case:') || task.includes('reflection_fallback_case')) throw new Error('Legacy fallback case must not be shipped to students');
 if (!cfg.SESSIONS.find(s=>s.id==='W11').fields.some(f=>f.key==='curator_process_evidence')) throw new Error('W11 process-evidence curator field missing');
 if (!cfg.SESSIONS.find(s=>s.id==='W12').fields.some(f=>f.key==='display_process_check')) throw new Error('W12 whole-process exhibit check missing');
-if (!research.includes("clean.reflection_source=ref?'personal_chat':'standard_case'")) throw new Error('Reflection source must be distinguished');
+if (!research.includes("clean.reflection_source='personal_chat'") || !research.includes("clean.reflection_source='no_prior_chat'")) throw new Error('v11.58 personal-chat / no-prior-chat branches must be distinguished');
 if (!adminRoute.includes('reflection_source:a.reflection_source')) throw new Error('W7 reflection source missing from direct CSV export');
-if (!cfg.INTERVENTION_ORIENTATION.W7.supported.reflection_fallback_case?.body?.length) throw new Error('W7 standard case for students without personal chat missing');
+// v11.58: 统一示例仅为兼容 v11.57 已存档对象而保留在服务端配置中，绝不随公开状态下发。
+if (!cfg.INTERVENTION_ORIENTATION.W7.supported.reflection_fallback_case?.body?.length) throw new Error('W7 legacy fallback case config missing (kept for v11.57 archive compatibility)');
+if (research.includes('reflection_fallback_case:') || task.includes('reflection_fallback_case')) throw new Error('Legacy fallback case must not be shipped to students');
 if (!cfg.SESSIONS.find(s=>s.id==='W11').fields.some(f=>f.key==='curator_process_evidence')) throw new Error('W11 process-evidence curator field missing');
 if (!cfg.SESSIONS.find(s=>s.id==='W12').fields.some(f=>f.key==='display_process_check')) throw new Error('W12 whole-process exhibit check missing');
-if (!research.includes("clean.reflection_source=ref?'personal_chat':'standard_case'")) throw new Error('Reflection source must be distinguished');
-console.log('CHECK OK v11.51: W4-W10 intervention; W10 posttest; W11-W12 whole-design-process curator task; W7 focused 3-step reflection with personal-chat/sample-case source labels; historical keys retained.');
+if (!research.includes('hasPriorHistory') || !research.includes('no_history_reason_detail')) throw new Error('v11.58 no-history reason branch missing');
+console.log('CHECK OK (legacy v11.51 baseline): W4-W10 course flow; W10 posttest; W11-W12 exhibition task; personal-chat / no-history branches; historical keys retained.');
 
 for (const sid of ['W5','W6','W7','W8','W9','W10']) {
  const c=cfg.INTERVENTION_ORIENTATION[sid];
@@ -102,3 +106,40 @@ for (const sid of ['W5','W6','W7','W8','W9','W10']) {
 for(const sid of ['W11','W12'])if(cfg.INTERVENTION_ORIENTATION[sid])throw new Error(`Migration should contain no training ${sid}`);
 if(!task.includes('micro-lesson') || !adminRoute.includes("'W5','W6','W7','W8','W9','W10'")) throw new Error('Weekly training UI or research export is missing');
 console.log('CHECK ADDITION v11.54 OK: six recurring mini-lessons and prior-session reviews; W4 history preserved; migration unscaffolded.');
+
+/* ---------------- v11.58 学生端修复校验 ---------------- */
+const taskHtml = await readFile('public/task.html','utf8');
+const studentCss = await readFile('public/css/app.css','utf8');
+const courseRoute = await readFile('src/routes/course.js','utf8');
+const storageSource = await readFile('src/services/storageService.js','utf8');
+const bannedStudentText = /实验组|对照组|正式干预|研究目的|研究数据|研究求助策略|计划内学习|回答只用于研究|等待老师确认实验组|组别尚未配置|正式前测|正式后测/;
+for (const [name, source] of [['public/js/task.js',task],['public/js/index.js',await readFile('public/js/index.js','utf8')],['public/js/common.js',await readFile('public/js/common.js','utf8')],['public/index.html',indexHtml],['public/task.html',taskHtml],['public/css/app.css',studentCss]]) {
+  if (bannedStudentText.test(source)) throw new Error(`Student-facing research wording still present in ${name}`);
+}
+// 学生端不得再出现答案说明入口或字段
+if (/\b解析\b|查看解析|q\.explanation|reflection_fallback_case/.test(task)) throw new Error('Student explanation UI still present in task.js');
+if (research.includes('reflection_fallback_case:') || research.includes('correct:item.correct')) throw new Error('Public orientation state must not ship correct/explanation fields');
+if (research.includes('explanation: config.checks')) throw new Error('Explanation leaked into public state');
+// 学生可见配置文本逐项扫描（教师端研究字段不在此列）
+const visibleCfg = /实验组|对照组|正式干预|研究目的|研究数据|研究求助策略|计划内学习|回答只用于研究|迁移测量|干预第|两组普通AI|两组AI/;
+for (const s of cfg.SESSIONS) {
+  const strings = [s.student_label, s.subtitle, ...(s.brief||[]), ...(s.requirements||[]), s.ai_instruction,
+    ...(s.resources||[]).flatMap(r=>[r.title,...(r.items||[])]),
+    ...(s.fields||[]).flatMap(f=>[f.label,f.placeholder,f.helper]),
+    ...(s.artifacts||[]).flatMap(a=>[a.label,a.helper]),
+    ...(s.task_flow?.steps||[]).map(x=>x.label)].filter(Boolean);
+  for (const text of strings) if (visibleCfg.test(String(text))) throw new Error(`Student-facing config wording in ${s.id}: ${text}`);
+}
+for (const [sid,c] of Object.entries(cfg.INTERVENTION_ORIENTATION)) for (const mode of ['supported','control']) {
+  const x=c[mode]; if(!x) continue;
+  const strings=[x.title,x.intro,x.button,...(x.cards||[]).flatMap(y=>[y.title,...(y.body||[])]),
+    ...(x.checks||[]).flatMap(y=>[y.question,...(y.options||[])]),...(x.acknowledgements||[]),x.neutral_label_1,x.neutral_label_2].filter(Boolean);
+  for(const text of strings) if(visibleCfg.test(String(text))) throw new Error(`Student-facing orientation wording in ${sid}.${mode}: ${text}`);
+}
+if (!cfg.NO_HISTORY_REASON_OPTIONS || cfg.NO_HISTORY_REASON_OPTIONS.length!==4 || cfg.NO_HISTORY_REASON_OPTIONS.at(-1).value!=='other') throw new Error('Four no-history reason options required');
+if (!task.includes('noHistoryReason') || !task.includes('no_history_reason_detail') || !task.includes('has_prior_history')) throw new Error('Student no-history branch missing in task.js');
+if (!task.includes('orientationStartPromise') || !courseRoute.includes('completed: Boolean(orientation.completed_at)')) throw new Error('Save/next-section state handoff missing');
+if (!studentCss.includes('label.micro-option input[type="radio"]') || !studentCss.includes('overflow-wrap:anywhere')) throw new Error('Aligned quiz option CSS missing');
+if (!adminRoute.includes("'no_history_reason'") || !adminRoute.includes("'no_history_reason_detail'")) throw new Error('No-history reasons missing from teacher CSV export');
+if (cfg.SCHEMA_VERSION !== 25 || cfg.SESSIONS.find(s=>s.id==='W8')?.task_flow?.steps?.length!==2 || !storageSource.includes('course-v11-enhanced') || !storageSource.includes('BLOB_STORE_NAME') || !storageSource.includes('EXPERIMENT_RUN_ID')) throw new Error('Storage schema / W8 flow / Blob namespace must remain unchanged');
+console.log('CHECK ADDITION v11.58 OK: quiz layout, no explanation, dual history review branches, save handoff, student wording, teacher export, unchanged schema.');

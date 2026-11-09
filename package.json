@@ -1,6 +1,6 @@
 {
   "name": "design-thinking-help-seeking-platform",
-  "version": "11.57.0",
+  "version": "11.58.0",
   "type": "module",
   "description": "基于原课堂存储接口的合并版：持续求助训练、作品版本、编码导出和只读历史恢复保护",
   "main": "cloud-functions/express/[[default]].js",
@@ -8,7 +8,7 @@
     "start": "node server.js",
     "build": "node scripts/check.mjs",
     "check": "node scripts/check.mjs",
-    "test": "node scripts/smoke.mjs && node scripts/w8-task-flow-test.mjs"
+    "test": "node scripts/smoke.mjs && node scripts/w8-task-flow-test.mjs && node scripts/v1158-student-flow-test.mjs && node scripts/v1158-compatibility-test.mjs && node scripts/weekly-intervention-test.mjs && node scripts/reflection-curator-test.mjs && node scripts/v1156-merge-and-history-test.mjs && node scripts/v1150-data-safety-test.mjs && node scripts/v1149-protocol-test.mjs && node scripts/measurement-test.mjs && node scripts/artifact-history-test.mjs && node scripts/targeted-reflection-test.mjs"
   },
   "dependencies": {
     "@edgeone/pages-blob": "0.0.16",
