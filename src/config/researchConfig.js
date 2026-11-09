@@ -1951,6 +1951,12 @@ for(const session of SESSIONS.filter(x=>Number(x.actual_lesson)>=6&&Number(x.act
     if(f.key==='lesson_exit_note')f.label='今天做了什么？下一步准备做什么？';
   }
   session.ai_instruction='遇到不确定的地方，可以告诉AI你看到的情况，让它帮助分析；最终决定由你自己作出。';
+  // The worn-photo upload documents the same version; do not make students
+  // repeat the prototype change questionnaire on its second photograph.
+  for(const pair of session.paired_artifacts||[]){
+    const wear=session.artifacts.find(a=>a.key===pair.wear);
+    if(wear)wear.version_questionnaire=false;
+  }
   const orient=INTERVENTION_ORIENTATION[session.id];
   if(orient?.supported){
     orient.supported.title='先学一个求助方法';
