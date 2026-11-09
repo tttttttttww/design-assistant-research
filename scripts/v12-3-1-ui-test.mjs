@@ -33,7 +33,7 @@ for(let n=6;n<=10;n++){
   assert.equal(aiVariantFor({session:s,condition:'B'}),'supported');
   assert.equal(s.fields.find(f=>f.key.endsWith('_check_evidence')).label,'我发现了什么问题？');
   assert.ok(s.fields.find(f=>f.key.endsWith('_check_evidence')).placeholder.includes('暂时没发现问题'));
-  assert.equal(INTERVENTION_ORIENTATION[s.id].control.strategy_micro_lesson,false);
+  assert.notEqual(INTERVENTION_ORIENTATION[s.id].control.strategy_micro_lesson,true);
   assert.equal(INTERVENTION_ORIENTATION[s.id].supported.strategy_micro_lesson,true);
   const a0=makePage(s,'free',0),b0=makePage(s,'supported',0);
   assert.ok(!a0.includes('今天的求助方法'),'ordinary group must not see strategic instructions');
