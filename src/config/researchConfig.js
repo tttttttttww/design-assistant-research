@@ -179,6 +179,18 @@ for(const [sid,topic,question,options,correct] of [
   control:{key:'lesson6to10-ready-v1-'+sid,title:'开始今天的任务',intro:'先查看已有成果，再按本节要求完成检查与任务。',cards:[{title:'记录真实情况',body:['没做完可以保存；没有测试过的部分请标明尚未验证。']}],acknowledgements:['我已了解今天的任务安排。'],button:'进入今天的任务'}
  };
 }
+// 第6—10节每课仅在开始前学习一种求助策略；当堂聊天回顾放在课末完成。
+// 旧记录的 orientation_key 不改变，旧版资料仍然可读取。
+for (const [sid,topic,question,options,correct] of [
+ ['W8','先检查，再判断困难','设计图画完了，怎样知道还有没有问题？',['说自己的设计绝对没问题','查看固定位置、佩戴要求和材料，再向AI提出需要确认的事项','让AI直接替自己设计一套'],1],
+ ['W9','说清制作中的现象','固定部位容易松动，怎样求助更有用？',['只说做不出来','说明连接位置、材料和尝试过的办法','让AI直接写好总结'],1],
+ ['W10','利用测试证据追问','AI说结构稳定，但实际画线时会松，应该怎么办？',['保留测试结果并向AI描述具体情况继续分析','相信AI不再检查','把问题删掉'],0],
+ ['W14','比较方法后自己决定','两种固定结构都能做时，怎样利用AI？',['请求比较风险、材料和效果，结合测试自己选择','让AI替我任选一个','只选最美观的'],0],
+ ['W15','核查结论是否有依据','AI说你的作品完全解决问题，但你没验证过，应该：',['直接写进总结','标注尚未验证，并明确下一步检查方法','编造一个效果数据'],1]
+]) INTERVENTION_ORIENTATION[sid]={
+ supported:{key:'lesson-help-v2-'+sid,title:'今天的求助方法',intro:topic+'。看一看情境，选择你认为合理的做法，再开始今天的任务。',strategy_micro_lesson:true,reflection_activity:false,allow_imperfect_quiz:true,cards:[{title:topic,body:['先根据真实作品确认问题，描述已尝试的做法；收到建议后，仍需要自己判断与验证。']}],checks:[{id:'q1',question,options,correct}],button:'开始今天的任务'},
+ control:{key:'lesson-ready-v2-'+sid,title:'今天的任务',intro:'先查看已保存的成果和今天的要求，再完成检查。',cards:[{title:'记录真实情况',body:['做过的如实记录，没做过或没测试的不要填写为已完成。']}],acknowledgements:['我知道要根据实际进度记录。'],button:'开始今天的任务'}
+};
 // W11—W12全体普通AI，无干预前置活动。
 export const INTERVENTION_SUPPORT_CARDS = {};
 
@@ -220,7 +232,6 @@ const field = (key, label, options = {}) => ({
   key,
   label,
   type: options.type || 'textarea',
-  choices: options.choices || [],
   choices: options.choices || [],
   required: options.required !== false,
   placeholder: options.placeholder || '',
@@ -496,7 +507,8 @@ export const SESSIONS = [
     ai_public_context:{task:'为精细动作受限的使用者设计辅助绘画装置。',stage:'W7测试V1、区分观察事实与解释、提出下一步修改。',public_constraints:['仅用铅笔测试，不能通过限制手指模拟障碍。','学生个人测试结果只能依据其实际提供的信息。']},
   },
   {
-    id:'W8', order:8, date:'11/9',
+    id:'W8', order:8, actual_lesson:6, date:'11/9',
+    paired_artifacts:[{overview:'w8_prototype_versions',wear:'w8_wear_versions'}],
     title:'辅助绘画装置：科学知识应用与第一版原型制作', subtitle:'第六节课｜先完善设计，再进入实物制作；未完成内容可保存后续做',
     student_label:'第6节课 · 科学知识与原型制作', research_role:'intervention', phase:'intervention', ai_mode:'condition', candidate:false, carry_from:'W7',
     brief:[
@@ -534,6 +546,7 @@ export const SESSIONS = [
       field('w8_check_evidence','根据图纸或实际材料，你观察到什么？',{stage:'task1'}),
       field('w8_peer','同伴发现什么？若无法互评，说明原因。',{stage:'task1'}),
       field('w8_focus','你最想解决或继续验证的问题是什么？',{stage:'task1'}),
+      field('lesson_no_history_reason','本节无对话时的原因',{stage:'review',required:false}),
       field('lesson_review_reference','选中的本节AI回复编号',{stage:'review',required:false}),
       field('lesson_review_use','AI回复的帮助和我的处理',{stage:'review',required:false}),
       field('lesson_review_next','下次我会怎样更清楚地求助',{stage:'review',required:false}),
