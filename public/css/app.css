@@ -458,3 +458,29 @@ details.admin-extra>section {margin:0!important;border:0!important;box-shadow:no
 .orientation-shell.scaffold-intro .micro-options{display:grid;grid-template-columns:1fr;gap:6px}
 .orientation-shell.scaffold-intro .orientation-actions{margin-top:2px}
 @media(max-width:760px){.orientation-shell.scaffold-intro{padding:14px}.orientation-shell.scaffold-intro>h1{font-size:21px}}
+
+/* v12.3.1: keep two distinct research artifacts but show them as small cards. */
+.wizard-files.mini-evidence-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:12px}
+.mini-evidence-card{background:#fcfdfb;border:1px solid #dde6de;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:9px;min-width:0}
+.mini-evidence-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.mini-evidence-heading strong{font-size:15px;line-height:1.4;color:#183b30}
+.mini-evidence-card .req{white-space:nowrap;font-size:11px}
+.mini-evidence-card p.small{margin:0;color:#67766c;line-height:1.5;font-size:12px}
+.mini-evidence-saved{display:flex;align-items:center;gap:9px;padding:8px;background:#f1f8f3;border-radius:10px}
+.mini-evidence-saved img{width:76px;height:66px;object-fit:contain;background:#fff;border-radius:8px;flex:none}
+.mini-evidence-saved strong{font-size:13px;color:#285840}
+.mini-evidence-saved p{margin:2px 0 0}
+.mini-evidence-empty{padding:12px;background:#f5f7f4;border-radius:9px;color:#66776a;text-align:center;font-size:13px}
+.mini-evidence-card label{font-weight:650;display:grid;gap:5px;font-size:13px}
+.mini-evidence-card textarea{height:66px;min-height:66px;resize:vertical;font-size:13px}
+.mini-evidence-card select{min-height:39px;font-size:13px}
+.mini-evidence-choices{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:0}
+.mini-evidence-file{background:#fff;border:1px solid #bad0c0;border-radius:9px;padding:8px 10px}
+.mini-evidence-file input[type=file]{font-size:13px;width:100%;min-width:0;max-width:100%}
+.mini-evidence-card [data-upload-status]{font-size:12px;color:#5e7366}
+.mini-evidence-history{border-top:1px solid #e3eae5;padding-top:5px;font-size:12px}
+.mini-evidence-history summary{cursor:pointer;color:#395b48}
+.mini-evidence-photos{display:flex;gap:7px;overflow-x:auto;padding:8px 0}
+.mini-evidence-photos img{width:86px;height:75px;object-fit:contain;border-radius:7px;background:white;border:1px solid #e4e8e5}
+@media(max-width:900px){.wizard-files.mini-evidence-grid{grid-template-columns:1fr}}
+@media(max-width:440px){.mini-evidence-choices{grid-template-columns:1fr}}

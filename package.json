@@ -1,15 +1,15 @@
 {
   "name": "design-thinking-help-seeking-platform",
-  "version": "12.3.0",
+  "version": "12.3.1",
   "type": "module",
-  "description": "设计思维工作坊 v12.3：简化图片上传入口，保留第0步求助学习、五步任务和原有数据收集",
+  "description": "设计思维工作坊v12.3.1：A组普通AI/B组求助支架严格区分、清晰问题自检、紧凑成果上传",
   "main": "cloud-functions/express/[[default]].js",
   "scripts": {
     "start": "node server.js",
-    "build": "node scripts/check.mjs && node scripts/v12-2-intervention-test.mjs && node scripts/v12-3-upload-ui-test.mjs",
+    "build": "node scripts/check.mjs && node scripts/v12-2-intervention-test.mjs && node scripts/v12-3-upload-ui-test.mjs && node scripts/v12-3-1-ui-test.mjs",
     "check": "node scripts/check.mjs",
-    "test": "node scripts/check.mjs && node scripts/lesson-6-13-static-test.mjs && node scripts/lesson-wizard-static-test.mjs && node scripts/v12-2-intervention-test.mjs && node scripts/v12-3-upload-ui-test.mjs",
-    "test:course": "node scripts/check.mjs && node scripts/lesson-6-13-static-test.mjs && node scripts/lesson-wizard-static-test.mjs && node scripts/v12-2-intervention-test.mjs && node scripts/v12-3-upload-ui-test.mjs"
+    "test": "node scripts/check.mjs && node scripts/lesson-6-13-static-test.mjs && node scripts/lesson-wizard-static-test.mjs && node scripts/v12-2-intervention-test.mjs && node scripts/v12-3-upload-ui-test.mjs && node scripts/v12-3-1-ui-test.mjs",
+    "test:course": "node scripts/check.mjs && node scripts/lesson-6-13-static-test.mjs && node scripts/lesson-wizard-static-test.mjs && node scripts/v12-2-intervention-test.mjs && node scripts/v12-3-upload-ui-test.mjs && node scripts/v12-3-1-ui-test.mjs"
   },
   "dependencies": {
     "@edgeone/pages-blob": "0.0.16",

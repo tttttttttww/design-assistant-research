@@ -321,6 +321,29 @@ function prototypeVersionBookHtml(a, meta){
     ${artifactUploadPanelHtml(a,versions,carryOptions,recentReplies,false)}
   </div>`;
 }
+function compactW6EvidenceHtml(a,meta){
+  const key=esc(a.key),isDiagram=a.key==='l06_design_version';
+  const versions=state.artifact_versions?.[a.key]||(meta?[meta]:[]);
+  const last=versions[versions.length-1],total=versions.length;
+  const disabled=(state.record.submitted_at||state.session_locked||artifactStepCompleted(a.key))?'disabled':'';
+  const title=isDiagram?'② 完善后的设计图':'① 科学知识与材料学习单';
+  const intro=isDiagram?'标出科学知识应用位置、材料和用途。':'拍一张清晰的学习单照片。';
+  const saved=last?`<div class="mini-evidence-saved"><img src="${artifactUrl(last)}" alt="${esc(title)}已保存的照片" loading="lazy"><div><strong>已保存 ${total} 张</strong><p>内容没有变化，不必重复上传。</p></div></div>`:`<div class="mini-evidence-empty">尚未上传</div>`;
+  const history=total>1?`<details class="mini-evidence-history"><summary>查看之前的 ${total-1} 张照片</summary><div class="mini-evidence-photos">${versions.slice(0,-1).map((v,i)=>`<img src="${artifactUrl(v)}" alt="历史图片${i+1}" loading="lazy">`).join('')}</div></details>`:'';
+  const note=isDiagram?`<label>这次设计图补充或修改了什么？<textarea rows="2" data-artifact-note="${key}" maxlength="250" placeholder="例如：增加了防滑材料，并标出使用位置。" ${disabled}></textarea></label>`:'';
+  const source=isDiagram?`<label>主要参考什么？<select data-artifact-source="${key}" ${disabled}><option value="self">自己观察或测试</option><option value="peer">同伴的意见</option><option value="ai">AI的建议</option><option value="teacher">老师或课堂资料</option><option value="mixed">结合多种来源</option><option value="unknown">还不确定</option></select></label>`:'';
+  const uptake=isDiagram?`<label>AI建议怎么处理？<select data-artifact-ai-role="${key}" ${disabled}><option value="not_used">这次没有参考AI建议</option><option value="direct_adopt">直接采用</option><option value="adapted">修改后采用</option><option value="viewed_not_adopted">看过但没采用</option><option value="unsure">还没决定</option></select></label>`:'';
+  return `<section class="mini-evidence-card" data-artifact-card="${key}">
+    <div class="mini-evidence-heading"><strong>${title}</strong><span class="req">必交</span></div>
+    <p class="small">${intro}</p>${saved}${history}
+    <input type="hidden" data-artifact-kind value="${total?'revision':'draft'}">
+    ${isDiagram?`<input type="hidden" data-artifact-status="${key}" value="${total?'modified':'first_version'}">`:''}
+    ${note}<div class="mini-evidence-choices">${source}${uptake}</div>
+    <label class="mini-evidence-file">选择${isDiagram?'设计图':'学习单'}照片
+      <input type="file" data-artifact="${key}" accept="image/jpeg,image/png,image/webp" ${disabled}></label>
+    <span class="small" data-upload-status="${key}">选择照片后自动保存，旧照片会保留。</span>
+  </section>`;
+}
 function artifactHtml(a, meta){
   const versions=state.artifact_versions?.[a.key] || (meta?[meta]:[]);
   const req=(a.required||artifactRequiredForCurrentFlow(a.key))?'<span class="req">本任务必交</span>':'<span class="optional">选交</span>';
@@ -330,6 +353,7 @@ function artifactHtml(a, meta){
   const carryId=state.carry_from?.session?.id||'';
   const carryVersions=Object.entries(state.carry_artifact_versions||{}).flatMap(([key,entries])=>entries.map((v,i)=>({...v,carry_key:key,ordinal:i+1})));
   const carryOptions=carryVersions.map(v=>`<option value="${esc(`${carryId}:${v.version_id}`)}">${esc(carryId)} · ${esc(v.carry_key)} · ${v.original_order_unknown?'旧图（顺序未知）':`第${v.ordinal}版`}</option>`).join('');
+  if(state.session?.id==='W6' && ['l06_science_learning_sheet','l06_design_version'].includes(a.key))return compactW6EvidenceHtml(a,meta);
   if(a.version_book) return prototypeVersionBookHtml(a,meta);
   if((state.session?.paired_artifacts||[]).some(p=>p.wear===a.key)){
     const gallery=versions.map((v,i)=>`<div class="upload-preview"><img src="${artifactUrl(v)}" alt="第${i+1}版佩戴图"><p class="small">第${i+1}版佩戴图</p></div>`).join('');
@@ -349,14 +373,14 @@ function supportCardHtml(){
   return `<section class="card support-reminder-card"><span class="eyebrow">任务中的小提醒</span><h3>${esc(c.title||'AI求助提醒')}</h3><ul>${(c.lines||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section>`;
 }
 function chatPanel(){
-  const reminder=supportCardHtml();
+  const reminder=state.ai_variant==='supported'?supportCardHtml():'';
   if(state.session.ai_mode==='none') return `${reminder}<section class="card sticky-card"><span class="eyebrow">本节无需AI</span><h2>专注整理与反思</h2><p class="small">本节没有AI对话入口。</p></section>`;
   const variantBlocked=state.ai_variant==='unassigned';
   const variantLabel=state.participant.is_test ? `${id}测试预览` : 'AI设计助手';
   const requiredOnce=Boolean(state.session.ai_use_required_once);
   const activeFlowStep=state.session.task_flow?.steps?.find(x=>x.key===currentW8ChatStep());
   const flowBadge=activeFlowStep?`本阶段至少${Number(activeFlowStep.min_ai_exchanges||0)}轮完整对话`:'';
-  const policyText=state.session.ai_instruction || '本节任务中可以使用AI设计助手，也可以不使用。';
+  const policyText=state.ai_variant==='supported'?(state.session.ai_instruction||'遇到困难时可以向AI求助。'):'你可以使用AI设计助手讨论今天的设计任务。';
   const chatImageEnabled=state.session.chat_image_enabled!==false;
   return `${reminder}<section class="card sticky-card ai-card"><div class="row between"><div><span class="eyebrow">${esc(variantLabel)}</span><h2>AI设计助手</h2></div><span class="badge">${esc(flowBadge|| (requiredOnce?'本节至少使用1次':'可选'))}</span></div>
     ${variantBlocked?'<div class="notice warn">本节内容还在准备中，请稍等老师完成课堂设置。</div>':`<p class="small">${esc(policyText)}</p>
@@ -731,7 +755,7 @@ function lessonReviewHtml(s){
      ${has?`<label>本节要回顾的AI回答<select data-field="lesson_review_reference" ${disabled}><option value="">选择真实回答</option>${selected.map(m=>`<option value="${esc(m.message_id)}" ${chosen===m.message_id?'selected':''}>${esc(String(m.content||'').slice(0,70))}</option>`).join('')}</select></label>`:
      `<label>本节未找到可回顾的AI对话<select data-field="lesson_no_history_reason" ${disabled}><option value="">请选择实际原因</option>${['今天没有向AI提问','提问了，但没收到有效回复','平台记录没有显示','其他原因'].map(x=>`<option value="${esc(x)}" ${saved.lesson_no_history_reason===x?'selected':''}>${esc(x)}</option>`).join('')}</select></label>`}
      <div class="form">${(s.fields||[]).filter(f=>(has?['lesson_review_use','lesson_review_next']:['lesson_review_next']).includes(f.key)).map(f=>fieldHtml(f,saved[f.key]||'')).join('')}</div>`;
-  return `<section class="card lesson-review" id="lessonReview"><span class="eyebrow">下课前</span><h2>回顾今天的AI交流</h2>${personal}
+  return `<section class="card lesson-review" id="lessonReview"><span class="eyebrow">下课前</span><h2>${neutral?'记录今天的任务进度':'回顾今天的AI交流'}</h2>${personal}
    <div class="row"><button type="button" class="btn secondary" id="saveLessonReview" ${disabled}>保存本节回顾</button><button type="button" class="btn ghost mini" id="refreshLessonReview">更新本节对话</button><span id="reviewSaveStatus" class="small">${(saved.lesson_review_use||saved.lesson_exit_note)?'已填写':'待填写'}</span></div></section>`;
 }
 function weeklyTaskFlowHtml(s,r){

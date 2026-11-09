@@ -1943,7 +1943,7 @@ for(const session of SESSIONS.filter(x=>Number(x.actual_lesson)>=6&&Number(x.act
     f.helper='';
   }
   for(const f of session.fields){
-    if(/_check_evidence$/.test(f.key))f.label='我实际看到了什么？（一句话）';
+    if(/_check_evidence$/.test(f.key)){f.label='我发现了什么问题？';f.placeholder='例如：画笔容易滑动；如果暂时没发现问题，就写还有哪里没检查或验证。';}
     if(/_peer$/.test(f.key))f.label='同伴检查后说了什么？（没检查就写原因）';
     if(/_focus$/.test(f.key)&&f.stage==='task1')f.label='今天我最想解决或确认什么？';
     if(f.key==='lesson_review_use')f.label='AI说了什么？我采纳、修改还是没有采用？';
