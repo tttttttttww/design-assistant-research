@@ -967,8 +967,9 @@ class ResearchService {
         }
         // Prototype versions are append-only and every *new* version must have a matching worn photo.
         for(const pair of config.paired_artifacts||[]){
-          const overall=(await this.getArtifactVersions(id,sid,record))[pair.overview]||[];
-          const worn=(await this.getArtifactVersions(id,sid,record))[pair.wear]||[];
+          const versionLists=await this.getArtifactVersions(id,sid,record);
+          const overall=(versionLists[pair.overview]||[]).filter(v=>v.kind!=='correction'&&v.kind!=='progress');
+          const worn=(versionLists[pair.wear]||[]).filter(v=>v.kind!=='correction'&&v.kind!=='progress');
           if(overall.length!==worn.length)
             throw Object.assign(new Error('每个正式原型版本都要上传整体图和佩戴图两张照片。尚未完成请先保存进度。'),{status:400});
         }
