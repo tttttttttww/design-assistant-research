@@ -550,6 +550,7 @@ export const SESSIONS = [
       field('lesson_review_reference','选中的本节AI回复编号',{stage:'review',required:false}),
       field('lesson_review_use','AI回复的帮助和我的处理',{stage:'review',required:false}),
       field('lesson_review_next','下次我会怎样更清楚地求助',{stage:'review',required:false}),
+      field('lesson_no_history_reason','本节没有可回顾对话的原因',{stage:'review',required:false,type:'text'}),
       field('lesson_exit_note','本节实际成果与进度',{stage:'review',required:false}),
       field('w8_proto_issue','任务二｜制作中遇到了什么问题，或接下来还需要解决什么？',{stage:'task2',required:false}),
       // v11.56 legacy keys retained for old records and exports; new W8 flow uses the task1/task2 fields above.
@@ -562,7 +563,7 @@ export const SESSIONS = [
       artifact('w8_science_learning_sheet','任务一｜上传填写完成的科学知识与材料选择学习单',{required:false,helper:'请拍清科学知识点应用位置和所选材料用途的标注。'}),
       artifact('w8_design_version','任务一｜上传加入科学知识并标注材料后的设计图',{required:false,helper:'这是相较上一课设计图完善后的版本。上传前填写修改记录；后续再次修改时继续追加新版本。',version_questionnaire:true,version_book:true,compare_previous_version:true,book_item_label:'设计图'}),
       artifact('w8_prototype_versions','任务二｜第一版原型及后续迭代版本',{required:false,helper:'先上传V1；之后点击“迭代”上传V2、V3……每次设计迭代都保留上一版。',version_questionnaire:true,version_book:true,book_item_label:'原型'}),
-      artifact('w8_wear_versions','任务二｜原型真实佩戴图',{required:false,version_book:true,book_item_label:'佩戴照片',helper:'与本版整体图成对上传，保留各版真实照片。'}),
+      artifact('w8_wear_versions','任务二｜原型真实佩戴图',{required:false,version_book:false,book_item_label:'佩戴照片',helper:'与本版整体图成对上传，保留各版真实照片。'}),
       artifact('w8_build_progress','任务二｜本节制作进度照片（非设计迭代时使用）',{required:false,helper:'仅记录当前制作进度、不代表设计方案改变时上传这里；旧照片不会覆盖。',progress_only:true}),
       artifact('w8_v2_photo','旧版兼容：第二版关键结构照片',{required:false,helper:'历史兼容字段；本节新上传请使用上方“第一版原型及后续迭代版本”。'}),
     ],
@@ -728,6 +729,16 @@ export const SESSIONS = [
         "choices": []
       },
       {
+        "key": "lesson_no_history_reason",
+        "label": "本节没有可回顾对话的原因",
+        "type": "text",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      },
+      {
         "key": "lesson_exit_note",
         "label": "今天实际完成的成果与进度",
         "type": "textarea",
@@ -756,7 +767,7 @@ export const SESSIONS = [
         "required": false,
         "helper": "上传真实照片；已有照片不必反复上传。",
         "version_questionnaire": true,
-        "version_book": true,
+        "version_book": false,
         "progress_only": false,
         "compare_previous_version": true,
         "book_item_label": "原型"
@@ -976,6 +987,16 @@ export const SESSIONS = [
         "choices": []
       },
       {
+        "key": "lesson_no_history_reason",
+        "label": "本节没有可回顾对话的原因",
+        "type": "text",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      },
+      {
         "key": "lesson_exit_note",
         "label": "今天实际完成的成果与进度",
         "type": "textarea",
@@ -1004,7 +1025,7 @@ export const SESSIONS = [
         "required": false,
         "helper": "上传真实照片；已有照片不必反复上传。",
         "version_questionnaire": true,
-        "version_book": true,
+        "version_book": false,
         "progress_only": false,
         "compare_previous_version": true,
         "book_item_label": "原型"
@@ -1225,6 +1246,16 @@ export const SESSIONS = [
         "choices": []
       },
       {
+        "key": "lesson_no_history_reason",
+        "label": "本节没有可回顾对话的原因",
+        "type": "text",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      },
+      {
         "key": "lesson_exit_note",
         "label": "今天实际完成的成果与进度",
         "type": "textarea",
@@ -1253,7 +1284,7 @@ export const SESSIONS = [
         "required": false,
         "helper": "上传真实照片；已有照片不必反复上传。",
         "version_questionnaire": true,
-        "version_book": true,
+        "version_book": false,
         "progress_only": false,
         "compare_previous_version": true,
         "book_item_label": "原型"
@@ -1475,6 +1506,16 @@ export const SESSIONS = [
         "choices": []
       },
       {
+        "key": "lesson_no_history_reason",
+        "label": "本节没有可回顾对话的原因",
+        "type": "text",
+        "required": false,
+        "placeholder": "",
+        "helper": "",
+        "stage": "review",
+        "choices": []
+      },
+      {
         "key": "lesson_exit_note",
         "label": "今天实际完成的成果与进度",
         "type": "textarea",
@@ -1503,7 +1544,7 @@ export const SESSIONS = [
         "required": false,
         "helper": "上传真实照片；已有照片不必反复上传。",
         "version_questionnaire": true,
-        "version_book": true,
+        "version_book": false,
         "progress_only": false,
         "compare_previous_version": true,
         "book_item_label": "原型"
