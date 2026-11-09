@@ -779,6 +779,26 @@ class ResearchService {
     return out;
   }
 
+  // 每节课使用独立的原始保存键，但在学生端按同一作品连续编号。
+  // 只读取上一课版本信息；不修改、删除或重编号既有学生历史对象。
+  async prototypeVersionBase(id, sid, artifactKey) {
+    const current = getSessionConfig(sid);
+    const pair = (current?.paired_artifacts || []).find(p => p.overview===artifactKey || p.wear===artifactKey);
+    const predecessors = current?.prototype_version_predecessors || [];
+    if (!pair || !predecessors.length) return 0;
+    let count = 0;
+    for (const priorSid of predecessors) {
+      const prior = getSessionConfig(priorSid);
+      const priorKey = prior?.paired_artifacts?.[0]?.overview || (priorSid==='W8'?'w8_prototype_versions':'');
+      if (!priorKey) continue;
+      const record = await this.getSessionRecord(id, priorSid);
+      const versions = record.artifact_versions?.[priorKey] || [];
+      const unique = new Set(versions.filter(v=>v?.file_path && v.kind!=='progress').map(v=>v.file_path));
+      if (!unique.size && record.artifacts?.[priorKey]?.file_path) unique.add(record.artifacts[priorKey].file_path);
+      count += unique.size;
+    }
+    return count;
+  }
   async addArtifact(id, sid, artifactKey, meta) {
     await this.assertSessionWritable(sid);
     const config = getSessionConfig(sid);
@@ -808,7 +828,10 @@ class ResearchService {
       if (matchedMessages.length !== requestedAiIds.length) throw Object.assign(new Error('所选择的AI回复中有记录不存在，请重新选择或取消关联。'),{status:400});
     }
     const matched = matchedMessages[0] || null;
-    const version = { ...meta, version_id:randomUUID(), version_no:history.length+1, kind,
+    const priorVersionCount = await this.prototypeVersionBase(id, sid, artifactKey);
+    const historicalMaximum = Math.max(0,...history.map(v=>Number(v.version_no)||0));
+    const nextVersionNumber = Math.max(priorVersionCount+history.length,historicalMaximum)+1;
+    const version = { ...meta, version_id:randomUUID(), version_no:nextVersionNumber, kind,
       change_source:source, change_note:String(meta.change_note||'').slice(0,500),
       modification_status:['first_version','modified','not_modified','tested_no_change'].includes(meta.modification_status)?meta.modification_status:'',
       change_bases:Array.isArray(meta.change_bases)?meta.change_bases.filter(x=>typeof x==='string').slice(0,8):[],
