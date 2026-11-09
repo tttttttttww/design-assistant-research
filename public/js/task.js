@@ -443,14 +443,14 @@ function orientationHtml(){
   if(!o) return '<div class="notice warn">本节内容暂时无法读取，请刷新页面。</div>';
   if(o.reflection_activity && o.mode==='supported') return reflectionOrientationHtml(o);
   const saved=o.saved_answers||{};
-  const cards=(o.cards||[]).map(c=>`<article class="orientation-card"><h3>${esc(c.title||'')}</h3>${(c.body||[]).map(x=>`<p>${esc(x)}</p>`).join('')}${c.example_bad?`<div class="orientation-example muted-example">${esc(c.example_bad)}</div>`:''}${c.example_good?`<div class="orientation-example good-example">${esc(c.example_good)}</div>`:''}</article>`).join('');
+  const cards=(o.cards||[]).map((c,i)=>`<article class="orientation-card"><h3>${esc(c.title||'')}</h3>${(c.body||[]).map(x=>`<p>${esc(x)}</p>`).join('')}${c.example_bad?`<div class="orientation-example muted-example"><strong>不建议这样问：</strong>${esc(c.example_bad)}</div>`:''}${c.example_good?`<div class="orientation-example good-example"><strong>更合适的问法：</strong>${esc(c.example_good)}</div>`:''}</article>`).join('');
   let activity='';
   if(o.mode==='supported' && (o.checks||[]).length){
-    activity=`<div class="orientation-checks"><h3>求助小练习</h3><p class="small">读一读下面的情境，选择你认为更合适的一种做法。</p>${(o.checks||[]).map((q,i)=>quizFieldsetHtml(q,i,saved)).join('')}</div>`;
+    activity=`<div class="orientation-checks"><h3>试一试 · 选择更合适的做法</h3><p class="small">只有一道小练习。完成后进入今天的任务。</p>${(o.checks||[]).map((q,i)=>quizFieldsetHtml(q,i,saved)).join('')}</div>`;
   }else if(o.mode==='control'){
     activity=`<div class="orientation-checks"><h3>确认一下</h3>${o.neutral_design_note_required?`<label>${esc(o.neutral_label_1||'本节你准备观察装置的什么具体表现？')}<textarea id="neutralObservation" rows="3" maxlength="600" placeholder="按真实情况简单填写"></textarea></label><label>${esc(o.neutral_label_2||'如果测试结果与预想不同，你打算先做什么检查？')}<textarea id="neutralNextstep" rows="3" maxlength="600" placeholder="按真实情况简单填写"></textarea></label>`:''}${(o.acknowledgements||[]).map((x,i)=>`<label class="orientation-ack"><input type="checkbox" name="orientation_ack_${i}"><span>${esc(x)}</span></label>`).join('')}</div>`;
   }
-  return `<div class="single-column-page"><section class="card orientation-shell"><span class="eyebrow">进入本节任务前</span><h1>${esc(o.title||'求助小练习')}</h1><p class="lead">${esc(o.intro||'')}</p><div class="orientation-grid">${cards}</div>${activity}<div id="orientationError" class="notice warn hidden" role="alert"></div><div class="orientation-actions"><button class="btn orange" id="completeOrientation" type="button">${esc(o.button||'保存，进入下一节')}</button><span class="small">保存后继续下一项任务</span></div></section></div>`;
+  return `<div class="single-column-page"><section class="card orientation-shell ${o.mode==='supported'?'scaffold-intro':'neutral-intro'}"><span class="eyebrow">第0步 · 进入本节任务前</span><h1>${esc(o.title||'求助小练习')}</h1><p class="lead">${esc(o.intro||'')}</p><div class="orientation-grid">${cards}</div>${activity}<div id="orientationError" class="notice warn hidden" role="alert"></div><div class="orientation-actions"><button class="btn orange" id="completeOrientation" type="button">${esc(o.button||'保存，进入下一节')}</button><span class="small">保存后继续下一项任务</span></div></section></div>`;
 }
 // v11.58: 开始记录与提交记录必须串行，避免异步 start 请求在 complete 之后覆盖答案和完成状态。
 let orientationStartPromise = Promise.resolve();
