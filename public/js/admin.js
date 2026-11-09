@@ -57,6 +57,7 @@ document.getElementById('loginForm').onsubmit = async e => {
     b.classList.remove('hidden');
   }
 };
+document.querySelectorAll('.admin-nav a[href^="#"]').forEach(a=>a.addEventListener('click',()=>{const target=document.querySelector(a.getAttribute('href'));target?.closest('details.admin-extra')?.setAttribute('open','');}));
 document.getElementById('logout').onclick = async () => { await api('/logout', { method: 'POST' }); location.reload(); };
 
 async function loadSettings() {
