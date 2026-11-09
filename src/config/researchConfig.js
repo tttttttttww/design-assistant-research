@@ -1933,6 +1933,48 @@ for(const sid of ['W9','W10','W14','W15']){
 }
 // 已有存储用W8表示实际第6节。保留W6/W7旧课次只供历史读取，勿将其当作目前的第6、7节。
 
+// v12.1: concise, student-readable labels; existing storage keys are unchanged.
+for(const session of SESSIONS.filter(x=>Number(x.actual_lesson)>=6&&Number(x.actual_lesson)<=10)){
+  const lesson=Number(session.actual_lesson);
+  const checks=session.fields.filter(f=>f.stage==='task1'&&f.type==='select'&&/check[123]$/.test(f.key));
+  for(const f of checks){
+    f.choices=['我检查了，暂时没发现问题','我发现一个需要解决的问题','我还没有检查，不确定','我还没做到这一步'];
+    f.placeholder='';
+    f.helper='';
+  }
+  for(const f of session.fields){
+    if(/_check_evidence$/.test(f.key))f.label='我实际看到了什么？（一句话）';
+    if(/_peer$/.test(f.key))f.label='同伴检查后说了什么？（没检查就写原因）';
+    if(/_focus$/.test(f.key)&&f.stage==='task1')f.label='今天我最想解决或确认什么？';
+    if(f.key==='lesson_review_use')f.label='AI说了什么？我采纳、修改还是没有采用？';
+    if(f.key==='lesson_review_next')f.label='下次遇到类似情况，我会怎样问AI？';
+    if(f.key==='lesson_exit_note')f.label='今天做了什么？下一步准备做什么？';
+  }
+  session.ai_instruction='遇到不确定的地方，可以告诉AI你看到的情况，让它帮助分析；最终决定由你自己作出。';
+  const orient=INTERVENTION_ORIENTATION[session.id];
+  if(orient?.supported){
+    orient.supported.title='先学一个求助方法';
+    orient.supported.intro='今天只学一个办法：遇到问题先看事实，说清楚困难，再请AI帮助分析。';
+    orient.supported.cards=[{title:'求助三步',body:['先检查：我看到了什么？','说具体：哪里不确定，试过什么？','再判断：AI的办法适不适合我的作品？']}];
+    orient.supported.button='完成练习，开始任务';
+  }
+  if(orient?.control){
+    orient.control.title='了解今天的任务';
+    orient.control.intro='先看一看已有成果，接着完成检查与今天的任务。';
+    orient.control.cards=[{title:'按真实情况记录',body:['还没完成或没有验证的地方，直接写清楚即可。']}];
+    orient.control.button='开始今天的任务';
+  }
+  if(lesson===6){
+    const renames={
+      l06_science_point:'我选了哪个科学知识？',
+      l06_science_application:'我把它用在设计图哪里？能起什么作用？',
+      l06_material_plan:'我准备使用哪些材料？分别用在哪里？',
+      l06_proto_focus:'我准备先制作哪个部分？',
+      l06_proto_progress:'今天实际做到了哪一步？'
+    };
+    for(const f of session.fields)if(renames[f.key])f.label=renames[f.key];
+  }
+}
 export function getSessionConfig(id) { return SESSIONS.find(s => s.id === id) || null; }
 
 export function aiVariantFor({ session, condition, isTest = false }) {
