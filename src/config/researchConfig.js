@@ -166,6 +166,19 @@ for(const sid of ['W5','W6','W7','W8','W9','W10']) {
   };
 }
 // W4为既有单次辨析；W5—W10每节为短策略练习＋前一课求助回顾＋正常AI即时反馈。
+// 第6—10次：统一短求助指导，历史对话反思在当堂结束前完成，学生不看前一周对话。
+for(const [sid,topic,question,options,correct] of [
+ ['W8','识别尚未发现的问题','设计图画好了，怎样确认仍需检查的地方？',['直接说没有问题','核查固定、材料与佩戴条件，再讨论尚未验证之处','让AI重新画一个成品'],1],
+ ['W9','说明具体问题','固定结构松开，怎样向AI表达？',['说明哪里松开、用了什么材料、试过什么','只说不知道','直接要完整成品'],0],
+ ['W10','根据证据追问','AI说肯定稳定，但测试会松开，应怎么办？',['相信AI','用测试现象核对并追问','删掉测试记录'],1],
+ ['W14','比较不同办法','两种固定办法都可用，怎样询问AI？',['请AI替我决定','比较利弊后结合证据自己判断','忽略现实材料'],1],
+ ['W15','检查结论依据','AI说一个没测过的功能已成功，你应该？',['照写结论','说明尚未验证并设法核查','编测试结果'],1]
+]) {
+ INTERVENTION_ORIENTATION[sid]={
+  supported:{key:'lesson6to10-guidance-v1-'+sid,title:'今天的求助小练习',intro:topic+'。用一个情境练习如何作出判断。',strategy_micro_lesson:true,allow_imperfect_quiz:true,reflection_activity:false,cards:[{title:topic,body:['根据自己的真实成果和检查情况表达问题；听到AI建议后仍需自行验证和决定。']}],checks:[{id:'practice_1',question,options,correct}],button:'进入今天的任务'},
+  control:{key:'lesson6to10-ready-v1-'+sid,title:'开始今天的任务',intro:'先查看已有成果，再按本节要求完成检查与任务。',cards:[{title:'记录真实情况',body:['没做完可以保存；没有测试过的部分请标明尚未验证。']}],acknowledgements:['我已了解今天的任务安排。'],button:'进入今天的任务'}
+ };
+}
 // W11—W12全体普通AI，无干预前置活动。
 export const INTERVENTION_SUPPORT_CARDS = {};
 
@@ -207,6 +220,7 @@ const field = (key, label, options = {}) => ({
   key,
   label,
   type: options.type || 'textarea',
+  choices: options.choices || [],
   choices: options.choices || [],
   required: options.required !== false,
   placeholder: options.placeholder || '',
@@ -493,7 +507,7 @@ export const SESSIONS = [
     ],
     requirements:[
       '任务一：上传上一节课任务单/设计记录；在学习单上标注至少一个科学知识点的应用位置与作用，并标注材料及用途；同步填写平台记录，上传学习单和完善后的设计图。',
-      '任务二：说明第一版原型准备实现的关键功能；领取材料并制作；上传第一版原型或当前制作进度照片。',
+      '任务二：制作原型。正式提交版本时分别上传原型整体图和戴在手上的照片；未完成可保存制作进度。',
       '修改设计图或原型时，说明实际变化及其依据。新版本只追加保存，不覆盖旧版本。',
     ],
     materials:[
@@ -514,6 +528,16 @@ export const SESSIONS = [
       field('w8_material_plan','任务一｜从教师提供的材料中选择你准备使用的材料，并逐一标注用途。',{stage:'task1',placeholder:'材料名称—准备使用的位置—用途。可以选择多种材料。'}),
       field('w8_proto_focus','任务二｜第一版原型准备优先实现哪个关键功能？',{stage:'task2',placeholder:'例如：先实现画笔固定、装置与手/手腕的连接或支撑。'}),
       field('w8_proto_progress','任务二｜目前实际制作到哪一步？已经做出了什么？',{stage:'task2',placeholder:'按真实进度填写；未完成的部分可以写“尚未完成”。'}),
+      field('w8_check1',"设计图是否标出画笔固定位置？",{stage:'task1',type:'select',choices:["符合，已有依据","发现问题","尚未验证","尚未完成"]}),
+      field('w8_check2',"材料能否实现关键连接？",{stage:'task1',type:'select',choices:["符合，已有依据","发现问题","尚未验证","尚未完成"]}),
+      field('w8_check3',"是否考虑佩戴后活动与绘画？",{stage:'task1',type:'select',choices:["符合，已有依据","发现问题","尚未验证","尚未完成"]}),
+      field('w8_check_evidence','根据图纸或实际材料，你观察到什么？',{stage:'task1'}),
+      field('w8_peer','同伴发现什么？若无法互评，说明原因。',{stage:'task1'}),
+      field('w8_focus','你最想解决或继续验证的问题是什么？',{stage:'task1'}),
+      field('lesson_review_reference','选中的本节AI回复编号',{stage:'review',required:false}),
+      field('lesson_review_use','AI回复的帮助和我的处理',{stage:'review',required:false}),
+      field('lesson_review_next','下次我会怎样更清楚地求助',{stage:'review',required:false}),
+      field('lesson_exit_note','本节实际成果与进度',{stage:'review',required:false}),
       field('w8_proto_issue','任务二｜制作中遇到了什么问题，或接下来还需要解决什么？',{stage:'task2',required:false}),
       // v11.56 legacy keys retained for old records and exports; new W8 flow uses the task1/task2 fields above.
       field('w8_revision','旧版字段：V2最重要的实际修改是什么？',{required:false,stage:'legacy'}),
@@ -525,14 +549,15 @@ export const SESSIONS = [
       artifact('w8_science_learning_sheet','任务一｜上传填写完成的科学知识与材料选择学习单',{required:false,helper:'请拍清科学知识点应用位置和所选材料用途的标注。'}),
       artifact('w8_design_version','任务一｜上传加入科学知识并标注材料后的设计图',{required:false,helper:'这是相较上一课设计图完善后的版本。上传前填写修改记录；后续再次修改时继续追加新版本。',version_questionnaire:true,version_book:true,compare_previous_version:true,book_item_label:'设计图'}),
       artifact('w8_prototype_versions','任务二｜第一版原型及后续迭代版本',{required:false,helper:'先上传V1；之后点击“迭代”上传V2、V3……每次设计迭代都保留上一版。',version_questionnaire:true,version_book:true,book_item_label:'原型'}),
+      artifact('w8_wear_versions','任务二｜原型真实佩戴图',{required:false,version_book:true,book_item_label:'佩戴照片',helper:'与本版整体图成对上传，保留各版真实照片。'}),
       artifact('w8_build_progress','任务二｜本节制作进度照片（非设计迭代时使用）',{required:false,helper:'仅记录当前制作进度、不代表设计方案改变时上传这里；旧照片不会覆盖。',progress_only:true}),
       artifact('w8_v2_photo','旧版兼容：第二版关键结构照片',{required:false,helper:'历史兼容字段；本节新上传请使用上方“第一版原型及后续迭代版本”。'}),
     ],
     task_flow:{
       key:'w8_two_stage_design_prototype_v1',
       steps:[
-        {key:'task1',label:'任务一：科学知识应用与设计完善',task_phase:'task1_design',min_ai_exchanges:10,required_fields:['w8_science_point','w8_science_application','w8_material_plan'],artifact_keys:['w8_previous_task_sheet','w8_science_learning_sheet','w8_design_version'],required_artifacts:['w8_previous_task_sheet','w8_science_learning_sheet','w8_design_version']},
-        {key:'task2',label:'任务二：第一版原型制作',task_phase:'task2_prototype',min_ai_exchanges:5,required_fields:['w8_proto_focus','w8_proto_progress'],artifact_keys:['w8_prototype_versions','w8_build_progress','w8_v2_photo'],required_artifacts:['w8_prototype_versions']},
+        {key:'task1',label:'任务一：科学知识应用与设计完善',task_phase:'task1_design',min_ai_exchanges:10,required_fields:['w8_check1','w8_check2','w8_check3','w8_check_evidence','w8_peer','w8_focus','w8_science_point','w8_science_application','w8_material_plan'],artifact_keys:['w8_previous_task_sheet','w8_science_learning_sheet','w8_design_version'],required_artifacts:['w8_previous_task_sheet','w8_science_learning_sheet','w8_design_version']},
+        {key:'task2',label:'任务二：第一版原型制作',task_phase:'task2_prototype',min_ai_exchanges:5,required_fields:['w8_proto_focus','w8_proto_progress'],artifact_keys:['w8_prototype_versions','w8_build_progress','w8_v2_photo'],required_artifacts:['w8_prototype_versions','w8_wear_versions']},
       ],
     },
     ai_use_required_once:false,
@@ -1846,4 +1871,6 @@ export function hiddenAiContext(session) {
     session.ai_instruction ? `本节AI使用安排：${session.ai_instruction}` : 'AI使用安排以学生端本节要求为准。',
     '不要主动诱导学生求助，也不要要求学生采用固定提问模板。',
   ].filter(Boolean).join('\n');
-}
+}     actual_lesson:6,
+     paired_artifacts:[{overview:'w8_prototype_versions',wear:'w8_wear_versions'}],
+
