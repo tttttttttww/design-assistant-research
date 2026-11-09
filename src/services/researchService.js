@@ -949,11 +949,13 @@ class ResearchService {
       const variant=aiVariantFor({session:config,condition:person.condition,isTest:person.is_test});
       if(variant==='supported'){
         const msgs=await this.getMessages(id,sid);
-        const refs=new Set(msgs.filter(m=>m.role==='assistant').map(m=>String(m.message_id||'')));
+        const phases=new Set((config.task_flow?.steps||[]).map(x=>x.task_phase));
+        const refs=new Set(msgs.filter(m=>m.role==='assistant'&&phases.has(m.task_context?.task_phase)).map(m=>String(m.message_id||'')));
+        const hasActualChat=refs.size>0;
         const ref=String(record.text_fields?.lesson_review_reference||'').trim();
         if(refs.size && !refs.has(ref))throw Object.assign(new Error('请先在本节回顾中选一段真实的AI回复。'),{status:400});
         if(!refs.size && !String(record.text_fields?.lesson_no_history_reason||'').trim())throw Object.assign(new Error('没有可回顾的对话时，请记录原因。'),{status:400});
-        if(!String(record.text_fields?.lesson_review_use||'').trim() || !String(record.text_fields?.lesson_review_next||'').trim())throw Object.assign(new Error('请先完成简短的本节求助回顾，再提交。'),{status:400});
+        if(hasActualChat&&(!String(record.text_fields?.lesson_review_use||'').trim()||!String(record.text_fields?.lesson_review_next||'').trim()))throw Object.assign(new Error('请先完成简短的本节求助回顾，再提交。'),{status:400});
       }else if(!String(record.text_fields?.lesson_exit_note||'').trim()){
         throw Object.assign(new Error('请先写一句本节实际进度，再提交。'),{status:400});
       }
