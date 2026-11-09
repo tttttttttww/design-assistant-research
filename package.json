@@ -1,17 +1,17 @@
 {
   "name": "design-thinking-help-seeking-platform",
-  "version": "12.1.0",
+  "version": "12.2.0",
   "type": "module",
-  "description": "设计思维工作坊：第6—10节五步翻页任务、求助小练习与当堂回顾；第13节全校舞台展示",
+  "description": "设计思维工作坊v12.2：W6–W10独立第0步求助学习、B组支架、A组普通AI、五步翻页及历史数据保护",
   "main": "cloud-functions/express/[[default]].js",
   "scripts": {
     "start": "node server.js",
-    "build": "node scripts/check.mjs",
+    "build": "node scripts/check.mjs && node scripts/v12-2-intervention-test.mjs",
     "check": "node scripts/check.mjs",
-    "test": "node scripts/check.mjs && node scripts/lesson-6-13-static-test.mjs && node scripts/lesson-wizard-static-test.mjs",
+    "test": "node scripts/check.mjs && node scripts/lesson-6-13-static-test.mjs && node scripts/lesson-wizard-static-test.mjs && node scripts/v12-2-intervention-test.mjs",
     "test:legacy": "node scripts/check.mjs && node scripts/artifact-history-test.mjs && node scripts/measurement-test.mjs && node scripts/v1156-merge-and-history-test.mjs",
     "check:legacy": "node scripts/check-v1158-legacy.mjs",
-    "test:course": "node scripts/check.mjs && node scripts/lesson-6-13-static-test.mjs && node scripts/lesson-wizard-static-test.mjs"
+    "test:course": "node scripts/check.mjs && node scripts/lesson-6-13-static-test.mjs && node scripts/lesson-wizard-static-test.mjs && node scripts/v12-2-intervention-test.mjs"
   },
   "dependencies": {
     "@edgeone/pages-blob": "0.0.16",
