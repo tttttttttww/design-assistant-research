@@ -257,21 +257,17 @@ function artifactRequiredForCurrentFlow(key){
 }
 function artifactQuestionnaireHtml(a, versions, carryOptions, options){
   const disabled=(state.record.submitted_at||state.session_locked||artifactStepCompleted(a.key))?'disabled':'';
-  const first=!versions.length;
-  const comparePrevious=Boolean(a.compare_previous_version);
-  const statusOptions=first&&!comparePrevious
-    ? '<option value="first_version" selected>首次提交该原型版本</option>'
-    : '<option value="modified" selected>相较上一版，设计/结构发生了修改</option><option value="not_modified">设计没有改变，仅补充或重新呈现</option><option value="tested_no_change">进行了尝试或测试，但暂未修改设计</option>';
-  const basisOptions=['AI建议','科学知识学习','用户测试或反馈','教师建议','同伴建议','自己的想法','材料/制作条件','其他'];
-  const replyChecks=options.map(m=>`<label class="ai-link-option"><input type="checkbox" data-artifact-ai="${esc(a.key)}" value="${esc(m.message_id)}" ${disabled}><span><strong>${esc(String(m.content||'').slice(0,74))}</strong><small>${esc(String(m.created_at||'').slice(0,16))}</small></span></label>`).join('');
-  return `<div class="form version-questionnaire" style="margin-top:12px;gap:10px">
-    <label>本次提交性质<select data-artifact-kind="${esc(a.key)}" ${disabled}><option value="${first?'draft':'revision'}">${first?'首次提交':'新增设计版本'}</option>${first?'':'<option value="correction">更正误传图片（旧记录保留）</option>'}</select></label>
-    <label>本次与上一版相比的情况<select data-artifact-status="${esc(a.key)}" ${disabled}>${statusOptions}</select></label>
-    <fieldset class="basis-fieldset"><legend>本次设计/原型形成主要依据（可多选；是否参考AI，请勾选“AI建议”）</legend>${basisOptions.map(x=>`<label class="basis-option"><input type="checkbox" data-artifact-basis="${esc(a.key)}" value="${esc(x)}" ${disabled}><span>${esc(x)}</span></label>`).join('')}</fieldset>
-    <label>如果参考了AI建议，你是怎样处理的？<select data-artifact-ai-role="${esc(a.key)}" ${disabled}><option value="not_used">没有参考AI建议</option><option value="direct_adopt">直接采用</option><option value="adapted">结合自己的想法调整后采用</option><option value="inspired">受到启发，但采用了不同方案</option><option value="viewed_not_adopted">看过建议，但没有采用</option><option value="unsure">不确定/无法判断</option></select></label>
-    <label>本次具体做了什么变化？或这版原型目前做出了什么？<span class="req">必填</span><textarea data-artifact-note="${esc(a.key)}" rows="2" maxlength="500" placeholder="请描述真实变化；首次原型可写目前实现了哪些结构、哪些部分还未完成。" ${disabled}></textarea></label>
-    <label>关联上一课的相关作品版本（可选）<select data-artifact-based-on="${esc(a.key)}" ${disabled}><option value="">不关联/无法确定</option>${carryOptions}</select></label>
-    <div><strong class="small">如有与本次修改直接相关的AI回复，可选择关联（可多选，不强制）</strong><div class="ai-link-list">${replyChecks||'<p class="small">目前没有可关联的AI回复。</p>'}</div></div>
+  const first=!versions.length, key=esc(a.key);
+  const statusOptions=first?'<option value="first_version">第一次记录这版原型</option>':'<option value="modified">结构或设计确实有修改</option><option value="not_modified">没有修改，仅补充资料</option><option value="tested_no_change">测试后暂时不改</option>';
+  const bases=['自己判断','实际测试','同伴建议','AI建议','材料条件','科学知识'];
+  return `<div class="form version-questionnaire" style="margin-top:10px;gap:9px">
+    <input type="hidden" data-artifact-kind="${key}" value="${first?'draft':'revision'}">
+    <label>这次记录是什么情况？<select data-artifact-status="${key}" ${disabled}>${statusOptions}</select></label>
+    <label>本版具体做出了什么？和上一版相比改了什么？<textarea data-artifact-note="${key}" rows="2" maxlength="500" placeholder="写一句真实变化；还没完成可说明做到了哪一步" ${disabled}></textarea></label>
+    <fieldset class="basis-fieldset"><legend>主要参考了什么？（可多选）</legend>${bases.map(x=>`<label class="basis-option"><input type="checkbox" data-artifact-basis="${key}" value="${esc(x)}" ${disabled}><span>${esc(x)}</span></label>`).join('')}</fieldset>
+    <label>如果看了AI建议，最后怎样处理？<select data-artifact-ai-role="${key}" ${disabled}><option value="not_used">没有使用AI建议</option><option value="direct_adopt">直接采用</option><option value="adapted">修改后采用</option><option value="inspired">受到启发但用了不同方法</option><option value="viewed_not_adopted">看过但没有采用</option><option value="unsure">不确定</option></select></label>
+    <details><summary>关联一条具体AI回复（选填）</summary><select data-artifact-ai-single="${key}" ${disabled}><option value="">不关联</option>${options.slice(0,6).map(m=>`<option value="${esc(m.message_id)}">${esc(String(m.content||'').slice(0,65))}</option>`).join('')}</select></details>
+    <input type="hidden" data-artifact-based-on="${key}" value="">
   </div>`;
 }
 function artifactUploadPanelHtml(a, versions, carryOptions, options, hidden=false){
@@ -321,6 +317,10 @@ function artifactHtml(a, meta){
   const carryVersions=Object.entries(state.carry_artifact_versions||{}).flatMap(([key,entries])=>entries.map((v,i)=>({...v,carry_key:key,ordinal:i+1})));
   const carryOptions=carryVersions.map(v=>`<option value="${esc(`${carryId}:${v.version_id}`)}">${esc(carryId)} · ${esc(v.carry_key)} · ${v.original_order_unknown?'旧图（顺序未知）':`第${v.ordinal}版`}</option>`).join('');
   if(a.version_book) return prototypeVersionBookHtml(a,meta);
+  if((state.session?.paired_artifacts||[]).some(p=>p.wear===a.key)){
+    const gallery=versions.map((v,i)=>`<div class="upload-preview"><img src="${artifactUrl(v)}" alt="第${i+1}版佩戴图"><p class="small">第${i+1}版佩戴图</p></div>`).join('');
+    return `<div class="upload-card" data-artifact-card="${esc(a.key)}"><strong>${esc(a.label)}</strong><p class="small">请把对应原型真正戴在手上拍摄，与本版整体图配对保存。不要上传未佩戴的照片。</p><div class="photo-grid">${gallery}</div><input type="hidden" data-artifact-kind="${esc(a.key)}" value="${versions.length?'revision':'draft'}"><input type="file" data-artifact="${esc(a.key)}" accept="image/jpeg,image/png,image/webp" ${disabled}><span class="small" data-upload-status="${esc(a.key)}">${versions.length?'已有'+versions.length+'张':'尚未上传'}</span></div>`;
+  }
   if(a.progress_only){
     const gallery=versions.length?`<div class="photo-grid" style="margin:10px 0">${versions.map((v,i)=>`<div class="upload-preview"><img src="${artifactUrl(v)}" alt="制作进度记录"><p class="small">进度记录 ${i+1} · ${esc(String(v.uploaded_at||'').slice(0,16))}</p>${v.change_note?`<p class="small">${esc(v.change_note)}</p>`:''}</div>`).join('')}</div>`:'';
     return `<div class="upload-card" data-artifact-card="${esc(a.key)}"><strong>${esc(a.label)} ${req}</strong><p class="small">${esc(a.helper)}；仅用于记录制作进度，不代表设计发生迭代。</p>${gallery}<label>当前制作进度简述<textarea data-artifact-note="${esc(a.key)}" rows="2" maxlength="300" placeholder="例如：已完成底部支撑，夹笔部分尚未完成。" ${disabled}></textarea></label><div class="row"><input type="file" data-artifact="${esc(a.key)}" accept="image/jpeg,image/png,image/webp" ${disabled}><span class="small" data-upload-status="${esc(a.key)}">${versions.length?`已保存${versions.length}条进度记录`:'尚未上传'}</span></div><input type="hidden" data-artifact-kind="${esc(a.key)}" value="progress"></div>`;
