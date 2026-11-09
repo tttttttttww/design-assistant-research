@@ -227,6 +227,7 @@ function materialBankHtml(groups=[]){
 function taskCard(s){
   const resources=(s.resources||[]).length && !s.task_flow ? `<div class="resource-pack"><div class="resource-pack-head"><span class="eyebrow">任务资料包</span><h3>先看共同资料，再开始判断</h3><p class="small">所有同学看到相同资料。请根据资料完成任务；右侧AI助手全程可用。</p></div><div class="resource-grid">${s.resources.map(r=>`<article class="resource-card"><h4>${esc(r.title)}</h4><ul>${(r.items||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></article>`).join('')}</div></div>` : '';
   const materials=!s.task_flow?materialBankHtml(s.materials||[]):'';
+  if(s.task_flow)return `<section class="task-box"><h1>${esc(s.title)}</h1><p class="lead">${esc(s.subtitle)}</p><p class="small">每节先检查真实成果，再完成当前任务；下课前回顾今天的AI交流。没做完可以保存。</p></section>`;
   return `<section class="task-box"><span class="eyebrow">${esc(s.student_label)}</span><h1>${esc(s.title)}</h1><p class="lead">${esc(s.subtitle)}</p><div class="brief-list">${s.brief.map(x=>`<p>${esc(x)}</p>`).join('')}</div>${resources}${materials}<h3>本节你需要完成的内容</h3><ul class="requirements">${s.requirements.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section>`;
 }
 
@@ -339,7 +340,7 @@ function chatPanel(){
   const variantBlocked=state.ai_variant==='unassigned';
   const variantLabel=state.participant.is_test ? `${id}测试预览` : 'AI设计助手';
   const requiredOnce=Boolean(state.session.ai_use_required_once);
-  const activeFlowStep=state.session.task_flow?.steps?.find(x=>x.key===(currentW8ChatStep()==='task2'?'task2':'task1'));
+  const activeFlowStep=state.session.task_flow?.steps?.find(x=>x.key===currentW8ChatStep());
   const flowBadge=activeFlowStep?`本阶段至少${Number(activeFlowStep.min_ai_exchanges||0)}轮完整对话`:'';
   const policyText=state.session.ai_instruction || '本节任务中可以使用AI设计助手，也可以不使用。';
   const chatImageEnabled=state.session.chat_image_enabled!==false;
@@ -648,7 +649,7 @@ function w8TaskFlowHtml(s,r){
   const step=activeW8Step;
   const step1ScienceFields=(s.fields||[]).filter(f=>f.stage==='task1'&&['w8_science_point','w8_science_application'].includes(f.key)).map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'',done1)).join('');
   const checkFields=(s.fields||[]).filter(f=>f.stage==='task1'&&f.key.startsWith('w8_check')).map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'',done1)).join('');
-  const peerFields=(s.fields||[]).filter(f=>f.stage==='task1'&&['w8_peer','w8_focus'].includes(f.key)).map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'',done1)).join('');
+  const peerFields=(s.fields||[]).filter(f=>f.stage==='task1'&&['w8_check_evidence','w8_peer','w8_focus'].includes(f.key)).map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'',done1)).join('');
   const step1MaterialFields=(s.fields||[]).filter(f=>f.stage==='task1'&&f.key==='w8_material_plan').map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'',done1)).join('');
   const step2Fields=(s.fields||[]).filter(f=>f.stage==='task2').map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'',!done1||done2)).join('');
   const previousSheet=w8Artifact('w8_previous_task_sheet');
@@ -666,7 +667,7 @@ function w8TaskFlowHtml(s,r){
     <p>先上传上一节课的任务单/设计记录，再阅读教师提供的科学知识资料。至少选择一个知识点，标注它在设计图中的具体位置和作用；随后从教师提供的材料中选择要使用的材料，并写明用途。</p>
     <div class="notice">AI助手在本任务全程可用。提交前必须完成至少10轮完整对话（你发送一条消息并收到AI回复算一轮）。清楚的问题直接问，不要为了次数发送无意义内容。</div>
     <h3>1. 查看已有成果并检查</h3><p class="small">先检查原图和材料，再请同伴提出一条具体意见。没有发现缺点时，说清哪些还没有验证。</p><div class="artifact-list">${previousSheet?artifactHtml(previousSheet,r.artifacts?.[previousSheet.key]):''}</div><div class="form">${checkFields}${peerFields}</div>
-    <h3>2. 学习科学知识并标注应用</h3><p class="small">先阅读下面的简明知识卡，再对照教师发放的课堂资料。至少选择一个确实适用于自己设计的知识点；不要只抄名称，要说明它用在图纸的哪个位置、帮助解决什么问题。</p><div class="resource-pack"><div class="resource-pack-head"><span class="eyebrow">科学知识</span><h3>本节可参考的知识点</h3><p class="small">以下为平台简明参考；教师现场发放资料如有不同，以教师资料为准。</p></div><div class="resource-grid">${(s.resources||[]).map(r=>`<article class="resource-card"><h4>${esc(r.title)}</h4><ul>${(r.items||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></article>`).join('')}</div></div><div class="form">${step1ScienceFields}</div>
+    <h3>2. 学习科学知识并标注应用</h3><p class="small">先阅读下面的简明知识卡，再对照教师发放的课堂资料。至少选择一个确实适用于自己设计的知识点；不要只抄名称，要说明它用在图纸的哪个位置、帮助解决什么问题。</p><div class="resource-pack"><div class="resource-pack-head"><span class="eyebrow">科学知识</span><h3>本节可参考的知识点</h3><p class="small">配图和说明全部使用中文；请选择真正能用在自己设计中的知识。</p><img src="/assets/science-guide-zh.svg" alt="中文科学图示：摩擦与防滑、弹性与固定、接触面积与压强、材料结构支撑" style="width:100%;height:auto;border-radius:12px;display:block;margin:12px 0"></div><div class="resource-grid">${(s.resources||[]).map(r=>`<article class="resource-card"><h4>${esc(r.title)}</h4><ul>${(r.items||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></article>`).join('')}</div></div><div class="form">${step1ScienceFields}</div>
     <h3>3. 选择材料并标注用途</h3><p class="small">材料不要求全部使用。请先查看教师提供的材料清单，再选择真正需要的材料，并在学习单和设计图上标出使用位置和用途。</p>${materialBankHtml(s.materials||[])}<div class="form">${step1MaterialFields}</div><h3>4. 上传完成标注的学习单</h3><p class="small">请上传已写明科学知识应用位置、材料选择和用途的学习单照片。纸质学习单原件请保留。</p><div class="artifact-list">${scienceSheet?artifactHtml(scienceSheet,r.artifacts?.[scienceSheet.key]):''}</div>
     <h3>5. 上传完善后的设计图</h3><div class="artifact-list">${designVersion?artifactHtml(designVersion,r.artifacts?.[designVersion.key]):''}</div>
     <div class="w8-counter"><div><strong>AI完整对话轮次</strong><span><b data-w8-exchange-count="task1">${counts1}</b> / ${min1}</span></div><div class="w8-meter"><i style="width:${Math.min(100,counts1/min1*100)}%"></i></div><p class="small">只有学生消息和对应AI回复都成功保存，才计为一轮。历史课次聊天、AI单独回复和未成功获得回复的消息不计入；轮次门槛只用于本节提交，不代表求助质量。</p></div>
@@ -679,10 +680,10 @@ function w8TaskFlowHtml(s,r){
     <div class="notice">制作阶段提交前必须完成至少5轮完整AI对话（你发送一条消息并收到AI回复算一轮）。未完成可以保存进度，下一节课继续制作。</div>
     <div class="form">${step2Fields}</div>${materialBankHtml(s.materials||[])}
     <h3>原型版本页</h3><p class="small">第一页是V1。实际修改了设计或结构后，点击“迭代”上传V2、V3……逐版记录变化。不要覆盖上一版。若只是记录当前制作进度、设计本身没有变化，请使用下面的“制作进度照片”。</p>
-    <div class="artifact-list">${prototypeVersions?artifactHtml(prototypeVersions,r.artifacts?.[prototypeVersions.key]):''}${prototypeWear?artifactHtml(prototypeWear,r.artifacts?.[prototypeWear.key]):''}</div><p class="small">同一版必须同时保存整体图和佩戴图；尚未完成时可以先保存进度照片，不用冒充正式版本。</p>
+    <div class="artifact-list">${prototypeVersions?artifactHtml(prototypeVersions,r.artifacts?.[prototypeVersions.key]):''}${prototypeWear?artifactHtml(prototypeWear,r.artifacts?.[prototypeWear.key]):''}${prototypeWear?artifactHtml(prototypeWear,r.artifacts?.[prototypeWear.key]):''}</div><p class="small">同一版必须同时保存整体图和佩戴图；尚未完成时可以先保存进度照片，不用冒充正式版本。</p>
     <h3>本节制作进度（非设计迭代）</h3><div class="artifact-list">${buildProgress?artifactHtml(buildProgress,r.artifacts?.[buildProgress.key]):''}</div>
     <div class="w8-counter"><div><strong>AI完整对话轮次</strong><span><b data-w8-exchange-count="task2">${counts2}</b> / ${min2}</span></div><div class="w8-meter"><i style="width:${Math.min(100,counts2/min2*100)}%"></i></div><p class="small">本阶段累计统计；上传V2、V3不需要每次重新累计5轮。只有学生消息和AI回复成功配对才计数；轮次门槛只用于本节提交，不代表求助质量。</p></div>
-    ${done2?'<div class="notice ok">任务二已提交。本节记录已完成；后续课时仍可继续追加新的设计/原型版本。</div>':`<div class="row"><button type="button" class="btn orange" id="submitW8Task2" ${!done1||disabled?'disabled':''}>提交任务二，完成本节记录</button></div><p class="small">提交时平台会检查任务记录、至少一张V1/当前原型版本照片，以及5轮完整AI对话。单独的进度照片可作为补充记录，不能替代V1版本页。未达到条件时仍可保存退出，下一节课继续。</p>`}
+    ${done2?'<div class="notice ok">任务二已提交。本节记录已完成；后续课时仍可继续追加新的设计/原型版本。</div>':`<div class="row"><button type="button" class="btn orange" id="submitW8Task2" ${!done1||disabled?'disabled':''}>提交任务二，完成本节记录</button></div><p class="small">提交时检查真实的原型整体图、对应佩戴图、5轮完整AI对话及本节回顾。只做了部分的可保存进度。未达到条件时仍可保存退出，下一节课继续。</p>`}
   </section>`;
   const exitAction=state.record.submitted_at&&!state.session_locked
     ? '<button type="button" class="btn secondary" id="reopenSession">继续修改本课记录</button>'
@@ -705,7 +706,7 @@ function lessonReviewHtml(s){
      `<label>本节未找到可回顾的AI对话<select data-field="lesson_no_history_reason" ${disabled}><option value="">请选择实际原因</option>${['今天没有向AI提问','提问了，但没收到有效回复','平台记录没有显示','其他原因'].map(x=>`<option value="${esc(x)}" ${saved.lesson_no_history_reason===x?'selected':''}>${esc(x)}</option>`).join('')}</select></label>`}
      <div class="form">${(s.fields||[]).filter(f=>['lesson_review_use','lesson_review_next'].includes(f.key)).map(f=>fieldHtml(f,saved[f.key]||'')).join('')}</div>`;
   return `<section class="card lesson-review" id="lessonReview"><span class="eyebrow">下课前</span><h2>回顾今天的AI交流</h2>${personal}
-   <div class="row"><button type="button" class="btn secondary" id="saveLessonReview" ${disabled}>保存本节回顾</button><span id="reviewSaveStatus" class="small">${saved.lesson_review_saved?'已保存':'未保存'}</span></div></section>`;
+   <div class="row"><button type="button" class="btn secondary" id="saveLessonReview" ${disabled}>保存本节回顾</button><span id="reviewSaveStatus" class="small">${(saved.lesson_review_use||saved.lesson_exit_note)?'已填写':'待填写'}</span></div></section>`;
 }
 function weeklyTaskFlowHtml(s,r){
   const done1=w8StepDone('task1'),done2=w8StepDone('task2');
@@ -784,7 +785,7 @@ function render(){
   const s=state.session,r=state.record;
   document.title=`${s.id} ${s.title}`;
   if(state.learning_gate==='orientation'){
-    document.getElementById('app').innerHTML=`<div class="course-header"><span class="eyebrow">${esc(s.id)} · ${esc(s.date)}</span><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div></div>${orientationHtml()}`;
+    document.getElementById('app').innerHTML=`<div class="course-header"><span class="eyebrow">${esc(s.student_label||s.title)}</span><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div></div>${orientationHtml()}`;
     wireOrientation();
     return;
   }
@@ -799,7 +800,7 @@ function render(){
     if(!w8StepDone('task1'))activeW8Step='task1';else if(!activeW8Step)activeW8Step='task2';
   }
   document.getElementById('app').innerHTML=`
-    <div class="course-header"><span class="eyebrow">${esc(s.student_label||s.id)} · ${esc(s.date)} · 平台记录 ${esc(s.id)}</span><div class="row between"><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div>${state.session_locked?'<span class="badge big">教师已结束本阶段</span>':r.submitted_at?'<span class="badge big">已标记完成</span>':''}</div></div>
+    <div class="course-header"><span class="eyebrow">${esc(s.student_label||s.title)}</span><div class="row between"><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div>${state.session_locked?'<span class="badge big">教师已结束本阶段</span>':r.submitted_at?'<span class="badge big">已标记完成</span>':''}</div></div>
     <div class="course-grid"><div class="course-main">${taskCard(s)}${carryCard(state.carry_from)}
       ${isW8Flow?`<form id="taskForm" class="form">${s.id==='W8'?w8TaskFlowHtml(s,r):weeklyTaskFlowHtml(s,r)}</form>`:`<section class="card"><span class="eyebrow">我的任务记录</span><h2>边做边记录，内容会及时自动保存</h2><p class="small">今天没做完就点“保存进度并退出”，下次老师继续开放本任务时，用同一编号和姓名进入即可接着做。完成按钮只是标记你认为本阶段已完成；在老师统一结束并锁定前，即使误点，也可以回来继续修改。</p>${state.session_locked?'<div class="notice"><strong>本阶段已由老师结束并锁定。</strong>现在可以查看已有记录，但不能继续修改。</div>':r.submitted_at?'<div class="notice"><strong>你已将本阶段标记为完成。</strong>如需继续修改，请点击“继续修改”。</div>':''}<form id="taskForm" class="form">${taskFieldsHtml(s)}${bonusTaskHtml(s)}<div class="artifact-list">${s.artifacts.map(a=>artifactHtml(a,r.artifacts?.[a.key])).join('')}</div><div id="saveStatus" class="small"></div><div class="row">${r.submitted_at&&!state.session_locked?'<button type="button" class="btn secondary" id="reopenSession">继续修改</button>':`<button type="button" class="btn secondary" id="saveAndExit" ${state.session_locked?'disabled':''}>保存进度并退出</button><button type="submit" class="btn orange" ${(r.submitted_at||state.session_locked)?'disabled':''}>${state.session_locked?'教师已结束本阶段':'完成本阶段'}</button>`}</div></form></section>`}
     </div><aside class="course-side">${chatPanel()}</aside></div>`;
