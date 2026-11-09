@@ -233,22 +233,22 @@ function renderGroupAdjuster() {
   const a = formal.filter(x => x.condition === 'A').length;
   const b = formal.filter(x => x.condition === 'B').length;
   const u = formal.filter(x => !['A','B'].includes(x.condition)).length;
-  counts.innerHTML = `<span class="badge big">实验组 A：${a}</span><span class="badge big">对照组 B：${b}</span>${u ? `<span class="badge big warn-badge">未分组：${u}</span>` : ''}`;
+  counts.innerHTML = `<span class="badge big">对照组 A（普通AI）：${a}</span><span class="badge big">求助支架组 B：${b}</span>${u ? `<span class="badge big warn-badge">未分组：${u}</span>` : ''}`;
   const body = formal.map(x => {
     const fixed = Boolean(x.condition_fixed);
-    const label = x.condition === 'A' ? '实验组 A' : x.condition === 'B' ? '对照组 B' : '未分组';
+    const label = x.condition === 'A' ? '对照组 A（普通AI）' : x.condition === 'B' ? '求助支架组 B' : '未分组';
     return `<tr><td><strong>${x.participant_id}</strong>${fixed ? ' <span class="badge">固定</span>' : ''}</td><td>${esc(x.grade || '—')}年级</td><td>${fixed
       ? `<strong>${label}</strong><div class="small">${esc(x.condition_fixed_reason || '')}</div>`
-      : `<select class="manual-condition-select" data-id="${x.participant_id}"><option value="unassigned" ${x.condition==='unassigned'?'selected':''}>未分组</option><option value="A" ${x.condition==='A'?'selected':''}>实验组 A</option><option value="B" ${x.condition==='B'?'selected':''}>对照组 B</option></select>`}</td><td>${fixed ? '—' : `<button class="btn ghost mini save-condition" data-id="${x.participant_id}" type="button">保存组别</button>`}</td></tr>`;
+      : `<select class="manual-condition-select" data-id="${x.participant_id}"><option value="unassigned" ${x.condition==='unassigned'?'selected':''}>未分组</option><option value="A" ${x.condition==='A'?'selected':''}>对照组 A（普通AI）</option><option value="B" ${x.condition==='B'?'selected':''}>求助支架组 B</option></select>`}</td><td>${fixed ? '—' : `<button class="btn ghost mini save-condition" data-id="${x.participant_id}" type="button">保存组别</button>`}</td></tr>`;
   }).join('');
-  box.innerHTML = `<div class="table-wrap group-adjust-table"><table class="admin-table"><thead><tr><th>编号</th><th>年级</th><th>当前组别</th><th>操作</th></tr></thead><tbody>${body || '<tr><td colspan="4">请先导入正式学生名单。</td></tr>'}</tbody></table></div>`;
+  box.innerHTML = `<div class="notice warn"><strong>课次分组核对：</strong>第6—10节 A=普通AI，B=求助指导。S04、S05在旧版被固定为B对照组，现在不会自动改动其编号或分组。请核对真实分组后再开启课堂；以历史聊天保存的实际AI版本为准。</div><div class="table-wrap group-adjust-table"><table class="admin-table"><thead><tr><th>编号</th><th>年级</th><th>当前组别</th><th>操作</th></tr></thead><tbody>${body || '<tr><td colspan="4">请先导入正式学生名单。</td></tr>'}</tbody></table></div>`;
   box.querySelectorAll('.save-condition').forEach(btn => btn.onclick = async () => {
     const id = btn.dataset.id;
     const select = box.querySelector(`.manual-condition-select[data-id="${id}"]`);
     const next = select?.value || 'unassigned';
     const row = rows.find(x => x.participant_id === id);
     if (!row || row.condition === next) return;
-    const nextLabel = next === 'A' ? '实验组 A' : next === 'B' ? '对照组 B' : '未分组';
+    const nextLabel = next === 'A' ? '对照组 A（普通AI）' : next === 'B' ? '求助支架组 B' : '未分组';
     if ((row.started || row.ai_used) && !confirm(`${id} 已经进入过当前课次或使用过AI。
 
 仍要把组别改为“${nextLabel}”吗？
