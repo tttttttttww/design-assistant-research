@@ -15,17 +15,19 @@ export function isTestParticipant(value) {
 
 export function testParticipantCondition(value) {
   const id = normalizeParticipantId(value);
-  if (id === 'S00') return 'A'; // 实验组测试号
-  if (id === 'S99') return 'B'; // 对照组测试号
+  if (id === 'S00') return 'A'; // v12.2: 普通AI测试号
+  if (id === 'S99') return 'B'; // v12.2: 求助支架测试号
   return '';
 }
 
-// 系统级固定组别。S04/S05 因前两节未参与，按研究安排永久固定为 B（对照组）。
-// 这里是硬约束，而不是只在随机分组时处理，避免旧分组/名单导入/手动修改把它们重新变成 A。
+// v12.2: formal learners are never silently reassigned on login.
+// S04/S05 were fixed to B under the old meaning (B=control). Their existing
+// condition and history remain untouched; teacher must explicitly confirm
+// their future group in the admin panel before continuing data collection.
 export function forcedParticipantCondition(value) {
   const id = normalizeParticipantId(value);
   if (id === 'S00') return 'A';
-  if (id === 'S99' || id === 'S04' || id === 'S05') return 'B';
+  if (id === 'S99') return 'B';
   return '';
 }
 
