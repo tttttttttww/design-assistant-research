@@ -60,7 +60,7 @@ function lessonWizardHtml(s,r){
   const note='<p class="small">实事求是。没有做到的内容可以保留空白或写清楚未完成，保存后下节继续。</p>';
   let pageHtml='';
   if(wizardPage===0){
-    const help=state.ai_variant==='supported'?`<div class="wizard-help"><strong>今天的求助方法</strong><p>先检查自己做到了什么，弄清楚不确定的地方；向AI说明现象和已尝试的方法，再判断AI建议是否可行。</p><span class="small">进入本节任务前的小练习已经单独记录。</span></div>`:'';
+    const help=state.ai_variant==='supported'?`<div class="wizard-help"><strong>今天的求助方法</strong><p>先检查自己做到了什么，弄清楚不确定的地方；向AI说明现象和已尝试的方法，再判断AI建议是否可行。</p><span class="small">如果不确定怎么问，可以按这三个步骤整理自己的问题。</span></div>`:'';
     pageHtml=`<h2>先看看上节做到了哪里</h2><p>拿出已有图纸或实物。已上传的照片不用再传一遍。</p>${help}${wizardPriorHtml()}
        ${isSix?`<h3>上节学习单或设计记录</h3>${a('l06_previous_task_sheet')}`:''}
        <div class="wizard-nav">${btn('下一步：检查设计',1)}</div>`;
