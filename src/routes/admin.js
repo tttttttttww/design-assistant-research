@@ -1048,7 +1048,7 @@ const ARTIFACT_CSV_HEADERS=['participant_id','grade','condition_at_time','sessio
 router.get('/export/orientation-activities.csv',requireAdmin,async(req,res)=>{
  try{
   const rows=[];
-  for(const id of formalIds())for(const sid of ['W4','W5','W6','W7','W8','W9','W10']){
+  for(const id of formalIds())for(const sid of ['W4','W5','W6','W7','W8','W9','W10','W14','W15']){
    const [o,p,record]=await Promise.all([researchService.getOrientation(id,sid),researchService.getParticipant(id),researchService.getSessionRecord(id,sid)]);
    if(!o)continue;
    const a=o.answers||{};
@@ -1057,7 +1057,7 @@ router.get('/export/orientation-activities.csv',requireAdmin,async(req,res)=>{
     selected_past_message_ref:a.personal_ref||'',reflection_source:a.reflection_source||'',reflection_difficulty:a.reflection_difficulty||'',reflection_reply_review:a.reflection_reply_review||'',revised_help_question:a.revised_question||'',reflection_reason:a.reflection_reason||'',had_original_ai_question:a.had_original_question??'',prior_chat_count:a.prior_chat_count??o.prior_chat_count??'',case_selection_reason:a.case_selection_reason||o.case_selection_reason||'',selected_case_basis:a.selected_case_basis||'',
     has_prior_history:(typeof o.has_prior_history==='boolean'?o.has_prior_history:Boolean((o.selection_meta||[]).length))?'true':'false',no_history_reason:a.no_history_reason||'',no_history_reason_detail:a.no_history_reason_detail||'',
     neutral_observation:a.neutral_observation||'',neutral_nextstep:a.neutral_nextstep||'',answers_json:JSON.stringify(a),shown_personal_queries_json:JSON.stringify(o.displayed_cards||[]),
-    review_is_planned_intervention:['W5','W6','W7','W8','W9','W10'].includes(sid)&&o.mode==='supported',strategy_practice_count:a.strategy_practice_count??'',strategy_practice_correct_count:a.strategy_practice_correct_count??'',strategy_practice_protocol:a.strategy_practice_protocol||'',review_previous_session_id: sid==='W4'?'':`W${Number(sid.slice(1))-1}`});
+    review_is_planned_intervention:['W5','W6','W7'].includes(sid)&&o.mode==='supported',strategy_practice_count:a.strategy_practice_count??'',strategy_practice_correct_count:a.strategy_practice_correct_count??'',strategy_practice_protocol:a.strategy_practice_protocol||'',review_previous_session_id: ['W4','W8','W9','W10','W14','W15'].includes(sid)?'':`W${Number(sid.slice(1))-1}`});
   }
   sendCsv(res,'orientation_and_personal_reflection.csv',['participant_id','grade','condition_at_time','session_id','orientation_mode','activity_key','started_at','completed_at','duration_seconds','selected_past_message_ref','reflection_source','reflection_difficulty','reflection_reply_review','revised_help_question','reflection_reason','had_original_ai_question','prior_chat_count','case_selection_reason','selected_case_basis','has_prior_history','no_history_reason','no_history_reason_detail','neutral_observation','neutral_nextstep','answers_json','shown_personal_queries_json','review_is_planned_intervention','strategy_practice_count','strategy_practice_correct_count','strategy_practice_protocol','review_previous_session_id'],rows);
  }catch(e){res.status(500).json({error:e.message||'导出活动记录失败'});}
@@ -1070,6 +1070,22 @@ router.get('/export/artifact-versions.csv',requireAdmin,async(req,res)=>{
  try{const sid=String(req.query.session_id||'ALL').toUpperCase();sendCsv(res,'artifact_versions_and_ai_links.csv',ARTIFACT_CSV_HEADERS,await artifactEvidenceDataset(sid));}
  catch(e){res.status(e.status||500).json({error:e.message||'作品版本CSV导出失败'});}
 });
+// Same-day lesson reviews live in task text_fields, not in prior-week orientation records.
+router.get('/export/lesson-reflections.csv',requireAdmin,async(req,res)=>{
+ try{
+  const rows=[];
+  for(const id of formalIds())for(const sid of ['W8','W9','W10','W14','W15']){
+   const s=SESSIONS.find(x=>x.id===sid);
+   const [record,p,messages]=await Promise.all([researchService.getSessionRecord(id,sid),researchService.getParticipant(id),researchService.getMessages(id,sid)]);
+   const a=record.text_fields||{};
+   if(!['lesson_review_reference','lesson_review_use','lesson_review_next','lesson_no_history_reason','lesson_exit_note'].some(k=>String(a[k]||'').trim()))continue;
+   const linked=messages.find(m=>m.role==='assistant'&&m.message_id===String(a.lesson_review_reference||''));
+   rows.push({participant_id:id,session_id:sid,actual_lesson:s?.actual_lesson||'',condition_at_time:record.condition_at_time||p.condition,lesson_review_reference:a.lesson_review_reference||'',linked_actual_ai_reply:linked?.content||'',lesson_review_use:a.lesson_review_use||'',lesson_review_next:a.lesson_review_next||'',lesson_no_history_reason:a.lesson_no_history_reason||'',lesson_exit_note:a.lesson_exit_note||'',submitted_at:record.submitted_at||'',saved_at:record.saved_at||'',verified_reply_exists:linked?'true':'false'});
+  }
+  const columns=['participant_id','session_id','actual_lesson','condition_at_time','lesson_review_reference','linked_actual_ai_reply','lesson_review_use','lesson_review_next','lesson_no_history_reason','lesson_exit_note','submitted_at','saved_at','verified_reply_exists'];
+  sendCsv(res,'current_lesson_ai_reflections.csv',columns,rows);
+ }catch(e){res.status(500).json({error:e.message||'导出本节求助回顾失败'});}
+});
 // SMALL, image-free full-session research pack, with actual direct CSV routes as fallbacks.
 router.get('/export/research-tables/:sessionId.zip',requireAdmin,async(req,res)=>{
  const sid=String(req.params.sessionId||'').toUpperCase();if(!SESSIONS.some(s=>s.id===sid))return res.status(400).json({error:'课次不存在'});
@@ -1080,7 +1096,7 @@ router.get('/export/research-tables/:sessionId.zip',requireAdmin,async(req,res)=
   archive.append(csvText(['participant_id','session_id','message_index','message_at','message_text','interaction_id','protocol_ai_required','protocol_first_user_message','help_type_human','process_codes_human','primary_process_code_human','fine_process_code_human','coder','memo','coded_at'],coding),{name:'human_coding_and_original_user_text.csv'});
   archive.append(csvText(ARTIFACT_CSV_HEADERS,artifact),{name:'all_artifact_versions.csv'});
   if(sid==='W10')archive.append(csvText(productScoreHeaders,await finalProductDataset()),{name:'W10_final_product_scores_two_raters.csv'});
-  if(['W4','W5','W6','W7','W8','W9','W10'].includes(sid)){
+  if(['W4','W5','W6','W7','W8','W9','W10','W14','W15'].includes(sid)){
     const activity=await Promise.all(formalIds().map(async id=>{
       const o=await researchService.getOrientation(id,sid);if(!o)return null;
       return {participant_id:id,session_id:sid,mode:o.mode||'',key:o.orientation_key||'',completed_at:o.completed_at||'',duration_seconds:o.duration_seconds??'',reflection_source:o.answers?.reflection_source||'',has_prior_history:(typeof o.has_prior_history==='boolean'?o.has_prior_history:Boolean((o.selection_meta||[]).length))?'true':'false',no_history_reason:o.answers?.no_history_reason||'',no_history_reason_detail:o.answers?.no_history_reason_detail||'',answers:JSON.stringify(o.answers||{}),shown_personal_queries:JSON.stringify(o.displayed_cards||[])};
