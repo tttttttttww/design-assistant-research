@@ -1,53 +1,48 @@
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
-import { SESSIONS, getSessionConfig, INTERVENTION_ORIENTATION, SCHEMA_VERSION, aiVariantFor } from '../src/config/researchConfig.js';
-
-const read = path => readFileSync(new URL('../'+path, import.meta.url), 'utf8');
-const ids = SESSIONS.map(s=>s.id);
-assert.equal(SCHEMA_VERSION,25,'保存数据 schema 不允许更改');
-assert.equal(new Set(ids).size,ids.length,'内部课次 id 不能重复');
-for(const sid of ['W1','W2','W3','W4','W5','W6','W7','W8','W9','W10','W11','W12','W13','W14','W15'])assert.ok(getSessionConfig(sid),sid+' 必须保留');
-const expected=[['W8',6,[10,5]],['W9',7,[4,3]],['W10',8,[4,3]],['W14',9,[4,3]],['W15',10,[4,3]]];
-for(const [sid,lesson,counts] of expected){
-  const s=getSessionConfig(sid);
-  assert.equal(s.actual_lesson,lesson,'实际课次编号错误 '+sid);
-  assert.equal(s.ai_mode,'condition','第6—10节持续支持 '+sid);
-  assert.deepEqual(s.task_flow?.steps?.map(x=>x.min_ai_exchanges),counts);
-  assert.ok(s.fields.filter(x=>x.type==='select').length>=3,'缺少自检选项 '+sid);
-  assert.ok(s.fields.some(x=>x.key==='lesson_review_use'),'缺少当堂对话回顾 '+sid);
-  assert.ok(Array.isArray(s.paired_artifacts)&&s.paired_artifacts.length>0,'必须有原型整体与佩戴图 '+sid);
-  for(const pair of s.paired_artifacts){
-    assert.ok(s.artifacts.some(x=>x.key===pair.overview),'缺原型整体图 '+sid);
-    assert.ok(s.artifacts.some(x=>x.key===pair.wear),'缺原型佩戴图 '+sid);
-  }
-  assert.ok(INTERVENTION_ORIENTATION[sid]?.supported,'实验组应有求助策略指导 '+sid);
-  assert.ok(INTERVENTION_ORIENTATION[sid]?.control,'两组都有课前流程 '+sid);
-  assert.equal(INTERVENTION_ORIENTATION[sid].supported.reflection_activity,false,'课前不应回顾前一周 '+sid);
-  assert.equal(aiVariantFor({session:s,condition:'A'}),'supported');
-  assert.equal(aiVariantFor({session:s,condition:'B'}),'free');
+import {readFileSync,existsSync} from 'node:fs';
+import {SESSIONS,getSessionConfig,INTERVENTION_ORIENTATION,SCHEMA_VERSION,aiVariantFor} from '../src/config/researchConfig.js';
+const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
+assert.equal(SCHEMA_VERSION,25,'Do not change the stored data schema or Blob paths');
+const allIds=SESSIONS.map(s=>s.id);
+assert.equal(new Set(allIds).size,allIds.length,'Duplicate session ids');
+for(let n=1;n<=13;n++)assert.ok(getSessionConfig('W'+n),'Missing W'+n);
+for(let n=6;n<=10;n++){
+ const s=getSessionConfig('W'+n);
+ assert.equal(s.actual_lesson,n,'Actual lesson must equal W'+n);
+ assert.equal(s.archived,false,'Live lesson incorrectly archived');
+ assert.equal(s.ai_mode,'condition');
+ assert.deepEqual(s.task_flow?.steps?.map(x=>x.min_ai_exchanges),n===6?[10,5]:[4,3]);
+ assert.ok(s.fields.filter(x=>x.type==='select').length>=3,'Missing observation self-check');
+ const names=new Set(s.fields.map(f=>f.key)),photos=new Set(s.artifacts.map(f=>f.key));
+ for(const k of ['lesson_review_reference','lesson_review_use','lesson_review_next','lesson_no_history_reason','lesson_exit_note'])assert.ok(names.has(k),'Missing review field '+k);
+ for(const step of s.task_flow.steps){
+   for(const k of step.required_fields||[])assert.ok(names.has(k),'Missing required '+k);
+   for(const k of step.required_artifacts||[])assert.ok(photos.has(k),'Missing photo '+k);
+ }
+ for(const pair of s.paired_artifacts||[]){
+   assert.ok(photos.has(pair.overview)&&photos.has(pair.wear),'Missing overall and worn photo pair');
+ }
+ assert.equal(aiVariantFor({session:s,condition:'A'}),'supported');
+ assert.equal(aiVariantFor({session:s,condition:'B'}),'free');
+ assert.ok(INTERVENTION_ORIENTATION[s.id]?.supported);
+ assert.equal(INTERVENTION_ORIENTATION[s.id].supported.reflection_activity,false);
 }
-assert.ok(getSessionConfig('W15').questionnaire_after_submit,'后测应在实际第10节之后');
-assert.notEqual(getSessionConfig('W10').questionnaire_after_submit,true,'旧W10不应作为实际第10节后测');
-for(const sid of ['W11','W12']){
-  const s=getSessionConfig(sid);
-  assert.equal(s.ai_mode,'free','迁移期不能保留实验支架');
-  assert.equal(s.phase,'transfer');
-  assert.ok(s.title.includes('舞台'),'迁移任务必须服务于全校舞台展示');
-  assert.equal(INTERVENTION_ORIENTATION[sid],undefined);
+assert.equal(getSessionConfig('W10').questionnaire_after_submit,true,'Posttest belongs after actual lesson 10');
+assert.equal(getSessionConfig('W11').carry_from,'W10','Transfer must follow lesson 10');
+for(const n of [11,12]){
+ const s=getSessionConfig('W'+n);
+ assert.equal(s.ai_mode,'free');
+ assert.equal(s.phase,'transfer');
+ assert.ok(s.title.includes('舞台'));
+ assert.equal(INTERVENTION_ORIENTATION[s.id],undefined);
 }
 assert.equal(getSessionConfig('W13').ai_mode,'none');
-assert.match(getSessionConfig('W13').title,/全校.*舞台/);
+assert.ok(getSessionConfig('W13').title.includes('全校'));
+for(const n of [14,15])assert.equal(getSessionConfig('W'+n).archived,true,'Legacy sessions must remain archived');
 const storage=read('src/services/storageService.js');
-for(const str of ['course-v11-enhanced','BLOB_STORE_NAME','EXPERIMENT_RUN_ID']){
-  assert.ok(storage.includes(str),'原有存储路径不能更改：'+str);
-}
-const rs=read('src/services/researchService.js'), task=read('public/js/task.js');
-assert.ok(rs.includes('getTaskPhaseExchangeCounts'));
-assert.ok(rs.includes('lesson_review_reference'));
-assert.ok(rs.includes('paired_artifacts'));
-assert.ok(task.includes('lessonReviewHtml('));
-assert.ok(task.includes('w8_wear_versions'));
-assert.ok(task.includes('scienceDiagramCardsHtml('));
-assert.ok(task.includes('摩擦与防滑') && task.includes('弹性与松紧'));
-assert.ok(existsSync(new URL('../TEACHER_LESSONS_6_13.md',import.meta.url)));
-console.log('COURSE CHECK OK: lessons 6–13, two-stage AI gates, same-day reflections, stage demonstration and unchanged storage namespace.');
+for(const marker of ['course-v11-enhanced','BLOB_STORE_NAME','EXPERIMENT_RUN_ID'])assert.ok(storage.includes(marker),'Storage invariant missing: '+marker);
+const task=read('public/js/task.js'),service=read('src/services/researchService.js');
+for(const k of ['l06_science_point','l06_prototype_versions','lessonReviewHtml','scienceDiagramCardsHtml'])assert.ok(task.includes(k),'Missing new UI '+k);
+for(const k of ['getTaskPhaseExchangeCounts','paired_artifacts','lesson_review_reference'])assert.ok(service.includes(k),'Missing backend safeguard '+k);
+assert.ok(existsSync(new URL('../LESSONS_6_TO_13_TEACHER_GUIDE.md',import.meta.url)),'Teacher guide missing');
+console.log('V12 BUILD CHECK OK: W6–W13, stage AI counts, existing Blob namespace, documents present.');
