@@ -983,7 +983,7 @@ class ResearchService {
             throw Object.assign(new Error('请先在本节回顾中选择一条真实的AI对话，并保存反思。'),{status:400});
           if(!assistantMessages.length && !noReason)
             throw Object.assign(new Error('请按实际情况说明本节没有可回顾对话的原因。'),{status:400});
-          if(!help || !next)
+          if(assistantMessages.length && (!help || !next))
             throw Object.assign(new Error('请先完成本节AI交流回顾，再提交任务。'),{status:400});
         }else if(!String(record.text_fields?.lesson_exit_note||'').trim()){
           throw Object.assign(new Error('请先写一句今天的进度，再提交任务。'),{status:400});
