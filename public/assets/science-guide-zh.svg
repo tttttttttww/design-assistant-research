@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="535" viewBox="0 0 900 535">
+<rect width="900" height="535" rx="24" fill="#f8fafc"/>
+<g font-family="Noto Sans CJK SC,Microsoft YaHei,sans-serif" fill="#1f2937">
+<text x="32" y="43" font-size="27" font-weight="700">让科学知识帮助你改进辅助绘画装置</text><text x="32" y="70" font-size="15" fill="#475569">看图找位置 → 判断是否适用 → 在设计图中标注，并通过实际尝试验证</text>
+<rect x="25" y="94" width="417" height="190" rx="15" fill="#ffffff" stroke="#cbd5e1"/><rect x="458" y="94" width="417" height="190" rx="15" fill="#ffffff" stroke="#cbd5e1"/>
+<rect x="25" y="300" width="417" height="207" rx="15" fill="#ffffff" stroke="#cbd5e1"/><rect x="458" y="300" width="417" height="207" rx="15" fill="#ffffff" stroke="#cbd5e1"/>
+<text x="45" y="130" font-size="22" font-weight="700">① 摩擦与防滑</text><text x="475" y="130" font-size="22" font-weight="700">② 弹性与固定</text>
+<rect x="64" y="188" width="160" height="32" rx="10" fill="#93c5fd"/><path d="M78 202 L92 195 L106 202 L120 195 L134 202 L148 195 L162 202 L176 195 L190 202 L205 195" stroke="#1d4ed8" stroke-width="4" fill="none"/>
+<path d="M79 167 L217 167" stroke="#eab308" stroke-width="16" stroke-linecap="round"/><path d="M218 167 L242 167" stroke="#64748b" stroke-width="8" stroke-linecap="round"/>
+<path d="M143 176 L143 188" stroke="#ef4444" stroke-width="3"/><path d="M137 184 L143 190 L149 184" stroke="#ef4444" stroke-width="3" fill="none"/>
+<text x="250" y="172" font-size="16">夹持接触面</text><text x="250" y="197" font-size="16">需要实际检查</text><text x="45" y="253" font-size="16" fill="#475569">画笔是否容易滑动？怎样增加有效接触？</text>
+<path d="M503 196 C532 160 566 160 595 196 C624 232 658 232 687 196" stroke="#fb923c" stroke-width="17" fill="none" stroke-linecap="round"/>
+<path d="M500 149 L500 173 M691 149 L691 173" stroke="#94a3b8" stroke-width="4"/><path d="M511 146 L680 146" stroke="#ef4444" stroke-width="3"/><path d="M512 146 L527 138 L527 154 Z M680 146 L665 138 L665 154 Z" fill="#ef4444"/>
+<text x="712" y="187" font-size="17">松紧带</text><text x="475" y="254" font-size="16" fill="#475569">伸长后有恢复趋势；松紧也要舒适。</text>
+<text x="45" y="338" font-size="22" font-weight="700">③ 接触面积与压强</text>
+<rect x="70" y="393" width="100" height="22" rx="4" fill="#93c5fd"/><rect x="225" y="374" width="100" height="41" rx="5" fill="#60a5fa"/><rect x="55" y="420" width="130" height="19" rx="9" fill="#fcd34d"/><rect x="210" y="420" width="130" height="19" rx="9" fill="#fcd34d"/>
+<path d="M120 357 L120 380 M275 357 L275 369" stroke="#ef4444" stroke-width="4"/><path d="M112 376 L120 386 L128 376 M267 366 L275 376 L283 366" fill="none" stroke="#ef4444" stroke-width="3"/>
+<text x="60" y="466" font-size="16">较窄接触</text><text x="214" y="466" font-size="16">较宽接触</text><text x="45" y="492" font-size="15" fill="#475569">压力相近时，接触面积越大，平均压强越小。</text>
+<text x="475" y="338" font-size="22" font-weight="700">④ 材料与结构支撑</text>
+<path d="M500 414 L610 379 L637 399 L525 433 Z" fill="#e2e8f0" stroke="#64748b" stroke-width="3"/>
+<path d="M650 379 Q710 360 773 414" stroke="#f59e0b" stroke-width="13" fill="none" stroke-linecap="round"/>
+<text x="500" y="467" font-size="16">硬纸板支撑</text><text x="663" y="467" font-size="16">柔软材料缓冲</text>
+<text x="475" y="492" font-size="15" fill="#475569">不同材料各有用途，连接处仍需检查。</text>
+</g></svg>
