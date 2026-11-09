@@ -1871,6 +1871,13 @@ export const SESSIONS = [
   },
 ];
 
+for(const sid of ['W9','W10','W14','W15']){
+ const session=SESSIONS.find(x=>x.id===sid);
+ if(session && !session.fields.some(x=>x.key==='lesson_no_history_reason'))
+   session.fields.push(field('lesson_no_history_reason','没有可回顾AI记录时的实际原因',{stage:'review',required:false,type:'select',choices:['今天没有向AI提问','提问了，但没收到有效回复','平台记录没有显示','其他原因']}));
+}
+// 已有存储用W8表示实际第6节。保留W6/W7旧课次只供历史读取，勿将其当作目前的第6、7节。
+
 export function getSessionConfig(id) { return SESSIONS.find(s => s.id === id) || null; }
 
 export function aiVariantFor({ session, condition, isTest = false }) {
