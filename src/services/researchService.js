@@ -936,8 +936,10 @@ class ResearchService {
       for(const pair of config.paired_artifacts){
         const left=(record.artifact_versions?.[pair.overview]||[]).filter(v=>v.kind!=='progress');
         const right=(record.artifact_versions?.[pair.wear]||[]).filter(v=>v.kind!=='progress');
-        if(left.length!==right.length){
-          throw Object.assign(new Error('每一版正式原型都需要一张整体图和一张实际佩戴图。请补齐照片，或先保存制作进度。'),{status:400});
+        const leftNumbers = left.map(v=>Number(v.version_no)).filter(Number.isFinite).sort((a,b)=>a-b);
+        const rightNumbers = right.map(v=>Number(v.version_no)).filter(Number.isFinite).sort((a,b)=>a-b);
+        if(left.length!==right.length || JSON.stringify(leftNumbers)!==JSON.stringify(rightNumbers)){
+          throw Object.assign(new Error('每一版正式原型都需要同一版本号的整体图和实际佩戴图。请补齐对应照片，或先保存制作进度。'),{status:400});
         }
       }
     }
