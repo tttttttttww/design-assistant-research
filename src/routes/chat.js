@@ -114,8 +114,8 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
     const state = await access(req, id, sid);
     const config = getSessionConfig(sid);
     const completedTaskSteps = state?.task_progress?.completed_steps || [];
-    const expectedTaskPhase = config?.task_flow?.steps?.length
-      ? (completedTaskSteps.includes('task1') ? 'task2_prototype' : 'task1_design') : '';
+    const pendingTaskStep = config?.task_flow?.steps?.find(step=>!completedTaskSteps.includes(step.key)) || config?.task_flow?.steps?.at(-1) || null;
+    const expectedTaskPhase = pendingTaskStep?.task_phase || '';
     const taskContext = safeTaskContext(req.body?.taskContext, config, expectedTaskPhase);
     const clientSentAt = String(req.body?.clientSentAt || '').trim();
     if (req.file && config?.chat_image_enabled === false) return res.status(400).json({ error: '本节任务不使用聊天图片，请直接用文字与AI交流。' });
@@ -141,11 +141,7 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
     const variantRules = AI_VARIANT_RUNTIME_RULES[state.ai_variant] || AI_VARIANT_RUNTIME_RULES.free;
     const variantResponseRules = `【回答规则】\n${variantRules.map(x => `- ${x}`).join('\n')}`;
     const baseTaskContextText = firstStudentTurn ? `${await researchService.hiddenContextForChat(sid)}\n\n` : '';
-    const phaseContext = taskContext.task_phase === 'task1_design'
-      ? '当前活动阶段：任务一——上传上一课任务单，学习教师提供的科学知识，将至少一个知识点应用到设计图，并选择材料、标注用途。'
-      : taskContext.task_phase === 'task2_prototype'
-        ? '当前活动阶段：任务二——根据完善后的设计图领取材料并制作第一版实体原型；后续可持续迭代版本。'
-        : '';
+    const phaseContext = pendingTaskStep ? `当前活动阶段：${pendingTaskStep.label}。请根据学生具体提问、检查事实与真实进度提供帮助，不得替学生编造检查或测试结论。` : '';
     const taskContextText = `${baseTaskContextText}${phaseContext ? `【当前活动阶段】\n${phaseContext}\n\n` : ''}`;
     const hidden = `${taskContextText}${commonResponseRules}\n\n${variantResponseRules}\n\n【学生实际输入】\n${message}`;
     interactionId = uuidv4();
