@@ -1364,6 +1364,8 @@ export const SESSIONS = [
     "title": "最终验证与设计证据整理",
     "subtitle": "核对需求、方案、原型、测试、重要修改与最终结果，补充必要验证，形成真实作品说明。",
     "student_label": "第10节课 · 最终验证与设计证据整理",
+    "questionnaire_slot": "post",
+    "questionnaire_after_submit": true,
     "research_role": "intervention",
     "phase": "intervention",
     "ai_mode": "condition",
