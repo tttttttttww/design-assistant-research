@@ -14,8 +14,8 @@ for(let n=6;n<=10;n++){
    for(const k of step.required_artifacts||[])assert.ok(photos.has(k),'missing artifact '+k);
  }
  assert.ok(s.paired_artifacts?.length>0);
- assert.equal(aiVariantFor({session:s,condition:'A'}),'supported');
- assert.equal(aiVariantFor({session:s,condition:'B'}),'free');
+ assert.equal(aiVariantFor({session:s,condition:'A'}),'free');
+ assert.equal(aiVariantFor({session:s,condition:'B'}),'supported');
  assert.equal(INTERVENTION_ORIENTATION[s.id].supported.reflection_activity,false);
 }
 assert.equal(getSessionConfig('W11').carry_from,'W10');
@@ -26,4 +26,4 @@ assert.ok(task.includes("s.id==='W6'?w8TaskFlowHtml"));
 assert.ok(task.includes('l06_wear_versions'));
 assert.ok(rs.includes("this.getSessionRecord(id, 'W10')"));
 assert.ok(rs.includes('course-v11-enhanced')||read('src/services/storageService.js').includes('course-v11-enhanced'));
-console.log('V12.1 COURSE CHECK OK');
+console.log('V12.2 COURSE CHECK OK');
