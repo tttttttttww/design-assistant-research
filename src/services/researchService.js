@@ -109,7 +109,7 @@ class ResearchService {
       login_name_hash: input.login_name_hash ?? old.login_name_hash ?? '',
       is_test: isTestParticipant(id),
       condition_fixed: Boolean(fixedCondition),
-      condition_fixed_reason: fixedCondition ? (['S04','S05'].includes(id) ? 'S04/S05因前两节未参与，固定为B对照组' : '教师测试号固定组别') : '',
+      condition_fixed_reason: fixedCondition ? ('教师测试号固定组别') : '',
       created_at: old.created_at || iso(),
       last_active_at: iso(),
       schema_version: SCHEMA_VERSION,
@@ -136,7 +136,7 @@ class ResearchService {
       p.condition = forced;
       p.condition_fixed = true;
       p.condition_fixed_reason = ['S04','S05'].includes(id)
-        ? 'S04/S05因前两节未参与，固定为B对照组'
+        ? '需要核对历史分组'
         : '教师测试号固定组别';
       p.condition_corrected_from = previous;
       p.condition_corrected_at = iso();
@@ -145,8 +145,14 @@ class ResearchService {
     } else if (forced) {
       p.condition_fixed = true;
       p.condition_fixed_reason = ['S04','S05'].includes(id)
-        ? 'S04/S05因前两节未参与，固定为B对照组'
+        ? '需要核对历史分组'
         : '教师测试号固定组别';
+    }
+    if (['S04','S05'].includes(id) && !forced) {
+      // Historical fixed-B label no longer matches the v12.2 group mapping.
+      // Make the roster editable but never change the saved group automatically.
+      p.condition_fixed=false;
+      p.condition_fixed_reason='';
     }
     return p;
   }
