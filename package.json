@@ -2,13 +2,15 @@
   "name": "design-thinking-help-seeking-platform",
   "version": "11.59.0",
   "type": "module",
-  "description": "兼容原数据存储的6—13节教学版：求助策略、当堂对话回顾、原型迭代和全校舞台展示",
+  "description": "11.59课程设计与生成式AI求助记录平台：12节常规课＋第13节全校舞台展示（不修改既有Blob数据路径）",
   "main": "cloud-functions/express/[[default]].js",
   "scripts": {
     "start": "node server.js",
     "build": "node scripts/check.mjs",
     "check": "node scripts/check.mjs",
-    "test": "node scripts/smoke.mjs && node scripts/w8-task-flow-test.mjs && node scripts/v1158-student-flow-test.mjs && node scripts/v1158-compatibility-test.mjs && node scripts/weekly-intervention-test.mjs && node scripts/reflection-curator-test.mjs && node scripts/v1156-merge-and-history-test.mjs && node scripts/v1150-data-safety-test.mjs && node scripts/v1149-protocol-test.mjs && node scripts/measurement-test.mjs && node scripts/artifact-history-test.mjs && node scripts/targeted-reflection-test.mjs"
+    "test": "node scripts/check.mjs && node scripts/artifact-history-test.mjs && node scripts/measurement-test.mjs && node scripts/v1156-merge-and-history-test.mjs",
+    "test:legacy": "node scripts/smoke.mjs && node scripts/w8-task-flow-test.mjs && node scripts/v1158-student-flow-test.mjs && node scripts/v1158-compatibility-test.mjs && node scripts/weekly-intervention-test.mjs && node scripts/reflection-curator-test.mjs && node scripts/v1156-merge-and-history-test.mjs && node scripts/v1150-data-safety-test.mjs && node scripts/v1149-protocol-test.mjs && node scripts/measurement-test.mjs && node scripts/artifact-history-test.mjs && node scripts/targeted-reflection-test.mjs",
+    "check:legacy": "node scripts/check-v1158-legacy.mjs"
   },
   "dependencies": {
     "@edgeone/pages-blob": "0.0.16",
