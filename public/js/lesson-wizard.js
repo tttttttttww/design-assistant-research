@@ -21,11 +21,11 @@ async function wizardGo(target){
   const page=Number(target);
   if(!Number.isInteger(page)||page<0||page>4)return;
   if(page===3&&!w8StepDone('task1')){alert('请先完成任务一，才能进入制作或新任务。');return;}
-  if(page===2&&wizardPage===1&&!w8StepDone('task1')){
+  if(page===2&&!w8StepDone('task1')){
     const values={...displayTextFields(),...collectFields()},fields=state.session.fields||[];
     const needed=fields.filter(f=>f.stage==='task1'&&(/_check[123]$|_check_evidence$|_peer$|_focus$/.test(f.key)));
     const missing=needed.find(f=>!String(values[f.key]||'').trim());
-    if(missing){alert('先完成这一项：'+missing.label+'。没有做过可以如实填写“还没有检查”。');return;}
+    if(missing){alert('请先完成第2步“找问题”：'+missing.label+'。没做过就如实选择。');return;}
   }
   const chatDraft=document.getElementById('message')?.value||'';
   if(!state.record.submitted_at&&!state.session_locked)try{await persistCurrentFields({saveReason:'wizard_page_change'});}catch(e){alert('当前内容保存失败，请检查网络：'+e.message);return;}
