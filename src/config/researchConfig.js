@@ -1916,6 +1916,8 @@ for(const [targetId, sourceId, lessonNo] of V12_LESSON_SOURCES){
     INTERVENTION_ORIENTATION[targetId]=orient;
   }
 }
+const transferLesson11=SESSIONS.find(s=>s.id==='W11');
+if(transferLesson11)transferLesson11.carry_from='W10';
 // Keep two old v11.59 candidate session IDs as read-only historical selections
 // for exports; never present them as live lessons to students.
 for(const sid of ['W14','W15']){
