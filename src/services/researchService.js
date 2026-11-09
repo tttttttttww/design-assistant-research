@@ -908,6 +908,31 @@ class ResearchService {
       const labels = anyKeys.map(key => config.artifacts.find(item => item.key === key)?.label || key);
       throw Object.assign(new Error(`请至少上传一项：${labels.join('；')}`), { status: 400 });
     }
+    // 正式原型的整体图和佩戴图按同一版数配对。进行中的草稿不会被删除，也不会自动冒充完成版。
+    if(stepIndex===flow.steps.length-1 && Array.isArray(config.paired_artifacts)){
+      for(const pair of config.paired_artifacts){
+        const left=(record.artifact_versions?.[pair.overview]||[]).filter(v=>v.kind!=='progress');
+        const right=(record.artifact_versions?.[pair.wear]||[]).filter(v=>v.kind!=='progress');
+        if(left.length!==right.length){
+          throw Object.assign(new Error('每一版正式原型都需要一张整体图和一张实际佩戴图。请补齐照片，或先保存制作进度。'),{status:400});
+        }
+      }
+    }
+    // 当堂求助回顾与普通进度记录分开：不要求学生回忆上周对话。
+    if(stepIndex===flow.steps.length-1 && config.fields.some(f=>f.key==='lesson_review_use')){
+      const person=await this.getParticipant(id);
+      const variant=aiVariantFor({session:config,condition:person.condition,isTest:person.is_test});
+      if(variant==='supported'){
+        const msgs=await this.getMessages(id,sid);
+        const refs=new Set(msgs.filter(m=>m.role==='assistant').map(m=>String(m.message_id||'')));
+        const ref=String(record.text_fields?.lesson_review_reference||'').trim();
+        if(refs.size && !refs.has(ref))throw Object.assign(new Error('请先在本节回顾中选一段真实的AI回复。'),{status:400});
+        if(!refs.size && !String(record.text_fields?.lesson_no_history_reason||'').trim())throw Object.assign(new Error('没有可回顾的对话时，请记录原因。'),{status:400});
+        if(!String(record.text_fields?.lesson_review_use||'').trim() || !String(record.text_fields?.lesson_review_next||'').trim())throw Object.assign(new Error('请先完成简短的本节求助回顾，再提交。'),{status:400});
+      }else if(!String(record.text_fields?.lesson_exit_note||'').trim()){
+        throw Object.assign(new Error('请先写一句本节实际进度，再提交。'),{status:400});
+      }
+    }
     const counts = await this.getTaskPhaseExchangeCounts(id, sid, flow);
     const exchangeCount = Number(counts[step.key] || 0);
     const minimum = Number(step.min_ai_exchanges || 0);
