@@ -1957,15 +1957,44 @@ for(const session of SESSIONS.filter(x=>Number(x.actual_lesson)>=6&&Number(x.act
     const wear=session.artifacts.find(a=>a.key===pair.wear);
     if(wear)wear.version_questionnaire=false;
   }
+  // New classroom sessions: teacher-defined A=normal AI, B=scaffolded AI.
+  // Earlier lessons keep their historically executed mapping; existing W6–W10
+  // participants are pinned to the variant actually recorded by the backend.
+  session.condition_protocol='A-free-B-supported-v12.2';
   const orient=INTERVENTION_ORIENTATION[session.id];
   if(orient?.supported){
-    orient.supported.title='先学一个求助方法';
-    orient.supported.intro='今天只学一个办法：遇到问题先看事实，说清楚困难，再请AI帮助分析。';
-    orient.supported.cards=[{title:'求助三步',body:['先检查：我看到了什么？','说具体：哪里不确定，试过什么？','再判断：AI的办法适不适合我的作品？']}];
-    orient.supported.button='完成练习，开始任务';
+    const themes={
+      6:{title:'先判断：我真的没有问题吗？',tip:'先检查作品的固定、佩戴和材料。没有发现问题，也要说清尚未验证的地方。',weak:'我的设计完全没问题，AI直接帮我做一个吧。',strong:'我画好了设计图，但还没验证画笔是否能固定。我准备使用魔术贴，应该先检查什么？'},
+      7:{title:'把制作困难说具体',tip:'指出具体部位、所用材料、看见的现象和自己试过的办法。',weak:'坏了，怎么办？',strong:'夹笔处用了纸板和胶带，一画线就松。我已经加固过一次，还能检查哪里？'},
+      8:{title:'用真实测试结果追问',tip:'把实际测试的结果告诉AI。AI的判断和测试不一样时，以真实证据为依据。',weak:'AI说没问题，所以我不用测试。',strong:'AI认为夹笔结构稳定，但同伴试画时画笔滑动。可能是什么原因？我先检查哪一项？'},
+      9:{title:'比较建议，再自己决定',tip:'请AI说明不同办法的适用条件，再结合材料和真实使用情况选择。',weak:'你替我决定最后做哪一种。',strong:'我可以用魔术贴或松紧带固定。请比较佩戴舒适度和固定效果，我再根据测试选择。'},
+      10:{title:'检查AI结论有没有证据',tip:'区分已经验证的效果和还没有测试的推测，不把AI说的话直接当作结果。',weak:'把AI夸我的话直接写进作品说明。',strong:'AI建议写“佩戴稳固”，但我只测过一次。怎样用真实证据描述目前效果？'}
+    };
+    const theme=themes[lesson];
+    orient.supported.key='v12.2-help-practice-W'+lesson;
+    orient.supported.title='第0步｜先学会怎样向AI求助';
+    orient.supported.intro='先学一个方法，再做一道小练习。完成后才能进入今天的任务。';
+    orient.supported.cards=[
+      {title:'什么时候需要问？',body:['先看自己的成果。遇到问题、不确定某个地方，或还没检验过时，都可以向AI求助。','不要因为“看起来没问题”，就跳过检查。']},
+      {title:'怎样把问题问清楚？',body:['说清：我做到了哪一步 → 我看到或担心什么 → 我试过什么/还没验证什么。','今天的重点：'+theme.tip],
+        example_bad:theme.weak,example_good:theme.strong},
+      {title:'收到回答以后怎么办？',body:['先判断建议是否适合自己的设计和材料，再决定采纳、修改后采纳，还是暂不采用。']}
+    ];
+    orient.supported.checks=[{
+      id:'q1',question:theme.title,
+      options:session.id==='W6'?
+       ['设计图画完就说明没有问题','检查固定与佩戴的条件，标出还不确定的地方，再请AI帮助分析','让AI完全替自己决定结构']:
+       orient.supported.checks[0].options,
+      correct:session.id==='W6'?1:orient.supported.checks[0].correct
+    }];
+    orient.supported.allow_imperfect_quiz=true;
+    orient.supported.strategy_micro_lesson=true;
+    orient.supported.reflection_activity=false;
+    orient.supported.button='完成求助练习，进入第1步';
   }
   if(orient?.control){
-    orient.control.title='了解今天的任务';
+    orient.control.key='v12.2-task-readiness-W'+lesson;
+    orient.control.title='第0步｜了解今天的任务';
     orient.control.intro='先看一看已有成果，接着完成检查与今天的任务。';
     orient.control.cards=[{title:'按真实情况记录',body:['还没完成或没有验证的地方，直接写清楚即可。']}];
     orient.control.button='开始今天的任务';
@@ -1987,9 +2016,16 @@ export function aiVariantFor({ session, condition, isTest = false }) {
   if (!session || session.ai_mode === 'none') return 'none';
   if (session.ai_mode === 'free') return 'free';
   if (session.ai_mode === 'condition') {
-    if (condition === 'A') return 'supported';
-    if (condition === 'B') return 'free';
-    if (isTest) return condition === 'A' ? 'supported' : 'free';
+    if (session.condition_protocol === 'A-free-B-supported-v12.2') {
+      if (condition === 'A') return 'free';
+      if (condition === 'B') return 'supported';
+    } else {
+      if (condition === 'A') return 'supported';
+      if (condition === 'B') return 'free';
+    }
+    if (isTest) return session.condition_protocol === 'A-free-B-supported-v12.2'
+      ? (condition==='B'?'supported':'free')
+      : (condition==='A'?'supported':'free');
     return 'unassigned';
   }
   return 'free';
