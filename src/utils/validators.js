@@ -15,8 +15,8 @@ export function isTestParticipant(value) {
 
 export function testParticipantCondition(value) {
   const id = normalizeParticipantId(value);
-  if (id === 'S00') return 'A'; // v12.2: 普通AI测试号
-  if (id === 'S99') return 'B'; // v12.2: 求助支架测试号
+  if (id === 'S00') return 'B'; // v12.2: 求助支架测试号
+  if (id === 'S99') return 'A'; // v12.2: 普通AI测试号
   return '';
 }
 
@@ -26,8 +26,8 @@ export function testParticipantCondition(value) {
 // their future group in the admin panel before continuing data collection.
 export function forcedParticipantCondition(value) {
   const id = normalizeParticipantId(value);
-  if (id === 'S00') return 'A';
-  if (id === 'S99') return 'B';
+  if (id === 'S00') return 'B';
+  if (id === 'S99') return 'A';
   return '';
 }
 
