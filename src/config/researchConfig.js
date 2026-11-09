@@ -1925,6 +1925,4 @@ export function hiddenAiContext(session) {
     session.ai_instruction ? `本节AI使用安排：${session.ai_instruction}` : 'AI使用安排以学生端本节要求为准。',
     '不要主动诱导学生求助，也不要要求学生采用固定提问模板。',
   ].filter(Boolean).join('\n');
-}     actual_lesson:6,
-     paired_artifacts:[{overview:'w8_prototype_versions',wear:'w8_wear_versions'}],
-
+}
