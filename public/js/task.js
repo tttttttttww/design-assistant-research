@@ -642,6 +642,17 @@ function updateW8ExchangeCounter(){
   }
 }
 function w8Artifact(key){return (state?.session?.artifacts||[]).find(a=>a.key===key);}
+
+function scienceDiagramCardsHtml(){
+ const cards=[
+  ['摩擦与防滑','<svg viewBox="0 0 230 100" aria-label="摩擦与防滑示意图"><rect x="42" y="23" width="145" height="52" rx="18" fill="#e3e9e7"/><rect x="68" y="40" width="98" height="17" rx="7" fill="#d5a76a"/><path d="M78 40v17m16-17v17m16-17v17m16-17v17m16-17v17" stroke="#8a6e45" stroke-width="2"/><text x="115" y="17" text-anchor="middle">接触与固定</text><text x="115" y="95" text-anchor="middle">检查是否滑动</text></svg>','接触面间的摩擦可帮助固定，是否防滑需实际检验。'],
+  ['弹性与松紧','<svg viewBox="0 0 230 100" aria-label="弹性示意图"><rect x="26" y="30" width="32" height="42" rx="8" fill="#c8dce8"/><rect x="174" y="30" width="32" height="42" rx="8" fill="#c8dce8"/><path d="M57 49Q75 15 93 49T129 49T175 49" fill="none" stroke="#c98d64" stroke-width="8"/><text x="115" y="17" text-anchor="middle">松紧带</text><text x="115" y="95" text-anchor="middle">过紧过松都要调整</text></svg>','弹性材料可拉伸和恢复，固定时也要兼顾舒适。'],
+  ['接触面积与压力','<svg viewBox="0 0 230 100" aria-label="接触面积示意图"><rect x="25" y="38" width="70" height="33" rx="14" fill="#eeddb8"/><rect x="40" y="49" width="43" height="10" rx="5" fill="#cc875d"/><rect x="137" y="32" width="70" height="45" rx="14" fill="#eeddb8"/><rect x="152" y="40" width="43" height="28" rx="5" fill="#cc875d"/><text x="61" y="23" text-anchor="middle">窄带</text><text x="172" y="23" text-anchor="middle">宽带</text><text x="115" y="95" text-anchor="middle">比较压力与接触面积</text></svg>','在受力相近时，扩大接触面积通常能减小平均压强。'],
+  ['结构与支撑','<svg viewBox="0 0 230 100" aria-label="结构支撑示意图"><rect x="30" y="48" width="70" height="10" fill="#d2b18c"/><path d="M133 65L145 38L159 65L173 38L187 65L201 38L212 65" fill="none" stroke="#b68c65" stroke-width="6"/><text x="66" y="24" text-anchor="middle">平板</text><text x="175" y="24" text-anchor="middle">折叠结构</text><text x="115" y="95" text-anchor="middle">比较形状与支撑效果</text></svg>','材料和结构形状都会影响支撑效果，需要实际比较。']
+ ];
+ return '<div class="science-mini-grid">'+cards.map(x=>'<article class="science-mini-card"><strong>'+x[0]+'</strong>'+x[1]+'<p>'+x[2]+'</p></article>').join('')+'</div>';
+}
+function compactTaskHeader(s){return '<section class="card lesson-compact-head"><span class="eyebrow">'+esc(s.student_label||'本节任务')+'</span><h1>'+esc(s.title)+'</h1><p>'+esc(s.subtitle||'按实际进度继续。')+'</p></section>';}
 function w8TaskFlowHtml(s,r){
   const done1=w8StepDone('task1'),done2=w8StepDone('task2');
   if(!done1)activeW8Step='task1';
@@ -667,7 +678,7 @@ function w8TaskFlowHtml(s,r){
     <p>先上传上一节课的任务单/设计记录，再阅读教师提供的科学知识资料。至少选择一个知识点，标注它在设计图中的具体位置和作用；随后从教师提供的材料中选择要使用的材料，并写明用途。</p>
     <div class="notice">AI助手在本任务全程可用。提交前必须完成至少10轮完整对话（你发送一条消息并收到AI回复算一轮）。清楚的问题直接问，不要为了次数发送无意义内容。</div>
     <h3>1. 查看已有成果并检查</h3><p class="small">先检查原图和材料，再请同伴提出一条具体意见。没有发现缺点时，说清哪些还没有验证。</p><div class="artifact-list">${previousSheet?artifactHtml(previousSheet,r.artifacts?.[previousSheet.key]):''}</div><div class="form">${checkFields}${peerFields}</div>
-    <h3>2. 学习科学知识并标注应用</h3><p class="small">先阅读下面的简明知识卡，再对照教师发放的课堂资料。至少选择一个确实适用于自己设计的知识点；不要只抄名称，要说明它用在图纸的哪个位置、帮助解决什么问题。</p><div class="resource-pack"><div class="resource-pack-head"><span class="eyebrow">科学知识</span><h3>本节可参考的知识点</h3><p class="small">配图和说明全部使用中文；请选择真正能用在自己设计中的知识。</p><img src="/assets/science-guide-zh.svg" alt="中文科学图示：摩擦与防滑、弹性与固定、接触面积与压强、材料结构支撑" style="width:100%;height:auto;border-radius:12px;display:block;margin:12px 0"></div><div class="resource-grid">${(s.resources||[]).map(r=>`<article class="resource-card"><h4>${esc(r.title)}</h4><ul>${(r.items||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></article>`).join('')}</div></div><div class="form">${step1ScienceFields}</div>
+    <h3>2. 学习科学知识并标注应用</h3>${scienceDiagramCardsHtml()}<p class="small">先阅读下面的简明知识卡，再对照教师发放的课堂资料。至少选择一个确实适用于自己设计的知识点；不要只抄名称，要说明它用在图纸的哪个位置、帮助解决什么问题。</p><div class="resource-pack"><div class="resource-pack-head"><span class="eyebrow">科学知识</span><h3>本节可参考的知识点</h3><p class="small">配图和说明全部使用中文；请选择真正能用在自己设计中的知识。</p><img src="/assets/science-guide-zh.svg" alt="中文科学图示：摩擦与防滑、弹性与固定、接触面积与压强、材料结构支撑" style="width:100%;height:auto;border-radius:12px;display:block;margin:12px 0"></div><div class="resource-grid">${(s.resources||[]).map(r=>`<article class="resource-card"><h4>${esc(r.title)}</h4><ul>${(r.items||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></article>`).join('')}</div></div><div class="form">${step1ScienceFields}</div>
     <h3>3. 选择材料并标注用途</h3><p class="small">材料不要求全部使用。请先查看教师提供的材料清单，再选择真正需要的材料，并在学习单和设计图上标出使用位置和用途。</p>${materialBankHtml(s.materials||[])}<div class="form">${step1MaterialFields}</div><h3>4. 上传完成标注的学习单</h3><p class="small">请上传已写明科学知识应用位置、材料选择和用途的学习单照片。纸质学习单原件请保留。</p><div class="artifact-list">${scienceSheet?artifactHtml(scienceSheet,r.artifacts?.[scienceSheet.key]):''}</div>
     <h3>5. 上传完善后的设计图</h3><div class="artifact-list">${designVersion?artifactHtml(designVersion,r.artifacts?.[designVersion.key]):''}</div>
     <div class="w8-counter"><div><strong>AI完整对话轮次</strong><span><b data-w8-exchange-count="task1">${counts1}</b> / ${min1}</span></div><div class="w8-meter"><i style="width:${Math.min(100,counts1/min1*100)}%"></i></div><p class="small">只有学生消息和对应AI回复都成功保存，才计为一轮。历史课次聊天、AI单独回复和未成功获得回复的消息不计入；轮次门槛只用于本节提交，不代表求助质量。</p></div>
@@ -790,7 +801,7 @@ function render(){
     return;
   }
   if(state.task_gate){
-    document.getElementById('app').innerHTML=`<div class="course-header"><span class="eyebrow">${esc(s.id)} · ${esc(s.date)}</span><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div></div>${gateHtml()}`;
+    document.getElementById('app').innerHTML=`<div class="course-header"><span class="eyebrow">${esc(s.student_label||s.title)}</span><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div></div>${gateHtml()}`;
     if(document.getElementById('questionnaireForm')) document.getElementById('questionnaireForm').onsubmit=e=>{e.preventDefault();submitQuestionnaire(state.task_gate==='questionnaire_post'?'post':'pre');};
     if(document.getElementById('refreshAssignment')) document.getElementById('refreshAssignment').onclick=()=>load();
     return;
@@ -801,7 +812,7 @@ function render(){
   }
   document.getElementById('app').innerHTML=`
     <div class="course-header"><span class="eyebrow">${esc(s.student_label||s.title)}</span><div class="row between"><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div>${state.session_locked?'<span class="badge big">教师已结束本阶段</span>':r.submitted_at?'<span class="badge big">已标记完成</span>':''}</div></div>
-    <div class="course-grid"><div class="course-main">${taskCard(s)}${carryCard(state.carry_from)}
+    <div class="course-grid"><div class="course-main">${isW8Flow?compactTaskHeader(s):taskCard(s)}${carryCard(state.carry_from)}
       ${isW8Flow?`<form id="taskForm" class="form">${s.id==='W8'?w8TaskFlowHtml(s,r):weeklyTaskFlowHtml(s,r)}</form>`:`<section class="card"><span class="eyebrow">我的任务记录</span><h2>边做边记录，内容会及时自动保存</h2><p class="small">今天没做完就点“保存进度并退出”，下次老师继续开放本任务时，用同一编号和姓名进入即可接着做。完成按钮只是标记你认为本阶段已完成；在老师统一结束并锁定前，即使误点，也可以回来继续修改。</p>${state.session_locked?'<div class="notice"><strong>本阶段已由老师结束并锁定。</strong>现在可以查看已有记录，但不能继续修改。</div>':r.submitted_at?'<div class="notice"><strong>你已将本阶段标记为完成。</strong>如需继续修改，请点击“继续修改”。</div>':''}<form id="taskForm" class="form">${taskFieldsHtml(s)}${bonusTaskHtml(s)}<div class="artifact-list">${s.artifacts.map(a=>artifactHtml(a,r.artifacts?.[a.key])).join('')}</div><div id="saveStatus" class="small"></div><div class="row">${r.submitted_at&&!state.session_locked?'<button type="button" class="btn secondary" id="reopenSession">继续修改</button>':`<button type="button" class="btn secondary" id="saveAndExit" ${state.session_locked?'disabled':''}>保存进度并退出</button><button type="submit" class="btn orange" ${(r.submitted_at||state.session_locked)?'disabled':''}>${state.session_locked?'教师已结束本阶段':'完成本阶段'}</button>`}</div></form></section>`}
     </div><aside class="course-side">${chatPanel()}</aside></div>`;
   wire();
@@ -945,7 +956,7 @@ async function send(){
   finally{sending=false;document.getElementById('thinking')?.classList.add('hidden');if(document.getElementById('send'))document.getElementById('send').disabled=false;}
 }
 function wire(){
-  document.querySelectorAll('[data-field]').forEach(x=>{x.addEventListener('focus',()=>{rememberTaskField(x.dataset.field);startTaskFieldTrace(x);});x.addEventListener('input',()=>{rememberTaskField(x.dataset.field);bumpTaskFieldTrace(x);writeLocalDraft(collectFields());queueAutoSave();});x.addEventListener('paste',e=>postTraceEvent('task_field_paste',{field_key:x.dataset.field||'',pasted_chars:String(e.clipboardData?.getData('text')||'').length}));x.addEventListener('blur',()=>{rememberTaskField(x.dataset.field);endTaskFieldTrace(x,'blur');if(!state.record.submitted_at)persistCurrentFields({saveReason:'blur'}).then(()=>setSaveStatus('已自动保存 ✓')).catch(e=>setSaveStatus(`自动保存失败：${e.message}`));});});
+  document.querySelectorAll('[data-field]').forEach(x=>{if(x.tagName==='SELECT')x.addEventListener('change',()=>{writeLocalDraft(collectFields());queueAutoSave();});x.addEventListener('focus',()=>{rememberTaskField(x.dataset.field);startTaskFieldTrace(x);});x.addEventListener('input',()=>{rememberTaskField(x.dataset.field);bumpTaskFieldTrace(x);writeLocalDraft(collectFields());queueAutoSave();});x.addEventListener('paste',e=>postTraceEvent('task_field_paste',{field_key:x.dataset.field||'',pasted_chars:String(e.clipboardData?.getData('text')||'').length}));x.addEventListener('blur',()=>{rememberTaskField(x.dataset.field);endTaskFieldTrace(x,'blur');if(!state.record.submitted_at)persistCurrentFields({saveReason:'blur'}).then(()=>setSaveStatus('已自动保存 ✓')).catch(e=>setSaveStatus(`自动保存失败：${e.message}`));});});
   document.querySelectorAll('[data-artifact]').forEach(x=>x.onchange=()=>uploadArtifact(x));
   if(document.getElementById('saveAndExit'))document.getElementById('saveAndExit').onclick=saveAndExit;
   if(document.getElementById('reopenSession'))document.getElementById('reopenSession').onclick=async()=>{try{await App.api('/session/reopen',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id})});await load();}catch(x){alert(x.message);}};
