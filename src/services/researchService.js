@@ -109,7 +109,7 @@ class ResearchService {
       login_name_hash: input.login_name_hash ?? old.login_name_hash ?? '',
       is_test: isTestParticipant(id),
       condition_fixed: Boolean(fixedCondition),
-      condition_fixed_reason: fixedCondition ? (['S04','S05'].includes(id) ? 'S04/S05因前两节未参与，固定为B对照组' : '教师测试号固定组别') : '',
+      condition_fixed_reason: fixedCondition ? ('教师测试号固定组别') : '',
       created_at: old.created_at || iso(),
       last_active_at: iso(),
       schema_version: SCHEMA_VERSION,
@@ -136,7 +136,7 @@ class ResearchService {
       p.condition = forced;
       p.condition_fixed = true;
       p.condition_fixed_reason = ['S04','S05'].includes(id)
-        ? 'S04/S05因前两节未参与，固定为B对照组'
+        ? '需要核对历史分组'
         : '教师测试号固定组别';
       p.condition_corrected_from = previous;
       p.condition_corrected_at = iso();
@@ -145,8 +145,14 @@ class ResearchService {
     } else if (forced) {
       p.condition_fixed = true;
       p.condition_fixed_reason = ['S04','S05'].includes(id)
-        ? 'S04/S05因前两节未参与，固定为B对照组'
+        ? '需要核对历史分组'
         : '教师测试号固定组别';
+    }
+    if (['S04','S05'].includes(id) && !forced) {
+      // Historical fixed-B label no longer matches the v12.2 group mapping.
+      // Make the roster editable but never change the saved group automatically.
+      p.condition_fixed=false;
+      p.condition_fixed_reason='';
     }
     return p;
   }
@@ -235,11 +241,29 @@ class ResearchService {
     return parse(await storageService.getObject(orientationKey(id, sid)), null);
   }
 
+  // v12.2: New sessions W6–W10 use A=ordinary, B=scaffolded AI.
+  // Existing records remain on the bot variant ACTUALLY used; no retroactive
+  // relabel, bot switch, or synthetic pre-lesson intervention record.
+  async effectiveVariantFor(id, sid, participant = null) {
+    const session = getSessionConfig(sid);
+    const person = participant || await this.getParticipant(id);
+    const planned = aiVariantFor({ session, condition:person.condition, isTest:person.is_test });
+    if(!session?.condition_protocol || !['free','supported'].includes(planned)) return planned;
+    const record = await this.getSessionRecord(id,sid);
+    if(record?.started_at && ['free','supported'].includes(record.ai_variant)) return record.ai_variant;
+    const chat = await this.getChatSession(id,sid);
+    if(chat?.started_at && ['free','supported'].includes(chat.ai_variant)) return chat.ai_variant;
+    const orientation = await this.getOrientation(id,sid);
+    if(orientation?.started_at && ['supported','control'].includes(orientation.mode))
+      return orientation.mode==='supported'?'supported':'free';
+    return planned;
+  }
+
   async orientationConfigFor(id, sid) {
     const session = getSessionConfig(sid);
     if (!session || !INTERVENTION_ORIENTATION[sid]) return null;
     const participant = await this.getParticipant(id);
-    const variant = aiVariantFor({ session, condition: participant.condition, isTest: participant.is_test });
+    const variant = await this.effectiveVariantFor(id,sid,participant);
     if (!['supported','free'].includes(variant)) return null;
     const mode = variant === 'supported' ? 'supported' : 'control';
     const base = INTERVENTION_ORIENTATION[sid]?.[mode];
@@ -249,11 +273,15 @@ class ResearchService {
     // protocol became active must never be retrospectively locked behind a new pre-task gate.
     // Old orientation records remain readable in original storage (and archive on any deliberate
     // new start), but are not rewritten merely to make a past class look treated.
-    if (config.strategy_micro_lesson || String(config.key||'').startsWith('neutral-weekly-readiness-')) {
+    if (session.condition_protocol==='A-free-B-supported-v12.2' || config.strategy_micro_lesson || String(config.key||'').startsWith('neutral-weekly-readiness-')) {
       const existing = await this.getOrientation(id, sid);
       if (!existing || existing.orientation_key !== config.key) {
         const previousRecord = await this.getSessionRecord(id, sid);
-        if (previousRecord?.started_at || previousRecord?.submitted_at || previousRecord?.saved_at || existing?.completed_at) return null;
+        // Formal students: never require a newly introduced pre-lesson
+        // exercise after the original classroom task had already started.
+        // Only disposable teacher TEST accounts may preview a new protocol
+        // without erasing or reassigning formal student evidence.
+        if (!participant.is_test && (previousRecord?.started_at || previousRecord?.submitted_at || previousRecord?.saved_at || existing?.started_at || existing?.completed_at)) return null;
       }
     }
     if (mode === 'supported' && config.dynamic_personal_queries) {
@@ -650,7 +678,7 @@ class ResearchService {
     if (!r.started_at) {
       r.started_at = iso();
       r.condition_at_time = p.condition;
-      r.ai_variant = aiVariantFor({ session: s, condition: p.condition, isTest: p.is_test });
+      r.ai_variant = await this.effectiveVariantFor(id,sid,p);
       await this.saveSessionRecord(id, sid, r);
       await this.appendEvent(id, sid, 'task_started', {});
     }
@@ -946,14 +974,16 @@ class ResearchService {
     // 当堂求助回顾与普通进度记录分开：不要求学生回忆上周对话。
     if(stepIndex===flow.steps.length-1 && config.fields.some(f=>f.key==='lesson_review_use')){
       const person=await this.getParticipant(id);
-      const variant=aiVariantFor({session:config,condition:person.condition,isTest:person.is_test});
+      const variant=await this.effectiveVariantFor(id,sid,person);
       if(variant==='supported'){
         const msgs=await this.getMessages(id,sid);
-        const refs=new Set(msgs.filter(m=>m.role==='assistant').map(m=>String(m.message_id||'')));
+        const phases=new Set((config.task_flow?.steps||[]).map(x=>x.task_phase));
+        const refs=new Set(msgs.filter(m=>m.role==='assistant'&&phases.has(m.task_context?.task_phase)).map(m=>String(m.message_id||'')));
+        const hasActualChat=refs.size>0;
         const ref=String(record.text_fields?.lesson_review_reference||'').trim();
         if(refs.size && !refs.has(ref))throw Object.assign(new Error('请先在本节回顾中选一段真实的AI回复。'),{status:400});
         if(!refs.size && !String(record.text_fields?.lesson_no_history_reason||'').trim())throw Object.assign(new Error('没有可回顾的对话时，请记录原因。'),{status:400});
-        if(!String(record.text_fields?.lesson_review_use||'').trim() || !String(record.text_fields?.lesson_review_next||'').trim())throw Object.assign(new Error('请先完成简短的本节求助回顾，再提交。'),{status:400});
+        if(hasActualChat&&(!String(record.text_fields?.lesson_review_use||'').trim()||!String(record.text_fields?.lesson_review_next||'').trim()))throw Object.assign(new Error('请先完成简短的本节求助回顾，再提交。'),{status:400});
       }else if(!String(record.text_fields?.lesson_exit_note||'').trim()){
         throw Object.assign(new Error('请先写一句本节实际进度，再提交。'),{status:400});
       }
@@ -973,7 +1003,7 @@ class ResearchService {
       const currentLesson=Number(config.actual_lesson||0);
       if(currentLesson>=6 && currentLesson<=10){
         const participant=await this.getParticipant(id);
-        const isSupported=aiVariantFor({session:config,condition:participant.condition,isTest:participant.is_test})==='supported';
+        const isSupported=(await this.effectiveVariantFor(id,sid,participant))==='supported';
         if(isSupported){
           const messages=await this.getMessages(id,sid);
           const validPhases=new Set((config.task_flow?.steps||[]).map(step=>step.task_phase));
@@ -1071,7 +1101,7 @@ class ResearchService {
   async ensureChatSession(id, sid) {
     const p = await this.getParticipant(id);
     const config = getSessionConfig(sid);
-    const variant = aiVariantFor({ session: config, condition: p.condition, isTest: p.is_test });
+    const variant = await this.effectiveVariantFor(id,sid,p);
     if (variant === 'none') throw Object.assign(new Error('本节课没有AI助手。'), { status: 409 });
     if (variant === 'unassigned') throw Object.assign(new Error('本节内容还在准备中，请稍等老师完成课堂设置。'), { status: 409 });
     let s = await this.getChatSession(id, sid);
@@ -1131,7 +1161,7 @@ class ResearchService {
     const p = await this.getParticipant(id);
     const config = getSessionConfig(sid);
     r.condition_at_time = p.condition;
-    r.ai_variant = aiVariantFor({ session: config, condition: p.condition, isTest: p.is_test });
+    r.ai_variant = await this.effectiveVariantFor(id,sid,p);
     let s = await this.ensureChatSession(id, sid);
     if (r.submitted_at) throw Object.assign(new Error('本节任务已经提交。'), { status: 409 });
     r.ai_open_count = Number(r.ai_open_count || 0) + 1;
@@ -1289,7 +1319,7 @@ class ResearchService {
       pre: await this.questionnairePublicState(id, 'pre'),
       post: await this.questionnairePublicState(id, 'post'),
     };
-    const ai_variant = aiVariantFor({ session, condition: participant.condition, isTest: participant.is_test });
+    const ai_variant = await this.effectiveVariantFor(id,session.id,participant);
     const orientation = await this.orientationPublicState(id, session.id);
     let task_gate = '';
     let learning_gate = '';

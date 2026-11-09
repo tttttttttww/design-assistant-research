@@ -1933,15 +1933,99 @@ for(const sid of ['W9','W10','W14','W15']){
 }
 // 已有存储用W8表示实际第6节。保留W6/W7旧课次只供历史读取，勿将其当作目前的第6、7节。
 
+// v12.1: concise, student-readable labels; existing storage keys are unchanged.
+for(const session of SESSIONS.filter(x=>Number(x.actual_lesson)>=6&&Number(x.actual_lesson)<=10)){
+  const lesson=Number(session.actual_lesson);
+  const checks=session.fields.filter(f=>f.stage==='task1'&&f.type==='select'&&/check[123]$/.test(f.key));
+  for(const f of checks){
+    f.choices=['我检查了，暂时没发现问题','我发现一个需要解决的问题','我还没有检查，不确定','我还没做到这一步'];
+    f.placeholder='';
+    f.helper='';
+  }
+  for(const f of session.fields){
+    if(/_check_evidence$/.test(f.key))f.label='我实际看到了什么？（一句话）';
+    if(/_peer$/.test(f.key))f.label='同伴检查后说了什么？（没检查就写原因）';
+    if(/_focus$/.test(f.key)&&f.stage==='task1')f.label='今天我最想解决或确认什么？';
+    if(f.key==='lesson_review_use')f.label='AI说了什么？我采纳、修改还是没有采用？';
+    if(f.key==='lesson_review_next')f.label='下次遇到类似情况，我会怎样问AI？';
+    if(f.key==='lesson_exit_note')f.label='今天做了什么？下一步准备做什么？';
+  }
+  session.ai_instruction='遇到不确定的地方，可以告诉AI你看到的情况，让它帮助分析；最终决定由你自己作出。';
+  // The worn-photo upload documents the same version; do not make students
+  // repeat the prototype change questionnaire on its second photograph.
+  for(const pair of session.paired_artifacts||[]){
+    const wear=session.artifacts.find(a=>a.key===pair.wear);
+    if(wear)wear.version_questionnaire=false;
+  }
+  // New classroom sessions: teacher-defined A=normal AI, B=scaffolded AI.
+  // Earlier lessons keep their historically executed mapping; existing W6–W10
+  // participants are pinned to the variant actually recorded by the backend.
+  session.condition_protocol='A-free-B-supported-v12.2';
+  const orient=INTERVENTION_ORIENTATION[session.id];
+  if(orient?.supported){
+    const themes={
+      6:{title:'先判断：我真的没有问题吗？',tip:'先检查作品的固定、佩戴和材料。没有发现问题，也要说清尚未验证的地方。',weak:'我的设计完全没问题，AI直接帮我做一个吧。',strong:'我画好了设计图，但还没验证画笔是否能固定。我准备使用魔术贴，应该先检查什么？'},
+      7:{title:'把制作困难说具体',tip:'指出具体部位、所用材料、看见的现象和自己试过的办法。',weak:'坏了，怎么办？',strong:'夹笔处用了纸板和胶带，一画线就松。我已经加固过一次，还能检查哪里？'},
+      8:{title:'用真实测试结果追问',tip:'把实际测试的结果告诉AI。AI的判断和测试不一样时，以真实证据为依据。',weak:'AI说没问题，所以我不用测试。',strong:'AI认为夹笔结构稳定，但同伴试画时画笔滑动。可能是什么原因？我先检查哪一项？'},
+      9:{title:'比较建议，再自己决定',tip:'请AI说明不同办法的适用条件，再结合材料和真实使用情况选择。',weak:'你替我决定最后做哪一种。',strong:'我可以用魔术贴或松紧带固定。请比较佩戴舒适度和固定效果，我再根据测试选择。'},
+      10:{title:'检查AI结论有没有证据',tip:'区分已经验证的效果和还没有测试的推测，不把AI说的话直接当作结果。',weak:'把AI夸我的话直接写进作品说明。',strong:'AI建议写“佩戴稳固”，但我只测过一次。怎样用真实证据描述目前效果？'}
+    };
+    const theme=themes[lesson];
+    orient.supported.key='v12.2-help-practice-W'+lesson;
+    orient.supported.title='第0步｜先学会怎样向AI求助';
+    orient.supported.intro='先学一个方法，再做一道小练习。完成后才能进入今天的任务。';
+    orient.supported.cards=[
+      {title:'什么时候需要问？',body:['先看自己的成果。遇到问题、不确定某个地方，或还没检验过时，都可以向AI求助。','不要因为“看起来没问题”，就跳过检查。']},
+      {title:'怎样把问题问清楚？',body:['说清：我做到了哪一步 → 我看到或担心什么 → 我试过什么/还没验证什么。','今天的重点：'+theme.tip],
+        example_bad:theme.weak,example_good:theme.strong},
+      {title:'收到回答以后怎么办？',body:['先判断建议是否适合自己的设计和材料，再决定采纳、修改后采纳，还是暂不采用。']}
+    ];
+    orient.supported.checks=[{
+      id:'q1',question:theme.title,
+      options:session.id==='W6'?
+       ['设计图画完就说明没有问题','检查固定与佩戴的条件，标出还不确定的地方，再请AI帮助分析','让AI完全替自己决定结构']:
+       orient.supported.checks[0].options,
+      correct:session.id==='W6'?1:orient.supported.checks[0].correct
+    }];
+    orient.supported.allow_imperfect_quiz=true;
+    orient.supported.strategy_micro_lesson=true;
+    orient.supported.reflection_activity=false;
+    orient.supported.button='完成求助练习，进入第1步';
+  }
+  if(orient?.control){
+    orient.control.key='v12.2-task-readiness-W'+lesson;
+    orient.control.title='第0步｜了解今天的任务';
+    orient.control.intro='先看一看已有成果，接着完成检查与今天的任务。';
+    orient.control.cards=[{title:'按真实情况记录',body:['还没完成或没有验证的地方，直接写清楚即可。']}];
+    orient.control.button='开始今天的任务';
+  }
+  if(lesson===6){
+    const renames={
+      l06_science_point:'我选了哪个科学知识？',
+      l06_science_application:'我把它用在设计图哪里？能起什么作用？',
+      l06_material_plan:'我准备使用哪些材料？分别用在哪里？',
+      l06_proto_focus:'我准备先制作哪个部分？',
+      l06_proto_progress:'今天实际做到了哪一步？'
+    };
+    for(const f of session.fields)if(renames[f.key])f.label=renames[f.key];
+  }
+}
 export function getSessionConfig(id) { return SESSIONS.find(s => s.id === id) || null; }
 
 export function aiVariantFor({ session, condition, isTest = false }) {
   if (!session || session.ai_mode === 'none') return 'none';
   if (session.ai_mode === 'free') return 'free';
   if (session.ai_mode === 'condition') {
-    if (condition === 'A') return 'supported';
-    if (condition === 'B') return 'free';
-    if (isTest) return condition === 'A' ? 'supported' : 'free';
+    if (session.condition_protocol === 'A-free-B-supported-v12.2') {
+      if (condition === 'A') return 'free';
+      if (condition === 'B') return 'supported';
+    } else {
+      if (condition === 'A') return 'supported';
+      if (condition === 'B') return 'free';
+    }
+    if (isTest) return session.condition_protocol === 'A-free-B-supported-v12.2'
+      ? (condition==='B'?'supported':'free')
+      : (condition==='A'?'supported':'free');
     return 'unassigned';
   }
   return 'free';

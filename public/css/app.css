@@ -391,3 +391,70 @@ details.admin-extra>section {margin:0!important;border:0!important;box-shadow:no
 .lesson-review select{width:100%;min-height:43px}
 .lesson-review textarea{min-height:72px}
 @media(max-width:720px){.science-mini-grid{grid-template-columns:1fr}.lesson-compact-head h1{font-size:21px}}
+
+/* v12.1 — page-by-page student lessons, designed for a 60-minute tablet class */
+.course-page:has(.lesson-wizard) .course-header{display:none}
+.lesson-wizard{display:grid;gap:14px;min-width:0}
+.wizard-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:18px 20px;background:#fff;border:1px solid var(--line);border-radius:17px}
+.wizard-heading h1{font-size:22px;line-height:1.32;margin:5px 0 7px}
+.wizard-heading p{font-size:14px;margin:0;color:#66736d}
+.wizard-badge{border-radius:20px;background:#eaf4ed;color:#295742;font-size:12px;font-weight:750;padding:8px 12px;white-space:nowrap}
+.wizard-tabs{display:flex;gap:5px;background:#f3f5f1;border:1px solid #e0e7e2;border-radius:16px;padding:7px;min-width:0}
+.wizard-tab{display:flex;align-items:center;justify-content:center;flex:1;min-width:0;gap:6px;border:1px solid transparent;border-radius:11px;background:transparent;color:#66756b;padding:9px 4px;cursor:pointer;font:inherit}
+.wizard-tab span{display:grid;place-items:center;width:23px;height:23px;flex:none;border:1px solid #ccd8d0;border-radius:50%;font-size:12px;font-weight:800}
+.wizard-tab small{font-size:12px;line-height:1.32;font-weight:650}
+.wizard-tab.current{background:#fff;border-color:#bfd3c7;color:#22513e;box-shadow:0 2px 7px rgba(0,0,0,.06)}
+.wizard-tab.current span{background:#24684e;color:#fff;border-color:#24684e}
+.wizard-tab:disabled{cursor:not-allowed;opacity:.4}
+.wizard-current{background:#fff;border:1px solid #dce5de;border-radius:17px;padding:22px;min-width:0;display:grid;gap:15px}
+.wizard-current>h2{font-size:23px;margin:0;line-height:1.35}
+.wizard-current>h3,.wizard-current h3{font-size:17px;margin:5px 0 0}
+.wizard-current>p{font-size:15px;line-height:1.7;margin:0;color:#52635b}
+.wizard-current .form{min-width:0}
+.wizard-current .form label{margin:0}
+.wizard-checks,.wizard-short-fields,.wizard-files{display:grid;gap:13px;min-width:0}
+.wizard-checks label,.wizard-short-fields label{display:grid;gap:6px;font-weight:650;font-size:15px}
+.wizard-current textarea{min-height:66px;max-height:190px;resize:vertical;font-size:15px}
+.wizard-current select{min-height:46px;font-size:15px}
+.wizard-short-fields .optional{font-size:12px}
+.wizard-nav{display:flex;justify-content:flex-end;align-items:center;gap:10px;flex-wrap:wrap;margin-top:7px}
+.wizard-nav .btn{min-height:44px}
+.wizard-counter{border:1px solid #d7e5da;background:#f4faf6;border-radius:13px;padding:12px 14px;color:#2d5443;font-size:15px}
+.wizard-counter b{font-size:20px;font-variant-numeric:tabular-nums}
+.wizard-counter span{font-size:12px;color:#6e786f}
+.wizard-summary{display:grid;gap:8px}
+.wizard-bottom{display:flex;align-items:center;justify-content:space-between;border-top:1px solid #e6ece7;padding:12px 5px 0}
+.wizard-help{border:1px solid #cfe2d7;background:#f5faf7;border-radius:13px;padding:12px 15px;display:grid;gap:5px}
+.wizard-help strong{color:#295e46}
+.wizard-help p,.wizard-help .small{margin:0;line-height:1.6}
+.wizard-carry,.wizard-info{border:1px solid #e0e7e2;border-radius:13px;background:#fbfcfa;overflow:hidden}
+.wizard-carry summary,.wizard-info summary{cursor:pointer;padding:13px 15px;font-size:14px;font-weight:750}
+.wizard-carry[open],.wizard-info[open]{padding-bottom:10px}
+.wizard-info>.science-mini-grid{margin:8px 12px}
+.wizard-image-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:12px}
+.wizard-image-grid img{width:100%;max-height:220px;object-fit:contain;background:#fff;border:1px solid #e1e6e1;border-radius:10px}
+.wizard-previous-work p{margin:8px}
+.wizard-files>.upload-card,.wizard-files>.prototype-book-card{margin:2px 0;padding:12px}
+.wizard-files .upload-card strong{font-size:15px}
+.wizard-files .upload-card>.small{font-size:12px}
+.wizard-current .lesson-review{margin:0;border:0;background:#f8fbf8;padding:13px;border-radius:12px}
+.wizard-current .lesson-review>h2{display:none}
+.wizard-current .lesson-review .row{align-items:center}
+.wizard-complete{font-weight:750;color:#29614b}
+@media(max-width:950px){.wizard-tabs{overflow-x:auto;justify-content:flex-start}.wizard-tab{min-width:118px;flex:1 0 auto}}
+@media(max-width:720px){.wizard-heading{padding:14px}.wizard-heading h1{font-size:19px}.wizard-current{padding:15px}.wizard-current>h2{font-size:19px}.wizard-tab{min-width:104px}.wizard-tab small{font-size:11px}.wizard-nav .btn{flex:1;min-width:130px}.wizard-bottom{flex-wrap:wrap;gap:10px}.wizard-bottom .btn{width:100%}}
+
+/* v12.2: dedicated pre-lesson learning page, compact and readable on school tablets. */
+.orientation-shell.scaffold-intro{max-width:860px;margin:0 auto;padding:24px;display:grid;gap:14px}
+.orientation-shell.scaffold-intro>h1{font-size:26px;margin:0}
+.orientation-shell.scaffold-intro>.lead{font-size:15px;margin:0;color:#536a5e}
+.orientation-shell.scaffold-intro .orientation-grid{display:grid;grid-template-columns:1fr;gap:10px}
+.orientation-shell.scaffold-intro .orientation-card{margin:0;padding:13px 16px;border:1px solid #dbe7dc;border-radius:14px;background:#f9fcf9}
+.orientation-shell.scaffold-intro .orientation-card h3{font-size:17px;margin:0 0 6px}
+.orientation-shell.scaffold-intro .orientation-card p{font-size:14px;line-height:1.6;margin:3px 0}
+.orientation-shell.scaffold-intro .orientation-example{font-size:14px;line-height:1.6;margin:7px 0;padding:9px 12px;border-radius:10px}
+.orientation-shell.scaffold-intro .orientation-checks{margin:0;padding:13px 16px;border:1px solid #dce6dd;border-radius:14px}
+.orientation-shell.scaffold-intro .orientation-checks h3{font-size:17px;margin:0 0 6px}
+.orientation-shell.scaffold-intro .micro-options{display:grid;grid-template-columns:1fr;gap:6px}
+.orientation-shell.scaffold-intro .orientation-actions{margin-top:2px}
+@media(max-width:760px){.orientation-shell.scaffold-intro{padding:14px}.orientation-shell.scaffold-intro>h1{font-size:21px}}

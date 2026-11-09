@@ -37,7 +37,8 @@ const safeName = value => String(value || 'file').replace(/[^a-zA-Z0-9._-]+/g, '
 const pad = n => String(n || 0).padStart(5, '0');
 const formalIds = () => Array.from({ length: 30 }, (_, i) => `S${String(i + 1).padStart(2, '0')}`);
 const TEST_IDS = ['S00','S99'];
-const FORCED_CONTROL_IDS = new Set(['S04','S05']);
+// Preserve legacy S04/S05 assignments; no automatic coercion in v12.2.
+const FORCED_CONTROL_IDS = new Set();
 const shuffle = arr => {
   const out = [...arr];
   for (let i = out.length - 1; i > 0; i--) {
@@ -56,7 +57,7 @@ async function stratifiedRandomizeRostered({ force = false, reason = 'manual' } 
   const missing = enrolled.filter(p => !['6','7','8'].includes(String(p.grade || '').trim())).map(p => p.participant_id);
   if (missing.length) throw Object.assign(new Error(`以下已录入学生缺少6/7/8年级信息：${missing.join(', ')}`), { status: 400 });
 
-  // S04/S05按当前研究安排固定为对照组；其余学生仅提供“可选”的年级分层随机初始分组。
+  // v12.2不再自动强制调整S04/S05；教师需先核对历史分组再启动新课次。
   // 平台不再强制30人必须15/15，也不会在切换课次时自动分组；教师可在后台逐个调整。
   const forced = enrolled.filter(p => FORCED_CONTROL_IDS.has(p.participant_id));
   for (const p of forced) {
