@@ -443,3 +443,18 @@ details.admin-extra>section {margin:0!important;border:0!important;box-shadow:no
 .wizard-complete{font-weight:750;color:#29614b}
 @media(max-width:950px){.wizard-tabs{overflow-x:auto;justify-content:flex-start}.wizard-tab{min-width:118px;flex:1 0 auto}}
 @media(max-width:720px){.wizard-heading{padding:14px}.wizard-heading h1{font-size:19px}.wizard-current{padding:15px}.wizard-current>h2{font-size:19px}.wizard-tab{min-width:104px}.wizard-tab small{font-size:11px}.wizard-nav .btn{flex:1;min-width:130px}.wizard-bottom{flex-wrap:wrap;gap:10px}.wizard-bottom .btn{width:100%}}
+
+/* v12.2: dedicated pre-lesson learning page, compact and readable on school tablets. */
+.orientation-shell.scaffold-intro{max-width:860px;margin:0 auto;padding:24px;display:grid;gap:14px}
+.orientation-shell.scaffold-intro>h1{font-size:26px;margin:0}
+.orientation-shell.scaffold-intro>.lead{font-size:15px;margin:0;color:#536a5e}
+.orientation-shell.scaffold-intro .orientation-grid{display:grid;grid-template-columns:1fr;gap:10px}
+.orientation-shell.scaffold-intro .orientation-card{margin:0;padding:13px 16px;border:1px solid #dbe7dc;border-radius:14px;background:#f9fcf9}
+.orientation-shell.scaffold-intro .orientation-card h3{font-size:17px;margin:0 0 6px}
+.orientation-shell.scaffold-intro .orientation-card p{font-size:14px;line-height:1.6;margin:3px 0}
+.orientation-shell.scaffold-intro .orientation-example{font-size:14px;line-height:1.6;margin:7px 0;padding:9px 12px;border-radius:10px}
+.orientation-shell.scaffold-intro .orientation-checks{margin:0;padding:13px 16px;border:1px solid #dce6dd;border-radius:14px}
+.orientation-shell.scaffold-intro .orientation-checks h3{font-size:17px;margin:0 0 6px}
+.orientation-shell.scaffold-intro .micro-options{display:grid;grid-template-columns:1fr;gap:6px}
+.orientation-shell.scaffold-intro .orientation-actions{margin-top:2px}
+@media(max-width:760px){.orientation-shell.scaffold-intro{padding:14px}.orientation-shell.scaffold-intro>h1{font-size:21px}}
