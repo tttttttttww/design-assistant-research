@@ -370,3 +370,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:#f6f4ef;border-radius:
  .w8-save-row{align-items:stretch;flex-direction:column}
  .w8-save-row .btn{width:100%}
 }
+
+/* Simplified teacher dashboard: preserve access to advanced data functions. */
+details.admin-extra {margin:14px 0;border:1px solid #dce5ee;border-radius:14px;background:#fff;overflow:hidden}
+details.admin-extra>summary {cursor:pointer;padding:16px 20px;font-weight:700;color:#334155}
+details.admin-extra>section {margin:0!important;border:0!important;box-shadow:none!important}
