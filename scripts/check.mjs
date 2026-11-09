@@ -45,4 +45,9 @@ const task=read('public/js/task.js'),service=read('src/services/researchService.
 for(const k of ['l06_science_point','l06_prototype_versions','lessonReviewHtml','scienceDiagramCardsHtml'])assert.ok(task.includes(k),'Missing new UI '+k);
 for(const k of ['getTaskPhaseExchangeCounts','paired_artifacts','lesson_review_reference'])assert.ok(service.includes(k),'Missing backend safeguard '+k);
 assert.ok(existsSync(new URL('../LESSONS_6_TO_13_TEACHER_GUIDE.md',import.meta.url)),'Teacher guide missing');
-console.log('V12 BUILD CHECK OK: W6–W13, stage AI counts, existing Blob namespace, documents present.');
+assert.ok(existsSync(new URL('../public/js/lesson-wizard.js',import.meta.url)),'Student wizard script is required');
+const wizard=read('public/js/lesson-wizard.js');
+assert.ok(wizard.includes('lessonWizardHtml')&&wizard.includes('wizardGo'),'Student lesson steps missing');
+assert.ok(task.includes('lessonWizardHtml(s,r)'),'Student page still uses old full-height task flow');
+assert.ok(!task.includes('关联上一课作品')&&!task.includes('关联一条AI回复'),'Confusing record links must not appear in student UI');
+console.log('V12.1 BUILD CHECK OK: W6–W13, stage AI counts, existing Blob namespace, documents present.');
