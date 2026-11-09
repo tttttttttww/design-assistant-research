@@ -22,9 +22,11 @@ for(let n=6;n<=10;n++){
  for(const pair of s.paired_artifacts||[]){
    assert.ok(photos.has(pair.overview)&&photos.has(pair.wear),'Missing overall and worn photo pair');
  }
- assert.equal(aiVariantFor({session:s,condition:'A'}),'supported');
- assert.equal(aiVariantFor({session:s,condition:'B'}),'free');
- assert.ok(INTERVENTION_ORIENTATION[s.id]?.supported);
+ assert.equal(aiVariantFor({session:s,condition:'A'}),'free');
+ assert.equal(aiVariantFor({session:s,condition:'B'}),'supported');
+ assert.equal(INTERVENTION_ORIENTATION[s.id]?.supported?.checks?.length,1);
+ assert.equal(INTERVENTION_ORIENTATION[s.id]?.supported?.cards?.length,3);
+ assert.match(INTERVENTION_ORIENTATION[s.id].supported.title,/第0步/);
  assert.equal(INTERVENTION_ORIENTATION[s.id].supported.reflection_activity,false);
 }
 assert.equal(getSessionConfig('W10').questionnaire_after_submit,true,'Posttest belongs after actual lesson 10');
@@ -50,4 +52,4 @@ const wizard=read('public/js/lesson-wizard.js');
 assert.ok(wizard.includes('lessonWizardHtml')&&wizard.includes('wizardGo'),'Student lesson steps missing');
 assert.ok(task.includes('lessonWizardHtml(s,r)'),'Student page still uses old full-height task flow');
 assert.ok(!task.includes('关联上一课作品')&&!task.includes('关联一条AI回复'),'Confusing record links must not appear in student UI');
-console.log('V12.1 BUILD CHECK OK: W6–W13, stage AI counts, existing Blob namespace, documents present.');
+console.log('V12.2 BUILD CHECK OK: W6–W13, stage AI counts, existing Blob namespace, documents present.');
