@@ -716,9 +716,9 @@ function lessonReviewHtml(s){
     `<p class="small">选一段本节真实AI回答，简单写下有没有帮助、你怎样处理，以及下次如何把问题说清楚。</p>
      ${has?`<label>本节要回顾的AI回答<select data-field="lesson_review_reference" ${disabled}><option value="">选择真实回答</option>${selected.map(m=>`<option value="${esc(m.message_id)}" ${chosen===m.message_id?'selected':''}>${esc(String(m.content||'').slice(0,70))}</option>`).join('')}</select></label>`:
      `<label>本节未找到可回顾的AI对话<select data-field="lesson_no_history_reason" ${disabled}><option value="">请选择实际原因</option>${['今天没有向AI提问','提问了，但没收到有效回复','平台记录没有显示','其他原因'].map(x=>`<option value="${esc(x)}" ${saved.lesson_no_history_reason===x?'selected':''}>${esc(x)}</option>`).join('')}</select></label>`}
-     <div class="form">${(s.fields||[]).filter(f=>['lesson_review_use','lesson_review_next'].includes(f.key)).map(f=>fieldHtml(f,saved[f.key]||'')).join('')}</div>`;
+     <div class="form">${(s.fields||[]).filter(f=>(has?['lesson_review_use','lesson_review_next']:['lesson_review_next']).includes(f.key)).map(f=>fieldHtml(f,saved[f.key]||'')).join('')}</div>`;
   return `<section class="card lesson-review" id="lessonReview"><span class="eyebrow">下课前</span><h2>回顾今天的AI交流</h2>${personal}
-   <div class="row"><button type="button" class="btn secondary" id="saveLessonReview" ${disabled}>保存本节回顾</button><span id="reviewSaveStatus" class="small">${(saved.lesson_review_use||saved.lesson_exit_note)?'已填写':'待填写'}</span></div></section>`;
+   <div class="row"><button type="button" class="btn secondary" id="saveLessonReview" ${disabled}>保存本节回顾</button><button type="button" class="btn ghost mini" id="refreshLessonReview">更新本节对话</button><span id="reviewSaveStatus" class="small">${(saved.lesson_review_use||saved.lesson_exit_note)?'已填写':'待填写'}</span></div></section>`;
 }
 function weeklyTaskFlowHtml(s,r){
   const done1=w8StepDone('task1'),done2=w8StepDone('task2');
@@ -983,13 +983,14 @@ function wire(){
         const has=(state.chat_messages||[]).some(m=>m.role==='assistant');
         if(has&&!String(vals.lesson_review_reference||'').trim())throw new Error('请从本节真实对话中选择一条AI回复。');
         if(!has&&!String(vals.lesson_no_history_reason||'').trim())throw new Error('请说明本节没有可回顾对话的原因。');
-        if(!String(vals.lesson_review_use||'').trim()||!String(vals.lesson_review_next||'').trim())throw new Error('请简短说明AI帮助与下次如何求助。');
+        if(has&&(!String(vals.lesson_review_use||'').trim()||!String(vals.lesson_review_next||'').trim()))throw new Error('请简短说明AI帮助与下次如何求助。');
       }else if(!String(vals.lesson_exit_note||'').trim())throw new Error('请写一句今天的实际进度。');
       await persistCurrentFields({saveReason:'lesson_review'});
       await postTraceEvent('lesson_review_saved',{message_id:vals.lesson_review_reference||'',reflection_type:state.ai_variant==='supported'?'ai_help_review':'task_progress_review',has_personal_chat:Boolean((state.chat_messages||[]).length)});
       if(indicator)indicator.textContent='本节回顾已保存 ✓';
     }catch(e){if(indicator)indicator.textContent=e.message;}
   };
+  if(document.getElementById('refreshLessonReview'))document.getElementById('refreshLessonReview').onclick=async()=>{try{await persistCurrentFields({saveReason:'refresh_lesson_reflection'});await load();}catch(e){alert(e.message);}};
   wireTaskFlowControls();
   wirePrototypeBook();
   wireChatRevisit();
