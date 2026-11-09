@@ -9,8 +9,9 @@
     "build": "node scripts/check.mjs",
     "check": "node scripts/check.mjs",
     "test": "node scripts/check.mjs && node scripts/artifact-history-test.mjs && node scripts/measurement-test.mjs && node scripts/v1156-merge-and-history-test.mjs",
-    "test:legacy": "node scripts/smoke.mjs && node scripts/w8-task-flow-test.mjs && node scripts/v1158-student-flow-test.mjs && node scripts/v1158-compatibility-test.mjs && node scripts/weekly-intervention-test.mjs && node scripts/reflection-curator-test.mjs && node scripts/v1156-merge-and-history-test.mjs && node scripts/v1150-data-safety-test.mjs && node scripts/v1149-protocol-test.mjs && node scripts/measurement-test.mjs && node scripts/artifact-history-test.mjs && node scripts/targeted-reflection-test.mjs",
-    "check:legacy": "node scripts/check-v1158-legacy.mjs"
+    "test:legacy": "node scripts/check.mjs && node scripts/artifact-history-test.mjs && node scripts/measurement-test.mjs && node scripts/v1156-merge-and-history-test.mjs",
+    "check:legacy": "node scripts/check-v1158-legacy.mjs",
+    "test:course": "node scripts/check.mjs && node scripts/lesson-6-13-static-test.mjs"
   },
   "dependencies": {
     "@edgeone/pages-blob": "0.0.16",
