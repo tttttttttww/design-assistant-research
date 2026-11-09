@@ -46,6 +46,7 @@ function wizardPriorHtml(){
 function lessonWizardHtml(s,r){
   wizardInit(s);
   const lesson=Number(s.actual_lesson||0),isSix=lesson===6,firstDone=w8StepDone('task1'),secondDone=w8StepDone('task2');
+  const hasHelpScaffold=state.ai_variant==='supported';
   const min1=Number(s.task_flow.steps[0].min_ai_exchanges||0),min2=Number(s.task_flow.steps[1].min_ai_exchanges||0);
   const labels=['看已有成果','找问题','AI讨论与任务一','做今天的任务','回顾与提交'];
   const tabs=labels.map((label,i)=>`<button type="button" class="wizard-tab ${i===wizardPage?'current':''}" data-wizard-page="${i}" ${i===3&&!firstDone?'disabled':''}><span>${i+1}</span><small>${esc(label)}</small></button>`).join('');
@@ -60,7 +61,7 @@ function lessonWizardHtml(s,r){
   const note='<p class="small">实事求是。没有做到的内容可以保留空白或写清楚未完成，保存后下节继续。</p>';
   let pageHtml='';
   if(wizardPage===0){
-    const help=state.ai_variant==='supported'?`<div class="wizard-help"><strong>今天的求助方法</strong><p>先检查自己做到了什么，弄清楚不确定的地方；向AI说明现象和已尝试的方法，再判断AI建议是否可行。</p><span class="small">如果不确定怎么问，可以按这三个步骤整理自己的问题。</span></div>`:'';
+    const help=hasHelpScaffold?`<div class="wizard-help"><strong>今天的求助方法</strong><p>先检查自己做到了什么，弄清楚不确定的地方；向AI说明现象和已尝试的方法，再判断AI建议是否可行。</p><span class="small">如果不确定怎么问，可以按这三个步骤整理自己的问题。</span></div>`:'';
     pageHtml=`<h2>先看看上节做到了哪里</h2><p>拿出已有图纸或实物。已上传的照片不用再传一遍。</p>${help}${wizardPriorHtml()}
        ${isSix?`<h3>上节学习单或设计记录</h3>${a('l06_previous_task_sheet')}`:''}
        <div class="wizard-nav">${btn('下一步：检查设计',1)}</div>`;
@@ -75,8 +76,8 @@ function lessonWizardHtml(s,r){
        <h3>提交两份不同的成果</h3><p class="small">① 填写完整的科学知识与材料学习单；② 标出科学知识、材料和用途的新版设计图。每项各选择一次照片，系统自动保存；没有新修改不必重复上传。</p><div class="wizard-files">${a('l06_science_learning_sheet')}${a('l06_design_version')}</div>`;
     };
     pageHtml=`<h2>${isSix?'任务一：完善设计图':'把检查结果告诉AI'}</h2>
-      <p>${isSix?'选一个确实适合你设计的科学知识，说明它用在哪里；请AI分析时，记得结合自己的真实图纸。':'围绕实际发现、不确定之处或同伴提出的问题与AI交流，判断下一步怎么做。'}</p>
-      ${isSix?W6():`<div class="wizard-help"><strong>可以这样问</strong><p>“我检查到……，已经试过……，但还不确定……。应该先检查什么？”</p><span class="small">不需要照抄，根据自己的情况提问。</span></div>`}
+      <p>${isSix?(hasHelpScaffold?'选一个适合自己设计的科学知识，说明应用位置。向AI求助时可以结合自己的真实图纸说明困难。':'选一个适合自己设计的科学知识，说明应用位置和用途，再完成设计图。'):(hasHelpScaffold?'把检查结果、不确定的地方或同伴的意见告诉AI，结合实际情况判断。':'根据今天的任务，自主选择需要讨论的设计问题，继续完成作品。')}</p>
+      ${isSix?W6():(hasHelpScaffold?`<div class="wizard-help"><strong>求助提示</strong><p>“我检查到……，已经试过……，但还不确定……。应该先检查什么？”</p><span class="small">不需要照抄，根据自己的情况提问。</span></div>`:'')}
       ${counter('task1',min1)}<div class="wizard-nav">${btn('返回检查',1,'secondary')}
       ${firstDone?btn('进入今天的新任务',3):'<button type="button" class="btn orange" id="submitW8Task1">完成任务一，进入下一步</button>'}</div>`;
   }else if(wizardPage===3){
@@ -89,7 +90,7 @@ function lessonWizardHtml(s,r){
       <div class="wizard-short-fields">${renderFields(task2Fields)}</div>${photoHtml}${counter('task2',min2)}
       <div class="wizard-nav">${btn('上一步',2,'secondary')}${btn('下一步：回顾今天',4)}</div>`;
   }else{
-    pageHtml=`<h2>下课前回顾一下</h2><p>看一段今天真实的AI对话，简单想想有没有帮助。今天没完成也可以保存记录。</p>
+    pageHtml=`<h2>${hasHelpScaffold?'下课前回顾AI求助':'下课前记录任务进度'}</h2><p>${hasHelpScaffold?'选择本节真实AI对话，想想建议是否有用、自己怎样处理。':'简单写下今天做到了哪里，下一步准备做什么；没有完成也可以保存。'}</p>
       ${lessonReviewHtml(s)}
       <div class="wizard-summary">${counter('task1',min1)}${counter('task2',min2)}</div>
       ${secondDone?'<p class="wizard-complete">这节课已经完成并提交。</p>':
