@@ -242,7 +242,11 @@ function fieldHtml(f, value='', forceDisabled=false){
   const req = f.required ? '<span class="req">必填</span>' : '<span class="optional">选填</span>';
   const disabled=(state.record.submitted_at||state.session_locked||forceDisabled)?'disabled':'';
   if(f.type==='text') return `<label>${esc(f.label)} ${req}<input data-field="${esc(f.key)}" value="${esc(value)}" placeholder="${esc(f.placeholder)}" ${disabled}></label>`;
-  if(f.type==='select')return `<label>${esc(f.label)} ${req}<select data-field="${esc(f.key)}" ${disabled}><option value="">请选择实际情况</option>${(f.choices||[]).map(x=>`<option value="${esc(x)}" ${String(value)===String(x)?'selected':''}>${esc(x)}</option>`).join('')}</select></label>`;
+  if(f.type==='select'){
+    const older={'符合，已有依据':'我检查了，暂时没发现问题','发现问题':'我发现一个需要解决的问题','尚未验证':'我还没有检查，不确定','还没有验证':'我还没有检查，不确定','尚未完成':'我还没做到这一步','尚未完成，无法检查':'我还没做到这一步'};
+    const selected=/^l\\d{2}_check[123]$/.test(f.key)?(older[String(value)]||String(value)):String(value);
+    return `<label>${esc(f.label)} ${req}<select data-field="${esc(f.key)}" ${disabled}><option value="">还没选择</option>${(f.choices||[]).map(x=>`<option value="${esc(x)}" ${selected===String(x)?'selected':''}>${esc(x)}</option>`).join('')}</select></label>`;
+  }
   return `<label>${esc(f.label)} ${req}<textarea data-field="${esc(f.key)}" placeholder="${esc(f.placeholder)}" ${disabled}>${esc(value)}</textarea>${f.helper?`<span class="small">${esc(f.helper)}</span>`:''}</label>`;
 }
 function artifactStepForKey(key){
