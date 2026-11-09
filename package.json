@@ -1,8 +1,8 @@
 {
   "name": "design-thinking-help-seeking-platform",
-  "version": "11.58.0",
+  "version": "11.59.0",
   "type": "module",
-  "description": "基于原课堂存储接口的合并版：持续求助训练、作品版本、编码导出和只读历史恢复保护",
+  "description": "兼容原数据存储的6—13节教学版：求助策略、当堂对话回顾、原型迭代和全校舞台展示",
   "main": "cloud-functions/express/[[default]].js",
   "scripts": {
     "start": "node server.js",
