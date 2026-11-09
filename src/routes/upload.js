@@ -44,8 +44,9 @@ router.post('/upload', upload.single('image'), async (req, res) => {
     }
     if (!req.file) return res.status(400).json({ error: '请选择 JPG、PNG 或 WEBP 图片' });
     const artifactDefinition=config.artifacts.find(a=>a.key===artifactKey);
-    if(artifactDefinition?.version_questionnaire && !String(req.body?.changeNote||'').trim())return res.status(400).json({error:'请先说明本次版本具体做了什么变化/目前做出了什么。'});
-    if(artifactDefinition?.version_questionnaire && !req.body?.changeBases)return res.status(400).json({error:'请至少选择一项本次设计/原型形成依据。'});
+    const pairedWear=(config.paired_artifacts||[]).some(pair=>pair.wear===artifactKey);
+    if(artifactDefinition?.version_questionnaire && !pairedWear && !String(req.body?.changeNote||'').trim())return res.status(400).json({error:'请先用一句话说明本版实际变化。'});
+    if(artifactDefinition?.version_questionnaire && !pairedWear && !req.body?.changeBases)return res.status(400).json({error:'请选择本版主要参考了什么。'});
     if ((await researchService.getSessionRecord(id,sid)).submitted_at) return res.status(409).json({ error:'本节已标记完成，请先点击“继续修改”再上传新版本。' });
     const fileData=req.file.buffer;
     const valid = req.file.mimetype==='image/png'
