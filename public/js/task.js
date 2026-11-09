@@ -272,8 +272,9 @@ function artifactQuestionnaireHtml(a, versions, carryOptions, options){
 }
 function artifactUploadPanelHtml(a, versions, carryOptions, options, hidden=false){
   const disabled=(state.record.submitted_at||state.session_locked||artifactStepCompleted(a.key))?'disabled':'';
+  if(String(a.key||'').includes('wear'))return `<div class="prototype-upload-editor ${hidden?'hidden':''}" data-prototype-upload="${esc(a.key)}" data-artifact-card="${esc(a.key)}"><p class="small">只需上传与该版对应的真实佩戴照片，不用重复填写修改说明。</p><input type="hidden" data-artifact-kind="${versions.length?'revision':'draft'}"><div class="row"><input type="file" data-artifact="${esc(a.key)}" accept="image/jpeg,image/png,image/webp" ${disabled}><span class="small" data-upload-status="${esc(a.key)}">${versions.length?'继续上传配套照片':'尚未上传'}</span></div><button type="button" class="btn ghost mini" data-cancel-prototype="${esc(a.key)}">取消</button></div>`;
   return `<div class="prototype-upload-editor ${hidden?'hidden':''}" data-prototype-upload="${esc(a.key)}" data-artifact-card="${esc(a.key)}">
-    <h4>${versions.length?'上传下一版':`上传第一版${esc(a.book_item_label||'设计/原型')}`}</h4>
+    <h4>${versions.length?'上传新增版本':`上传${esc(a.book_item_label||'设计/原型')}`}</h4>
     <p class="small">请先填写本次版本记录，再选择照片。照片和版本说明会追加保存，旧版不会被覆盖。</p>
     ${artifactQuestionnaireHtml(a,versions,carryOptions,options)}
     <div class="row"><input type="file" data-artifact="${esc(a.key)}" accept="image/jpeg,image/png,image/webp" ${disabled}><span class="small" data-upload-status="${esc(a.key)}">${versions.length?`已有${versions.length}条版本记录`:'尚未上传'}</span></div>
@@ -281,7 +282,7 @@ function artifactUploadPanelHtml(a, versions, carryOptions, options, hidden=fals
   </div>`;
 }
 function prototypeVersionPageHtml(versions, index, itemLabel='作品'){
-  if(!versions.length) return `<div class="prototype-empty"><div class="prototype-empty-icon">V1</div><h3>还没有上传第一版${esc(itemLabel)}</h3><p class="small">上传当前真实的设计/制作状态。未完成的部分如实说明，之后可以继续迭代。</p></div>`;
+  if(!versions.length) return `<div class="prototype-empty"><div class="prototype-empty-icon"><icon>+</icon></div><h3>尚未上传${esc(itemLabel)}</h3><p class="small">上传当前真实的设计/制作状态。未完成的部分如实说明，之后可以继续迭代。</p></div>`;
   const v=versions[index]||versions[versions.length-1];
   const label=v.kind==='correction'?'误传更正记录':`${itemLabel}版本记录 ${v.version_no||index+1}`;
   const bases=Array.isArray(v.change_bases)?v.change_bases:[];
@@ -301,9 +302,9 @@ function prototypeVersionBookHtml(a, meta){
   const carryVersions=Object.entries(state.carry_artifact_versions||{}).flatMap(([key,entries])=>entries.map((v,i)=>({...v,carry_key:key,ordinal:i+1})));
   const carryOptions=carryVersions.map(v=>`<option value="${esc(`${carryId}:${v.version_id}`)}">${esc(carryId)} · ${esc(v.carry_key)} · ${v.original_order_unknown?'旧图（顺序未知）':`第${v.ordinal}版`}</option>`).join('');
   const viewer=prototypeVersionPageHtml(versions,safeIndex,itemLabel);
-  return `<div class="upload-card prototype-book-card" data-prototype-book="${esc(a.key)}" data-prototype-item-label="${esc(itemLabel)}"><div class="row between"><div><strong>${esc(a.label)} ${required}</strong><p class="small">${esc(a.helper)}；每次真实设计迭代新增一个版本页，不覆盖旧版。</p></div><span class="badge">${versions.length?`已保存 ${versions.length} 个版本记录`:'等待V1'}</span></div>
+  return `<div class="upload-card prototype-book-card" data-prototype-book="${esc(a.key)}" data-prototype-item-label="${esc(itemLabel)}"><div class="row between"><div><strong>${esc(a.label)} ${required}</strong><p class="small">${esc(a.helper)}；每次真实设计迭代新增一个版本页，不覆盖旧版。</p></div><span class="badge">${versions.length?`已保存 ${versions.length} 张照片`:'尚无记录'}</span></div>
     <div data-prototype-viewer="${esc(a.key)}">${viewer}</div>
-    <div class="row prototype-page-controls"><button type="button" class="btn secondary mini" data-prototype-prev="${esc(a.key)}" ${!versions.length||safeIndex===0?'disabled':''}>上一版</button><button type="button" class="btn secondary mini" data-prototype-next="${esc(a.key)}" ${!versions.length||safeIndex>=versions.length-1?'disabled':''}>下一版</button><button type="button" class="btn orange mini" data-prototype-iterate="${esc(a.key)}" ${disabled}>${versions.length?'迭代：上传下一版':`上传第一版${esc(itemLabel)}（V1）`}</button></div>
+    <div class="row prototype-page-controls"><button type="button" class="btn secondary mini" data-prototype-prev="${esc(a.key)}" ${!versions.length||safeIndex===0?'disabled':''}>上一版</button><button type="button" class="btn secondary mini" data-prototype-next="${esc(a.key)}" ${!versions.length||safeIndex>=versions.length-1?'disabled':''}>下一版</button><button type="button" class="btn orange mini" data-prototype-iterate="${esc(a.key)}" ${disabled}>${versions.length?'上传更新后的照片':`上传${esc(itemLabel)}`}</button></div>
     ${artifactUploadPanelHtml(a,versions,carryOptions,recentReplies,!(!versions.length))}
   </div>`;
 }
@@ -690,7 +691,7 @@ function w8TaskFlowHtml(s,r){
     <p>任务一提交后，到老师处领取材料。根据完善后的设计图制作第一版实体原型。制作过程中遇到真实问题，可以随时向AI求助。</p>
     <div class="notice">制作阶段提交前必须完成至少5轮完整AI对话（你发送一条消息并收到AI回复算一轮）。未完成可以保存进度，下一节课继续制作。</div>
     <div class="form">${step2Fields}</div>${materialBankHtml(s.materials||[])}
-    <h3>原型版本页</h3><p class="small">第一页是V1。实际修改了设计或结构后，点击“迭代”上传V2、V3……逐版记录变化。不要覆盖上一版。若只是记录当前制作进度、设计本身没有变化，请使用下面的“制作进度照片”。</p>
+    <h3>原型版本页</h3><p class="small">作品确实发生结构变化后再上传新版本，系统自动编号并保留以前的照片。每个正式版本都需要整体图和戴在手上的照片；只是制作进度时，使用“进度照片”。</p>
     <div class="artifact-list">${prototypeVersions?artifactHtml(prototypeVersions,r.artifacts?.[prototypeVersions.key]):''}${prototypeWear?artifactHtml(prototypeWear,r.artifacts?.[prototypeWear.key]):''}${prototypeWear?artifactHtml(prototypeWear,r.artifacts?.[prototypeWear.key]):''}</div><p class="small">同一版必须同时保存整体图和佩戴图；尚未完成时可以先保存进度照片，不用冒充正式版本。</p>
     <h3>本节制作进度（非设计迭代）</h3><div class="artifact-list">${buildProgress?artifactHtml(buildProgress,r.artifacts?.[buildProgress.key]):''}</div>
     <div class="w8-counter"><div><strong>AI完整对话轮次</strong><span><b data-w8-exchange-count="task2">${counts2}</b> / ${min2}</span></div><div class="w8-meter"><i style="width:${Math.min(100,counts2/min2*100)}%"></i></div><p class="small">本阶段累计统计；上传V2、V3不需要每次重新累计5轮。只有学生消息和AI回复成功配对才计数；轮次门槛只用于本节提交，不代表求助质量。</p></div>
