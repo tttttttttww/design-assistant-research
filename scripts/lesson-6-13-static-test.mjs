@@ -26,4 +26,4 @@ assert.ok(task.includes("s.id==='W6'?w8TaskFlowHtml"));
 assert.ok(task.includes('l06_wear_versions'));
 assert.ok(rs.includes("this.getSessionRecord(id, 'W10')"));
 assert.ok(rs.includes('course-v11-enhanced')||read('src/services/storageService.js').includes('course-v11-enhanced'));
-console.log('V12 COURSE CHECK OK');
+console.log('V12.1 COURSE CHECK OK');
