@@ -1631,6 +1631,7 @@ export const SESSIONS = [
     "phase": "transfer",
     "ai_mode": "free",
     "candidate": false,
+    "carry_from": "W15",
     "brief": [
       "第13节课你将面对全校师生上台展示自己的辅助绘画装置。今天需要设计讲解方式，让没有参加课程的同学也听得懂。",
       "请在约90秒内说明：使用者需求、作品功能、一次真实测试或修改、仍存在的局限。",
