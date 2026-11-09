@@ -277,7 +277,11 @@ class ResearchService {
       const existing = await this.getOrientation(id, sid);
       if (!existing || existing.orientation_key !== config.key) {
         const previousRecord = await this.getSessionRecord(id, sid);
-        if (previousRecord?.started_at || previousRecord?.submitted_at || previousRecord?.saved_at || existing?.completed_at) return null;
+        // Formal students: never require a newly introduced pre-lesson
+        // exercise after the original classroom task had already started.
+        // Only disposable teacher TEST accounts may preview a new protocol
+        // without erasing or reassigning formal student evidence.
+        if (!participant.is_test && (previousRecord?.started_at || previousRecord?.submitted_at || previousRecord?.saved_at || existing?.started_at || existing?.completed_at)) return null;
       }
     }
     if (mode === 'supported' && config.dynamic_personal_queries) {
