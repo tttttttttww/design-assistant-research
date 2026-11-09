@@ -9,8 +9,6 @@
     "build": "node scripts/check.mjs && node scripts/v12-2-intervention-test.mjs",
     "check": "node scripts/check.mjs",
     "test": "node scripts/check.mjs && node scripts/lesson-6-13-static-test.mjs && node scripts/lesson-wizard-static-test.mjs && node scripts/v12-2-intervention-test.mjs",
-    "test:legacy": "node scripts/check.mjs && node scripts/artifact-history-test.mjs && node scripts/measurement-test.mjs && node scripts/v1156-merge-and-history-test.mjs",
-    "check:legacy": "node scripts/check-v1158-legacy.mjs",
     "test:course": "node scripts/check.mjs && node scripts/lesson-6-13-static-test.mjs && node scripts/lesson-wizard-static-test.mjs && node scripts/v12-2-intervention-test.mjs"
   },
   "dependencies": {
