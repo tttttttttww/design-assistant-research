@@ -659,17 +659,17 @@ function w8TaskFlowHtml(s,r){
   if(!done1)activeW8Step='task1';
   else if(!activeW8Step)activeW8Step='task2';
   const step=activeW8Step;
-  const step1ScienceFields=(s.fields||[]).filter(f=>f.stage==='task1'&&['w8_science_point','w8_science_application'].includes(f.key)).map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'',done1)).join('');
-  const checkFields=(s.fields||[]).filter(f=>f.stage==='task1'&&f.key.startsWith('w8_check')).map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'',done1)).join('');
-  const peerFields=(s.fields||[]).filter(f=>f.stage==='task1'&&['w8_check_evidence','w8_peer','w8_focus'].includes(f.key)).map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'',done1)).join('');
-  const step1MaterialFields=(s.fields||[]).filter(f=>f.stage==='task1'&&f.key==='w8_material_plan').map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'',done1)).join('');
+  const step1ScienceFields=(s.fields||[]).filter(f=>f.stage==='task1'&&['l06_science_point','l06_science_application'].includes(f.key)).map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'',done1)).join('');
+  const checkFields=(s.fields||[]).filter(f=>f.stage==='task1'&&f.key.startsWith('l06_check')).map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'',done1)).join('');
+  const peerFields=(s.fields||[]).filter(f=>f.stage==='task1'&&['l06_check_evidence','l06_peer','l06_focus'].includes(f.key)).map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'',done1)).join('');
+  const step1MaterialFields=(s.fields||[]).filter(f=>f.stage==='task1'&&f.key==='l06_material_plan').map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'',done1)).join('');
   const step2Fields=(s.fields||[]).filter(f=>f.stage==='task2').map(f=>fieldHtml(f,displayTextFields()?.[f.key]??'',!done1||done2)).join('');
-  const previousSheet=w8Artifact('w8_previous_task_sheet');
-  const scienceSheet=w8Artifact('w8_science_learning_sheet');
-  const designVersion=w8Artifact('w8_design_version');
-  const prototypeVersions=w8Artifact('w8_prototype_versions');
-  const prototypeWear=w8Artifact('w8_wear_versions');
-  const buildProgress=w8Artifact('w8_build_progress');
+  const previousSheet=w8Artifact('l06_previous_task_sheet');
+  const scienceSheet=w8Artifact('l06_science_learning_sheet');
+  const designVersion=w8Artifact('l06_design_version');
+  const prototypeVersions=w8Artifact('l06_prototype_versions');
+  const prototypeWear=w8Artifact('l06_wear_versions');
+  const buildProgress=w8Artifact('l06_build_progress');
   const counts1=w8Count('task1'),counts2=w8Count('task2');
   const min1=Number(s.task_flow?.steps?.find(x=>x.key==='task1')?.min_ai_exchanges||10);
   const min2=Number(s.task_flow?.steps?.find(x=>x.key==='task2')?.min_ai_exchanges||5);
@@ -705,9 +705,10 @@ function w8TaskFlowHtml(s,r){
 
 // 每节课结束前只回顾当前真实对话，不回忆一周前的对话。课中可以随时保存反思，不影响保存未完成任务。
 function lessonReviewHtml(s){
-  if(!s?.task_flow || !['W8','W9','W10','W14','W15'].includes(s.id))return '';
+  if(!s?.task_flow || !['W6','W7','W8','W9','W10'].includes(s.id))return '';
   const saved=displayTextFields(),disabled=(state.record.submitted_at||state.session_locked)?'disabled':'';
-  const messages=(state.chat_messages||[]).filter(m=>m.role==='assistant' && m.message_id);
+  const phases=new Set((s.task_flow?.steps||[]).map(x=>x.task_phase));
+  const messages=(state.chat_messages||[]).filter(m=>m.role==='assistant' && m.message_id && phases.has(m.task_context?.task_phase));
   const chosen=String(saved.lesson_review_reference||'');
   const selected=messages.filter((m,i)=>i>=messages.length-8 || m.message_id===chosen);
   const has=messages.length>0;
@@ -795,7 +796,7 @@ function wirePrototypeBook(){
 
 function render(){
   const s=state.session,r=state.record;
-  document.title=`${s.id} ${s.title}`;
+  document.title=`${s.student_label||s.title} · 设计思维工作坊`;
   if(state.learning_gate==='orientation'){
     document.getElementById('app').innerHTML=`<div class="course-header"><span class="eyebrow">${esc(s.student_label||s.title)}</span><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div></div>${orientationHtml()}`;
     wireOrientation();
@@ -814,7 +815,7 @@ function render(){
   document.getElementById('app').innerHTML=`
     <div class="course-header"><span class="eyebrow">${esc(s.student_label||s.title)}</span><div class="row between"><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div>${state.session_locked?'<span class="badge big">教师已结束本阶段</span>':r.submitted_at?'<span class="badge big">已标记完成</span>':''}</div></div>
     <div class="course-grid"><div class="course-main">${isW8Flow?compactTaskHeader(s):taskCard(s)}${carryCard(state.carry_from)}
-      ${isW8Flow?`<form id="taskForm" class="form">${s.id==='W8'?w8TaskFlowHtml(s,r):weeklyTaskFlowHtml(s,r)}</form>`:`<section class="card"><span class="eyebrow">我的任务记录</span><h2>边做边记录，内容会及时自动保存</h2><p class="small">今天没做完就点“保存进度并退出”，下次老师继续开放本任务时，用同一编号和姓名进入即可接着做。完成按钮只是标记你认为本阶段已完成；在老师统一结束并锁定前，即使误点，也可以回来继续修改。</p>${state.session_locked?'<div class="notice"><strong>本阶段已由老师结束并锁定。</strong>现在可以查看已有记录，但不能继续修改。</div>':r.submitted_at?'<div class="notice"><strong>你已将本阶段标记为完成。</strong>如需继续修改，请点击“继续修改”。</div>':''}<form id="taskForm" class="form">${taskFieldsHtml(s)}${bonusTaskHtml(s)}<div class="artifact-list">${s.artifacts.map(a=>artifactHtml(a,r.artifacts?.[a.key])).join('')}</div><div id="saveStatus" class="small"></div><div class="row">${r.submitted_at&&!state.session_locked?'<button type="button" class="btn secondary" id="reopenSession">继续修改</button>':`<button type="button" class="btn secondary" id="saveAndExit" ${state.session_locked?'disabled':''}>保存进度并退出</button><button type="submit" class="btn orange" ${(r.submitted_at||state.session_locked)?'disabled':''}>${state.session_locked?'教师已结束本阶段':'完成本阶段'}</button>`}</div></form></section>`}
+      ${isW8Flow?`<form id="taskForm" class="form">${s.id==='W6'?w8TaskFlowHtml(s,r):weeklyTaskFlowHtml(s,r)}</form>`:`<section class="card"><span class="eyebrow">我的任务记录</span><h2>边做边记录，内容会及时自动保存</h2><p class="small">今天没做完就点“保存进度并退出”，下次老师继续开放本任务时，用同一编号和姓名进入即可接着做。完成按钮只是标记你认为本阶段已完成；在老师统一结束并锁定前，即使误点，也可以回来继续修改。</p>${state.session_locked?'<div class="notice"><strong>本阶段已由老师结束并锁定。</strong>现在可以查看已有记录，但不能继续修改。</div>':r.submitted_at?'<div class="notice"><strong>你已将本阶段标记为完成。</strong>如需继续修改，请点击“继续修改”。</div>':''}<form id="taskForm" class="form">${taskFieldsHtml(s)}${bonusTaskHtml(s)}<div class="artifact-list">${s.artifacts.map(a=>artifactHtml(a,r.artifacts?.[a.key])).join('')}</div><div id="saveStatus" class="small"></div><div class="row">${r.submitted_at&&!state.session_locked?'<button type="button" class="btn secondary" id="reopenSession">继续修改</button>':`<button type="button" class="btn secondary" id="saveAndExit" ${state.session_locked?'disabled':''}>保存进度并退出</button><button type="submit" class="btn orange" ${(r.submitted_at||state.session_locked)?'disabled':''}>${state.session_locked?'教师已结束本阶段':'完成本阶段'}</button>`}</div></form></section>`}
     </div><aside class="course-side">${chatPanel()}</aside></div>`;
   wire();
 }
@@ -980,7 +981,8 @@ function wire(){
     try{
       const vals=collectFields();
       if(state.ai_variant==='supported'){
-        const has=(state.chat_messages||[]).some(m=>m.role==='assistant');
+        const phases=new Set((state.session.task_flow?.steps||[]).map(x=>x.task_phase));
+        const has=(state.chat_messages||[]).some(m=>m.role==='assistant'&&phases.has(m.task_context?.task_phase));
         if(has&&!String(vals.lesson_review_reference||'').trim())throw new Error('请从本节真实对话中选择一条AI回复。');
         if(!has&&!String(vals.lesson_no_history_reason||'').trim())throw new Error('请说明本节没有可回顾对话的原因。');
         if(has&&(!String(vals.lesson_review_use||'').trim()||!String(vals.lesson_review_next||'').trim()))throw new Error('请简短说明AI帮助与下次如何求助。');
