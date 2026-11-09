@@ -53,8 +53,8 @@ if(!o7?.reflection_activity || o7?.mode!=='supported' || o7.cards.length<1) thro
 await researchService.startOrientation('S01','W7');
 await researchService.completeOrientation('S01','W7', {practice_1:1,practice_2:0,personal_ref:'W6:1',reflection_difficulty:'当时我不知道怎样固定铅笔',reflection_reply_review:'我当时收到AI建议但还需要检查材料是否合适',revised_question:'我现在不知道材料应该怎样连接，请帮我比较可选方法',reflection_reason:'用自己的情况描述困难后我还需要检验建议是否适合'});
 if(!(await researchService.orientationPublicState('S01','W7')).completed)throw new Error('W7 reflection not saved');
-// W10 is the last supported week, while W11/W12 are common-model transfer.
-if(!getSessionConfig('W10').questionnaire_after_submit || getSessionConfig('W9').questionnaire_after_submit)throw new Error('posttest should only be after W10');
+// Actual lesson 10 uses internal W15; W11/W12 remain scaffold-free transfer.
+if(!getSessionConfig('W15').questionnaire_after_submit || getSessionConfig('W10').questionnaire_after_submit)throw new Error('posttest should only be after actual lesson 10 (W15)');
 if(!getSessionConfig('W11').ai_use_required_once || getSessionConfig('W12').ai_use_required_once)throw new Error('W11 AI exchange requirement configuration invalid');
 
 // Fixed control IDs remain fixed B.
