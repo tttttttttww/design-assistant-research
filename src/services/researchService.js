@@ -583,15 +583,15 @@ class ResearchService {
       clean[item.id] = v;
     }
     if (slot === 'post') {
-      const w10 = await this.getSessionRecord(id, 'W10');
-      if (!w10.submitted_at) throw Object.assign(new Error('请先完成并提交本节任务，再填写课末小问卷。'), { status: 409 });
+      const lesson10 = await this.getSessionRecord(id, 'W15');
+      if (!lesson10.submitted_at) throw Object.assign(new Error('请先完成并提交本节任务，再填写课末小问卷。'), { status: 409 });
     }
     const row = {
       participant_id: id, slot, questionnaire_version: QUESTIONNAIRE_VERSION,
       responses: clean, scores: this.questionnaireScores(clean), submitted_at: iso(),
     };
     await storageService.putObject(qKey(id, slot), JSON.stringify(row));
-    await this.appendEvent(id, slot === 'pre' ? 'W2' : 'W10', `questionnaire_${slot}_submitted`, {
+    await this.appendEvent(id, slot === 'pre' ? 'W2' : 'W15', `questionnaire_${slot}_submitted`, {
       questionnaire_version: QUESTIONNAIRE_VERSION, scores: row.scores,
     });
     return row;
