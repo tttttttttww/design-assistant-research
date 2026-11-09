@@ -944,6 +944,35 @@ class ResearchService {
       throw Object.assign(new Error(`${step.label}目前记录到${exchangeCount}轮完整AI对话，还需要${minimum - exchangeCount}轮。只统计你发送消息且收到AI回复的完整对话；可以先保存进度，稍后继续。`), { status: 400 });
     }
     if (stepIndex === flow.steps.length - 1) {
+      // Course-level finalization: same-day reflections use only messages saved for this student and lesson.
+      const currentLesson=Number(config.actual_lesson||0);
+      if(currentLesson>=6 && currentLesson<=10){
+        const participant=await this.getParticipant(id);
+        const isSupported=aiVariantFor({session:config,condition:participant.condition,isTest:participant.is_test})==='supported';
+        if(isSupported){
+          const messages=await this.getMessages(id,sid);
+          const assistantMessages=messages.filter(m=>m.role==='assistant');
+          const ref=String(record.text_fields?.lesson_review_reference||'');
+          const noReason=String(record.text_fields?.lesson_no_history_reason||'').trim();
+          const help=String(record.text_fields?.lesson_review_use||'').trim();
+          const next=String(record.text_fields?.lesson_review_next||'').trim();
+          if(assistantMessages.length && !assistantMessages.some(m=>m.message_id===ref))
+            throw Object.assign(new Error('请先在本节回顾中选择一条真实的AI对话，并保存反思。'),{status:400});
+          if(!assistantMessages.length && !noReason)
+            throw Object.assign(new Error('请按实际情况说明本节没有可回顾对话的原因。'),{status:400});
+          if(!help || !next)
+            throw Object.assign(new Error('请先完成本节AI交流回顾，再提交任务。'),{status:400});
+        }else if(!String(record.text_fields?.lesson_exit_note||'').trim()){
+          throw Object.assign(new Error('请先写一句今天的进度，再提交任务。'),{status:400});
+        }
+        // Prototype versions are append-only and every *new* version must have a matching worn photo.
+        for(const pair of config.paired_artifacts||[]){
+          const overall=(await this.getArtifactVersions(id,sid,record))[pair.overview]||[];
+          const worn=(await this.getArtifactVersions(id,sid,record))[pair.wear]||[];
+          if(overall.length!==worn.length)
+            throw Object.assign(new Error('每个正式原型版本都要上传整体图和佩戴图两张照片。尚未完成请先保存进度。'),{status:400});
+        }
+      }
       const completedRecord = await this.submitSession(id, sid, textFields, { ...saveContext, reason: `task_step_${step.key}_submit` });
       await this.appendEvent(id, sid, 'task_step_submitted', {
         step_key: step.key, task_phase: step.task_phase, ai_exchange_count: exchangeCount,
