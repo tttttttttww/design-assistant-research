@@ -1872,6 +1872,60 @@ export const SESSIONS = [
   },
 ];
 
+// v12: teaching session number and persisted session_id match one-to-one.
+// Never delete existing Blob objects. Legacy records under old W6/W7/W8/W9/W10/W14/W15
+// remain in the same namespace and are available to the existing raw export.
+const V12_ORIGINAL_SESSIONS=Object.fromEntries(SESSIONS.map(s=>[s.id,s]));
+const V12_ORIGINAL_ORIENTATIONS=Object.fromEntries(Object.entries(INTERVENTION_ORIENTATION));
+const V12_LESSON_SOURCES=[['W6','W8',6],['W7','W9',7],['W8','W10',8],['W9','W14',9],['W10','W15',10]];
+for(const [targetId, sourceId, lessonNo] of V12_LESSON_SOURCES){
+  const oldPrefix=sourceId.toLowerCase()+'_';
+  const newPrefix='l'+String(lessonNo).padStart(2,'0')+'_';
+  const old=V12_ORIGINAL_SESSIONS[sourceId];
+  // Namespace new task fields/images; preserve old objects instead of overwriting
+  // any saved records from previous lesson-number experiments.
+  const copy=JSON.parse(JSON.stringify(old).replaceAll(oldPrefix,newPrefix));
+  copy.id=targetId;copy.order=lessonNo;copy.actual_lesson=lessonNo;
+  copy.date=lessonNo===6?'11/9':'按实际课表';
+  copy.carry_from=lessonNo===6?'W5':'W'+(lessonNo-1);
+  copy.prototype_version_predecessors=lessonNo===6?[]:
+    Array.from({length:lessonNo-6},(_,i)=>'W'+(i+6));
+  copy.student_label='第'+lessonNo+'节课 · '+(lessonNo===6?'科学知识与原型制作':copy.title);
+  copy.archived=false;
+  copy.prompt_context=String(copy.prompt_context||'').replaceAll(sourceId,targetId);
+  if(copy.task_flow)copy.task_flow.key='v12-lesson'+lessonNo+'-two-stage';
+  if(lessonNo===6){
+    copy.subtitle='先检查已有图纸，结合科学知识完成设计；再制作原型。未完成可保存。';
+    copy.title='第6节：科学知识应用与原型制作';
+  }
+  const slot=SESSIONS.findIndex(s=>s.id===targetId);
+  if(slot<0)throw new Error('Missing active lesson '+targetId);
+  SESSIONS[slot]=copy;
+  const oldOrientation=V12_ORIGINAL_ORIENTATIONS[sourceId];
+  if(oldOrientation){
+    const orient=JSON.parse(JSON.stringify(oldOrientation));
+    orient.supported.key='v12-help-strategy-lesson'+lessonNo;
+    orient.control.key='v12-neutral-task-lesson'+lessonNo;
+    orient.supported.reflection_activity=false;
+    orient.supported.previous_session_id=undefined;
+    orient.supported.dynamic_personal_queries=false;
+    orient.supported.title='今天的求助小练习';
+    orient.supported.button='进入今天的任务';
+    orient.control.title='开始今天的任务';
+    orient.control.button='进入今天的任务';
+    INTERVENTION_ORIENTATION[targetId]=orient;
+  }
+}
+const transferLesson11=SESSIONS.find(s=>s.id==='W11');
+if(transferLesson11)transferLesson11.carry_from='W10';
+// Keep two old v11.59 candidate session IDs as read-only historical selections
+// for exports; never present them as live lessons to students.
+for(const sid of ['W14','W15']){
+  const archived=SESSIONS.find(s=>s.id===sid);
+  if(archived){archived.archived=true;archived.actual_lesson=null;archived.student_label='历史兼容存档（'+sid+'）';}
+}
+// Legacy W6/W7 task keys and W8/W9/W10 prior records may still exist;
+// no migration or renaming of physical Blob keys is performed.
 for(const sid of ['W9','W10','W14','W15']){
  const session=SESSIONS.find(x=>x.id===sid);
  if(session && !session.fields.some(x=>x.key==='lesson_no_history_reason'))

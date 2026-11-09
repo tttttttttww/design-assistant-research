@@ -64,7 +64,7 @@ async function loadSettings() {
   settings = await api('/settings');
   sessions = settings.sessions || [];
   const f = document.getElementById('settingsForm');
-  const activeOptions=sessions.filter(s=>!['W6','W7'].includes(s.id)||s.id===settings.active_session_id).sort((a,b)=>(a.actual_lesson||a.order)-(b.actual_lesson||b.order));
+  const activeOptions=sessions.filter(s=>!s.archived||s.id===settings.active_session_id).sort((a,b)=>(a.actual_lesson||a.order)-(b.actual_lesson||b.order));
   f.active_session_id.innerHTML = activeOptions.map(s => `<option value="${s.id}">${s.actual_lesson?'第'+s.actual_lesson+'节':'历史课次'} · ${esc(s.title)}（${s.id}）</option>`).join('');
   f.active_session_id.value = settings.active_session_id;
   f.session_open.checked = Boolean(settings.session_open);
@@ -86,7 +86,7 @@ document.getElementById('settingsForm').onsubmit = async e => {
 };
 
 function renderSessionCards() {
-  const visible=sessions.filter(s=>!['W6','W7'].includes(s.id)).sort((a,b)=>(a.actual_lesson||a.order)-(b.actual_lesson||b.order));
+  const visible=sessions.filter(s=>!s.archived).sort((a,b)=>(a.actual_lesson||a.order)-(b.actual_lesson||b.order));
   document.getElementById('sessionCards').innerHTML = visible.map(s => `<div class="session-card ${s.id === settings.active_session_id ? 'current' : ''}"><div class="row between"><strong>${s.actual_lesson?'第'+s.actual_lesson+'节':'历史课次'} · ${s.date}</strong><span class="badge">${s.ai_mode === 'condition' ? '按组AI' : s.ai_mode === 'free' ? '自由AI' : '无AI'}</span></div><h3>${esc(s.title)}</h3><p>${esc(s.subtitle)}</p><p class="small">${esc(s.brief.slice(0,1).join(' '))}</p><details><summary>查看完整教学任务</summary><p>${esc(s.brief.join(' '))}</p></details>${s.candidate ? '<div class="notice"><strong>教师说明：</strong>候选任务，正式实施前仍可替换。</div>' : ''}<button class="btn ghost set-current" data-id="${s.id}">设为当前课次</button></div>`).join('');
   document.querySelectorAll('.set-current').forEach(b => b.onclick = async () => {
     const r = await api('/settings', { method: 'POST', body: JSON.stringify({ active_session_id: b.dataset.id, session_open: settings.session_open, questionnaire_enabled: settings.questionnaire_enabled }) });
