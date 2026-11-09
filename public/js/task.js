@@ -904,6 +904,14 @@ async function uploadArtifact(input){
   fd.append('modificationStatus',root?.querySelector(`[data-artifact-status="${key}"]`)?.value||'');
   fd.append('aiUsageRole',root?.querySelector(`[data-artifact-ai-role="${key}"]`)?.value||'');
   root?.querySelectorAll(`[data-artifact-basis="${key}"]:checked`).forEach(x=>fd.append('changeBases',x.value));
+  // Short student form: convert the selected source to the backend's existing
+  // changeBases vocabulary without showing extra technical checkboxes.
+  const source=root?.querySelector(`[data-artifact-source="${key}"]`)?.value||'unknown';
+  const basisForSource={self:'自己的想法',peer:'同伴建议',ai:'AI建议',teacher:'教师建议',mixed:'其他',unknown:'其他'};
+  if(root?.querySelector(`[data-artifact-status="${key}"]`)){
+    fd.append('changeBases',basisForSource[source]||'其他');
+    if(source==='mixed'&&aiRole!=='not_used')fd.append('changeBases','AI建议');
+  }
   root?.querySelectorAll(`[data-artifact-ai="${key}"]:checked`).forEach(x=>fd.append('aiMessageIds',x.value));
   const singleAI=root?.querySelector(`[data-artifact-ai-single="${key}"]`)?.value||'';if(singleAI)fd.append('aiMessageId',singleAI);
   fd.append('basedOnVersionRef',root?.querySelector(`[data-artifact-based-on="${key}"]`)?.value||'');
