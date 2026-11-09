@@ -1,14 +1,14 @@
 {
   "name": "design-thinking-help-seeking-platform",
-  "version": "11.59.0",
+  "version": "12.0.0",
   "type": "module",
-  "description": "11.59课程设计与生成式AI求助记录平台：12节常规课＋第13节全校舞台展示（不修改既有Blob数据路径）",
+  "description": "设计思维工作坊v12：第6—10节W6—W10；第11—12节迁移；第13节全校舞台展示，保留既有存储",
   "main": "cloud-functions/express/[[default]].js",
   "scripts": {
     "start": "node server.js",
     "build": "node scripts/check.mjs",
     "check": "node scripts/check.mjs",
-    "test": "node scripts/check.mjs && node scripts/artifact-history-test.mjs && node scripts/measurement-test.mjs && node scripts/v1156-merge-and-history-test.mjs",
+    "test": "node scripts/check.mjs && node scripts/lesson-6-13-static-test.mjs",
     "test:legacy": "node scripts/check.mjs && node scripts/artifact-history-test.mjs && node scripts/measurement-test.mjs && node scripts/v1156-merge-and-history-test.mjs",
     "check:legacy": "node scripts/check-v1158-legacy.mjs",
     "test:course": "node scripts/check.mjs && node scripts/lesson-6-13-static-test.mjs"
