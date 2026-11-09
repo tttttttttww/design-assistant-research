@@ -288,11 +288,10 @@ function artifactUploadPanelHtml(a, versions, carryOptions, options, hidden=fals
   const disabled=(state.record.submitted_at||state.session_locked||artifactStepCompleted(a.key))?'disabled':'';
   if(String(a.key||'').includes('wear'))return `<div class="prototype-upload-editor ${hidden?'hidden':''}" data-prototype-upload="${esc(a.key)}" data-artifact-card="${esc(a.key)}"><p class="small">只需上传与该版对应的真实佩戴照片，不用重复填写修改说明。</p><input type="hidden" data-artifact-kind="${versions.length?'revision':'draft'}"><div class="row"><input type="file" data-artifact="${esc(a.key)}" accept="image/jpeg,image/png,image/webp" ${disabled}><span class="small" data-upload-status="${esc(a.key)}">${versions.length?'继续上传配套照片':'尚未上传'}</span></div><button type="button" class="btn ghost mini" data-cancel-prototype="${esc(a.key)}">取消</button></div>`;
   return `<div class="prototype-upload-editor ${hidden?'hidden':''}" data-prototype-upload="${esc(a.key)}" data-artifact-card="${esc(a.key)}">
-    <h4>${versions.length?'上传新增版本':`上传${esc(a.book_item_label||'设计/原型')}`}</h4>
-    <p class="small">写一句变化、选好依据，再上传照片；旧版保留。</p>
+    <p class="small">${versions.length?'真实修改后可继续添加照片；没有变化不用重复上传。':'首次上传当前成果。'}先简短记录，再选择照片，系统会自动保存。</p>
     ${artifactQuestionnaireHtml(a,versions,carryOptions,options)}
     <div class="row"><input type="file" data-artifact="${esc(a.key)}" accept="image/jpeg,image/png,image/webp" ${disabled}><span class="small" data-upload-status="${esc(a.key)}">${versions.length?`已有${versions.length}条版本记录`:'尚未上传'}</span></div>
-    <button type="button" class="btn ghost mini" data-cancel-prototype="${esc(a.key)}">暂不上传，继续编辑</button>
+    <p class="small">不想上传时直接继续做任务即可。</p>
   </div>`;
 }
 function prototypeVersionPageHtml(versions, index, itemLabel='作品'){
@@ -318,8 +317,8 @@ function prototypeVersionBookHtml(a, meta){
   const viewer=prototypeVersionPageHtml(versions,safeIndex,itemLabel);
   return `<div class="upload-card prototype-book-card" data-prototype-book="${esc(a.key)}" data-prototype-item-label="${esc(itemLabel)}"><div class="row between"><div><strong>${esc(a.label)} ${required}</strong><p class="small">${esc(a.helper)}；有实际修改才上传新版本，旧版保留。</p></div><span class="badge">${versions.length?`已保存 ${versions.length} 张照片`:'尚无记录'}</span></div>
     <div data-prototype-viewer="${esc(a.key)}">${viewer}</div>
-    <div class="row prototype-page-controls"><button type="button" class="btn secondary mini" data-prototype-prev="${esc(a.key)}" ${!versions.length||safeIndex===0?'disabled':''}>上一版</button><button type="button" class="btn secondary mini" data-prototype-next="${esc(a.key)}" ${!versions.length||safeIndex>=versions.length-1?'disabled':''}>下一版</button><button type="button" class="btn orange mini" data-prototype-iterate="${esc(a.key)}" ${disabled}>${versions.length?'上传更新后的照片':`上传${esc(itemLabel)}`}</button></div>
-    ${artifactUploadPanelHtml(a,versions,carryOptions,recentReplies,!(!versions.length))}
+    ${versions.length>1?`<div class="row prototype-page-controls"><button type="button" class="btn secondary mini" data-prototype-prev="${esc(a.key)}" ${safeIndex===0?'disabled':''}>上一版</button><button type="button" class="btn secondary mini" data-prototype-next="${esc(a.key)}" ${safeIndex>=versions.length-1?'disabled':''}>下一版</button></div>`:''}
+    ${artifactUploadPanelHtml(a,versions,carryOptions,recentReplies,false)}
   </div>`;
 }
 function artifactHtml(a, meta){
@@ -790,9 +789,7 @@ function wirePrototypeBook(){
     const viewer=book.querySelector(`[data-prototype-viewer="${key}"]`);
     const prev=book.querySelector(`[data-prototype-prev="${key}"]`);
     const next=book.querySelector(`[data-prototype-next="${key}"]`);
-    const iterate=book.querySelector(`[data-prototype-iterate="${key}"]`);
-    const editor=book.querySelector(`[data-prototype-upload="${key}"]`);
-    const cancel=book.querySelector(`[data-cancel-prototype="${key}"]`);
+    // Single upload field is always visible; version arrows only browse saved history.
     const index=()=>Math.min(Math.max(0,prototypeVersionIndexByKey[key]??Math.max(0,versions.length-1)),Math.max(0,versions.length-1));
     const update=()=>{
       const current=index();
@@ -804,8 +801,7 @@ function wirePrototypeBook(){
     if(!Object.prototype.hasOwnProperty.call(prototypeVersionIndexByKey,key))prototypeVersionIndexByKey[key]=Math.max(0,versions.length-1);
     if(prev)prev.onclick=()=>{prototypeVersionIndexByKey[key]=Math.max(0,index()-1);update();};
     if(next)next.onclick=()=>{prototypeVersionIndexByKey[key]=Math.min(versions.length-1,index()+1);update();};
-    if(iterate)iterate.onclick=()=>editor?.classList.remove('hidden');
-    if(cancel)cancel.onclick=()=>editor?.classList.add('hidden');
+    // No extra "Upload" / "Cancel" toggles: selecting one file triggers uploadArtifact.
   });
 }
 

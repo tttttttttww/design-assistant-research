@@ -72,7 +72,7 @@ function lessonWizardHtml(s,r){
     const W6=science=>{
       return `<details class="wizard-info"><summary>需要时展开科学知识小图</summary>${scienceDiagramCardsHtml()}</details>
        <div class="wizard-short-fields">${renderFields(all.filter(f=>f.stage==='task1'&&/^l06_(science_point|science_application|material_plan)$/.test(f.key)))}</div>
-       <h3>上传完成的学习单和设计图</h3><div class="wizard-files">${a('l06_science_learning_sheet')}${a('l06_design_version')}</div>`;
+       <h3>提交两份不同的成果</h3><p class="small">① 填写完整的科学知识与材料学习单；② 标出科学知识、材料和用途的新版设计图。每项各选择一次照片，系统自动保存；没有新修改不必重复上传。</p><div class="wizard-files">${a('l06_science_learning_sheet')}${a('l06_design_version')}</div>`;
     };
     pageHtml=`<h2>${isSix?'任务一：完善设计图':'把检查结果告诉AI'}</h2>
       <p>${isSix?'选一个确实适合你设计的科学知识，说明它用在哪里；请AI分析时，记得结合自己的真实图纸。':'围绕实际发现、不确定之处或同伴提出的问题与AI交流，判断下一步怎么做。'}</p>
