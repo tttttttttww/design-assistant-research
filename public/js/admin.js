@@ -527,7 +527,7 @@ async function refreshLiveMonitor(){
   };
   try{
     await Promise.all([worker(),worker()]);
-    if(liveSelectedParticipantId)await loadLiveParticipant(liveSelectedParticipantId,false,false);
+    if(liveSelectedParticipantId)void loadLiveParticipant(liveSelectedParticipantId,false,false);
     liveLastRefreshAt=lastTime||new Date().toISOString();
     if(failedPages||failedStudents){
       setLiveRefreshState(`已更新 ${completed-failedPages}/${pages.length} 批；${failedPages}批超时/失败，${failedStudents}个账号读取失败。${firstError?' 原因：'+firstError:''} 未读取不等于0轮。`,'error');
@@ -549,6 +549,7 @@ function scheduleLiveTimer(){
 }
 function startLiveTimer(){
   if(liveTimer) clearTimeout(liveTimer);
+  renderLiveParticipantList();
   refreshLiveMonitor().finally(scheduleLiveTimer);
 }
 
