@@ -54,4 +54,5 @@ assert.ok(task.includes('lessonWizardHtml(s,r)'),'Student page still uses old fu
 assert.ok(!task.includes('关联上一课作品')&&!task.includes('关联一条AI回复'),'Confusing record links must not appear in student UI');
 assert.ok(existsSync(new URL('../scripts/v12-3-upload-ui-test.mjs',import.meta.url)),'v12.3 one-picker regression test missing');
 assert.ok(existsSync(new URL('../scripts/v12-3-1-ui-test.mjs',import.meta.url)),'v12.3.1 UI regression test is missing');
-console.log('V12.3.1 BUILD CHECK OK: W6–W13, stage AI counts, existing Blob namespace, documents present.');
+assert.ok(existsSync(new URL('../scripts/v12-3-2-live-monitor-test.mjs',import.meta.url)),'v12.3.2 live monitoring regression test is required');
+console.log('V12.3.2 BUILD CHECK OK: W6–W13, stage AI counts, existing Blob namespace, documents present.');
