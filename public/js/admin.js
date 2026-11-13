@@ -18,6 +18,13 @@ const uploadApi = async (path, formData) => {
 };
 
 let rows = [], settings = null, sessions = [], selectedParticipantId = '';
+// Real-time roster loads independently of the expensive full /participants dashboard.
+// Never render missing data as a genuine 0-turn student record.
+const LIVE_IDS=['S00','S99',...Array.from({length:30},(_,i)=>'S'+String(i+1).padStart(2,'0'))];
+let liveRows=LIVE_IDS.map(participant_id=>({
+  participant_id,is_test:participant_id==='S00'||participant_id==='S99',
+  live_status:'pending',user_turn_count:null,assistant_turn_count:null
+}));
 let liveSelectedParticipantId = '';
 let liveAutoRefresh = true;
 let liveTimer = null;
@@ -29,14 +36,35 @@ let liveLastRefreshAt = '';
 const esc = App.escapeHtml;
 const fmtSeconds = v => v == null ? '—' : v < 60 ? `${v}s` : `${Math.floor(v / 60)}m ${v % 60}s`;
 
+function showParticipantsLoadError(error){
+  const dest=document.getElementById('participantTable');
+  if(dest) dest.innerHTML=`<div class="notice warn"><strong>完整学生列表暂时未载入：</strong>${esc(error.message)}。实时监控仍可独立刷新。<button class="btn ghost mini" type="button" id="retryParticipantList">重新读取完整名单</button></div>`;
+  const summary=document.getElementById('summary');
+  if(summary) summary.innerHTML='<div class="notice warn">完整统计尚未读取，不能把未读取的学生算成0人或0轮。</div>';
+  document.getElementById('retryParticipantList')?.addEventListener('click',()=>loadParticipantDashboard());
+}
+function loadParticipantDashboard(){
+  return loadParticipants().catch(showParticipantsLoadError);
+}
+async function initializeAdmin(){
+  await loadSettings();
+  // Start the live monitor BEFORE loading all student metadata. A slow
+  // /participants request must never suppress the live refresh interval.
+  startLiveTimer();
+  void loadParticipantDashboard();
+}
 async function check() {
   try {
     await api('/settings');
     showApp();
-    await loadSettings();
-    await loadParticipants();
-    startLiveTimer();
-  } catch {}
+    await initializeAdmin();
+  } catch(e) {
+    // Missing admin session is normal on first visit; login form stays visible.
+    const el=document.getElementById('loginError');
+    if(el && !document.getElementById('app')?.classList.contains('hidden')){
+      setLiveRefreshState('课堂设置读取失败：'+e.message,'error');
+    }
+  }
 }
 function showApp() {
   document.getElementById('login').classList.add('hidden');
@@ -48,9 +76,7 @@ document.getElementById('loginForm').onsubmit = async e => {
   try {
     await api('/login', { method: 'POST', body: JSON.stringify({ password: document.getElementById('password').value }) });
     showApp();
-    await loadSettings();
-    await loadParticipants();
-    startLiveTimer();
+    await initializeAdmin();
   } catch (x) {
     const b = document.getElementById('loginError');
     b.textContent = x.message;
@@ -303,12 +329,16 @@ async function loadParticipants() {
     e.stopPropagation();
     resetOne(btn.dataset.id, sid);
   });
+  for(const x of liveRows){
+    const r=rows.find(y=>y.participant_id===x.participant_id);
+    if(r){x.grade=r.grade;x.is_test=r.is_test;x.condition=r.condition;}
+  }
   renderLiveParticipantList();
 }
 
 
 const liveStatusMeta = status => ({
-  read_error:['读取失败（不是0）','error'], not_started:['未进入','muted'], working:['任务中','working'], ai_open:['已打开AI','aiopen'],
+  pending:['待读取','muted'],read_error:['读取失败（不是0）','error'], not_started:['未进入','muted'], working:['任务中','working'], ai_open:['已打开AI','aiopen'],
   typing:['正在输入','typing'], draft_cancelled:['取消发送','draftcancel'], draft_left:['草稿未发','draftleft'],
   processing:['AI处理中','processing'], replied:['已回复','replied'], error:['异常','error'], submitted:['已提交','submitted'],
 }[status] || ['—','muted']);
@@ -328,7 +358,7 @@ function renderLiveParticipantList(){
   const box=document.getElementById('liveParticipantList');
   if(!box) return;
   const oldScroll=box.scrollTop;
-  const ordered=[...rows].sort((a,b)=>{
+  const ordered=[...liveRows].sort((a,b)=>{
     if(a.is_test&&!b.is_test) return -1;
     if(!a.is_test&&b.is_test) return 1;
     return String(a.participant_id).localeCompare(String(b.participant_id));
@@ -341,7 +371,7 @@ function renderLiveParticipantList(){
     const gradeText=x.is_test?'测试账号':`${esc(x.grade||'—')}年级`;
     const testBadge=x.is_test?' <span class="badge test-badge">测试</span>':'';
     const preview=x.last_student_message_preview?`<div class="live-preview">${esc(x.last_student_message_preview)}</div>`:'';
-    return `<button class="live-student ${x.is_test?'test-account ':''}${liveSelectedParticipantId===x.participant_id?'selected':''}" data-id="${x.participant_id}" type="button"><div class="live-student-top"><strong>${x.participant_id}${testBadge}</strong><span class="live-status ${cls}">${label}</span></div><div class="live-student-meta"><span>${gradeText}</span><span>${x.read_error?'读取失败':`${x.user_turn_count??0}轮`}</span><span>${x.task_field_label?esc(x.task_field_label):'—'}</span></div>${preview}</button>`;
+    return `<button class="live-student ${x.is_test?'test-account ':''}${liveSelectedParticipantId===x.participant_id?'selected':''}" data-id="${x.participant_id}" type="button"><div class="live-student-top"><strong>${x.participant_id}${testBadge}</strong><span class="live-status ${cls}">${label}</span></div><div class="live-student-meta"><span>${gradeText}</span><span>${x.read_error?'读取失败':x.user_turn_count==null?'待读取':`${x.user_turn_count}轮`}</span><span>${x.task_field_label?esc(x.task_field_label):'—'}</span></div>${preview}</button>`;
   }).join('') || '<div class="small">暂无学生</div>');
   box.scrollTop=oldScroll;
   box.querySelectorAll('.live-student').forEach(btn=>btn.onclick=()=>selectLiveParticipant(btn.dataset.id));
@@ -444,10 +474,10 @@ async function loadLiveParticipant(id=liveSelectedParticipantId, forceScroll=fal
 }
 
 function mergeLiveStatuses(payload){
-  const map=new Map(rows.map(x=>[x.participant_id,x]));
+  const map=new Map(liveRows.map(x=>[x.participant_id,x]));
   for(const x of payload?.rows||[]){
     const current=map.get(x.participant_id);
-    if(current) Object.assign(current,x); else rows.push(x);
+    if(current) Object.assign(current,x); else liveRows.push(x);
   }
 }
 
