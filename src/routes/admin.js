@@ -273,9 +273,16 @@ router.get('/live-statuses', requireAdmin, async (req, res) => {
     const settings = await researchService.getSettings();
     const sid = settings.active_session_id;
     const ids = await allIds(true);
+    // Optional pagination limits each invocation to a handful of Blob reads.
+    // Without query parameters the original full response remains compatible.
+    const parsedOffset = Number.parseInt(String(req.query.offset??'0'),10);
+    const parsedLimit = Number.parseInt(String(req.query.limit??''),10);
+    const offset = Number.isFinite(parsedOffset)?Math.max(0,Math.min(ids.length,parsedOffset)):0;
+    const limit = Number.isFinite(parsedLimit)?Math.max(1,Math.min(6,parsedLimit)):ids.length;
+    const targetIds=ids.slice(offset,offset+limit);
     const rows=[];let failedCount=0;
-    for(let i=0;i<ids.length;i+=4){
-      const batch=await Promise.all(ids.slice(i,i+4).map(async id=>{
+    for(let i=0;i<targetIds.length;i+=4){
+      const batch=await Promise.all(targetIds.slice(i,i+4).map(async id=>{
         try {
       const [r, c, live] = await Promise.all([
         researchService.getSessionRecord(id, sid),
@@ -306,7 +313,9 @@ router.get('/live-statuses', requireAdmin, async (req, res) => {
       }));
       rows.push(...batch);
     }
-    res.json({session_id:sid,rows,failed_count:failedCount,partial:failedCount>0,server_time:new Date().toISOString()});
+    res.json({session_id:sid,rows,failed_count:failedCount,partial:failedCount>0,
+      offset,limit,total:ids.length,next_offset:Math.min(ids.length,offset+limit),
+      has_more:offset+limit<ids.length,server_time:new Date().toISOString()});
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: '读取实时状态失败' });
