@@ -481,26 +481,65 @@ function mergeLiveStatuses(payload){
   }
 }
 
-async function refreshLiveMonitor(){
-  if(!liveAutoRefresh||document.hidden) return;
-  if(liveRefreshing){ liveRefreshQueued=true; setLiveRefreshState('上一轮仍在刷新，已排队下一次…','busy'); return; }
-  liveRefreshing=true;
-  const btn=document.getElementById('liveRefresh'); if(btn){btn.disabled=true;btn.textContent='刷新中…';}
-  setLiveRefreshState('正在轻量刷新…','busy');
+async function fetchLiveStatusPage(offset,limit=4){
+  // EdgeOne can time out when reading every student's Blob objects in one
+  // cloud-function call. Keep each request bounded and abort a stalled page.
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),12000);
   try{
-    const fresh=await api('/live-statuses');
-    mergeLiveStatuses(fresh);
-    renderLiveParticipantList();
-    if(fresh.partial){setLiveRefreshState(`有${fresh.failed_count}个账号读取失败，不能计为0轮。请只读诊断。`,'error');liveAutoRefresh=false;}
-    if(liveSelectedParticipantId) await loadLiveParticipant(liveSelectedParticipantId,false,false);
-    liveLastRefreshAt=fresh?.server_time||new Date().toISOString();
-    if(!fresh.partial)setLiveRefreshState(`已更新 ${refreshClockText(liveLastRefreshAt)} · 下一次约15秒后`,'ok');
+    return await api(`/live-statuses?offset=${offset}&limit=${limit}`,{signal:controller.signal});
+  }finally{clearTimeout(timeout);}
+}
+async function refreshLiveMonitor(){
+  if(!liveAutoRefresh||document.hidden)return;
+  if(liveRefreshing){liveRefreshQueued=true;setLiveRefreshState('正在读取上一批，下一轮已排队…','busy');return;}
+  liveRefreshing=true;
+  const btn=document.getElementById('liveRefresh');
+  if(btn){btn.disabled=true;btn.textContent='刷新中…';}
+  const total=LIVE_IDS.length,pageSize=4;
+  const pages=Array.from({length:Math.ceil(total/pageSize)},(_,i)=>i*pageSize);
+  let next=0,completed=0,failedPages=0,failedStudents=0,firstError='',lastTime='';
+  setLiveRefreshState('正在分批读取学生状态（0/'+pages.length+'批）…','busy');
+  // Both workers independently render each completed batch. A failed page
+  // cannot block other students. Never convert an unread value into zero.
+  const worker=async()=>{
+    while(next<pages.length){
+      const offset=pages[next++],ids=LIVE_IDS.slice(offset,offset+pageSize);
+      try{
+        const fresh=await fetchLiveStatusPage(offset,pageSize);
+        if(settings?.active_session_id && fresh.session_id!==settings.active_session_id)
+          throw new Error('后台课次已经变化，请刷新页面');
+        mergeLiveStatuses(fresh);
+        failedStudents+=Number(fresh.failed_count||0);
+        lastTime=fresh.server_time||new Date().toISOString();
+      }catch(e){
+        failedPages++;
+        if(!firstError)firstError=e.name==='AbortError'?'云端读取超时':e.message;
+        mergeLiveStatuses({rows:ids.map(participant_id=>({
+          participant_id,live_status:'read_error',read_error:true,
+          user_turn_count:null,assistant_turn_count:null
+        }))});
+      }
+      completed++;
+      renderLiveParticipantList();
+      setLiveRefreshState(`已读取 ${completed}/${pages.length} 批学生状态`,'busy');
+    }
+  };
+  try{
+    await Promise.all([worker(),worker()]);
+    if(liveSelectedParticipantId)await loadLiveParticipant(liveSelectedParticipantId,false,false);
+    liveLastRefreshAt=lastTime||new Date().toISOString();
+    if(failedPages||failedStudents){
+      setLiveRefreshState(`已更新 ${completed-failedPages}/${pages.length} 批；${failedPages}批超时/失败，${failedStudents}个账号读取失败。${firstError?' 原因：'+firstError:''} 未读取不等于0轮。`,'error');
+    }else{
+      setLiveRefreshState(`已更新 ${refreshClockText(liveLastRefreshAt)} · 约15秒后自动刷新`,'ok');
+    }
   }catch(e){
-    setLiveRefreshState(`刷新失败：${e.message}`,'error');
-  } finally {
+    setLiveRefreshState('实时监控刷新失败：'+e.message+'（不能据此判断学生没有数据）','error');
+  }finally{
     liveRefreshing=false;
     if(btn){btn.disabled=false;btn.textContent='立即刷新';}
-    if(liveRefreshQueued){ liveRefreshQueued=false; setTimeout(()=>refreshLiveMonitor(),60); }
+    if(liveRefreshQueued){liveRefreshQueued=false;setTimeout(()=>refreshLiveMonitor(),60);}
   }
 }
 function scheduleLiveTimer(){
