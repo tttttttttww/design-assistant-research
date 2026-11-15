@@ -45,10 +45,10 @@ function wizardPriorHtml(){
 
 function lessonWizardHtml(s,r){
   wizardInit(s);
-  const lesson=Number(s.actual_lesson||0),isSix=lesson===6,firstDone=w8StepDone('task1'),secondDone=w8StepDone('task2');
+  const lesson=Number(s.actual_lesson||0),isSix=lesson===6,isSeven=lesson===7,firstDone=w8StepDone('task1'),secondDone=w8StepDone('task2');
   const hasHelpScaffold=state.ai_variant==='supported';
   const min1=Number(s.task_flow.steps[0].min_ai_exchanges||0),min2=Number(s.task_flow.steps[1].min_ai_exchanges||0);
-  const labels=['看已有成果','找问题','AI讨论与任务一','做今天的任务','回顾与提交'];
+  const labels=isSeven?['回看已有进度','设计自检','图纸自主迭代','原型自主迭代','回顾与提交']:['看已有成果','找问题','AI讨论与任务一','做今天的任务','回顾与提交'];
   const tabs=labels.map((label,i)=>`<button type="button" class="wizard-tab ${i===wizardPage?'current':''}" data-wizard-page="${i}" ${i===3&&!firstDone?'disabled':''}><span>${i+1}</span><small>${esc(label)}</small></button>`).join('');
   const vals=displayTextFields(), all=s.fields||[];
   const renderFields=arr=>arr.map(f=>fieldHtml(f,vals[f.key]??'',Boolean(r.submitted_at||state.session_locked||(firstDone&&f.stage==='task1')))).join('');
@@ -56,7 +56,7 @@ function lessonWizardHtml(s,r){
   const checkFields=all.filter(f=>f.stage==='task1'&&/_check[123]$/.test(f.key));
   const notes=all.filter(f=>f.stage==='task1'&&/(_check_evidence|_peer|_focus)$/.test(f.key));
   const task2Fields=all.filter(f=>f.stage==='task2');
-  const counter=(step,min)=>`<div class="wizard-counter">AI对话：<b data-w8-exchange-count="${step}">${w8Count(step)}</b> / ${min} 轮 <span>（一问一答算1轮）</span></div>`;
+  const counter=(step,min)=>{const total=isSeven;const n=total?w8Count("task1")+w8Count("task2"):w8Count(step);const goal=total?Number(s.task_flow.min_ai_exchanges_total||10):min;return `<div class="wizard-counter">${total?"本节累计有效AI对话":"AI对话"}：<b data-w8-exchange-count="${total?"total":step}">${n}</b> / ${goal} 轮 <span>（一问一答算1轮）</span></div>`;};
   const btn=(text,page,kind='orange')=>`<button type="button" class="btn ${kind}" data-wizard-next="${page}">${text}</button>`;
   const note='<p class="small">实事求是。没有做到的内容可以保留空白或写清楚未完成，保存后下节继续。</p>';
   let pageHtml='';
@@ -75,26 +75,27 @@ function lessonWizardHtml(s,r){
        <div class="wizard-short-fields">${renderFields(all.filter(f=>f.stage==='task1'&&/^l06_(science_point|science_application|material_plan)$/.test(f.key)))}</div>
        <h3>提交两份不同的成果</h3><p class="small">① 填写完整的科学知识与材料学习单；② 标出科学知识、材料和用途的新版设计图。每项各选择一次照片，系统自动保存；没有新修改不必重复上传。</p><div class="wizard-files mini-evidence-grid">${a('l06_science_learning_sheet')}${a('l06_design_version')}</div>`;
     };
-    pageHtml=`<h2>${isSix?'任务一：完善设计图':'把检查结果告诉AI'}</h2>
-      <p>${isSix?(hasHelpScaffold?'选一个适合自己设计的科学知识，说明应用位置。向AI求助时可以结合自己的真实图纸说明困难。':'选一个适合自己设计的科学知识，说明应用位置和用途，再完成设计图。'):(hasHelpScaffold?'把检查结果、不确定的地方或同伴的意见告诉AI，结合实际情况判断。':'根据今天的任务，自主选择需要讨论的设计问题，继续完成作品。')}</p>
-      ${isSix?W6():(hasHelpScaffold?`<div class="wizard-help"><strong>求助提示</strong><p>“我检查到……，已经试过……，但还不确定……。应该先检查什么？”</p><span class="small">不需要照抄，根据自己的情况提问。</span></div>`:'')}
+    const seventhDrawingHtml=()=>`<div class="wizard-help"><strong>图纸修改多少版，由你自己决定</strong><p>还不满意就修改并再上传，系统自动续编版本；已经满意就不必重复上传，直接点击下方按钮制作原型。</p></div><h3>我的图纸与版本记录</h3><div class="wizard-files">${a('l07_design_version')}</div><p class="small">每次上传前说明修改了什么、依据是什么、是否采用AI建议；没有真实修改不用上传新照片。</p>`;
+    pageHtml=`<h2>${isSeven?'图纸：需要就改，满意就制作':isSix?'任务一：完善设计图':'把检查结果告诉AI'}</h2>
+      <p>${isSeven?'已经有图纸的同学可直接保留已有版本，未完成的同学从自己的进度继续。':isSix?(hasHelpScaffold?'选一个适合自己设计的科学知识，说明应用位置。向AI求助时可以结合自己的真实图纸说明困难。':'选一个适合自己设计的科学知识，说明应用位置和用途，再完成设计图。'):(hasHelpScaffold?'把检查结果、不确定的地方或同伴的意见告诉AI，结合实际情况判断。':'根据今天的任务，自主选择需要讨论的设计问题，继续完成作品。')}</p>
+      ${isSeven?seventhDrawingHtml():isSix?W6():(hasHelpScaffold?`<div class="wizard-help"><strong>求助提示</strong><p>“我检查到……，已经试过……，但还不确定……。应该先检查什么？”</p><span class="small">不需要照抄，根据自己的情况提问。</span></div>`:'')}
       ${counter('task1',min1)}<div class="wizard-nav">${btn('返回检查',1,'secondary')}
-      ${firstDone?btn('进入今天的新任务',3):'<button type="button" class="btn orange" id="submitW8Task1">完成任务一，进入下一步</button>'}</div>`;
+      ${firstDone?btn(isSeven?'继续制作原型':'进入今天的新任务',3):isSeven?'<button type="button" class="btn orange" id="submitW8Task1">图纸已满意／已上传修改，开始制作原型</button>':'<button type="button" class="btn orange" id="submitW8Task1">完成任务一，进入下一步</button>'}</div>`;
   }else if(wizardPage===3){
-    const photoHtml=isSix?
+    const photoHtml=isSeven?`<h3>实体原型：不限迭代次数</h3><p class="small">有修改就追加新版本；每一正式版本都要有整体图与实际佩戴图。没完成的同学先保存进度，旧版永不覆盖。</p><div class="wizard-files">${a('l07_prototype_overview')}${a('l07_prototype_wear')}</div><details class="wizard-info"><summary>还没做完？保存制作过程照片（不算正式版本）</summary>${a('l07_process_photo')}</details><p class="small">如发现图纸需要再修改，可返回第3步提交新版图纸。</p>`:isSix?
       `<h3>照片记录</h3><p class="small">完成正式原型时分别上传整体图和真实佩戴图；没做完先上传进度照。</p>
        <div class="wizard-files">${a('l06_prototype_versions')}${a('l06_wear_versions')}</div><details class="wizard-info"><summary>还没有完成正式原型？上传制作进度</summary>${a('l06_build_progress')}</details>`:
       `<h3>作品与测试照片</h3><p class="small">没有改变结构就不必生成新版本；真实修改后才上传新照片。</p><div class="wizard-files">${s.artifacts.filter(x=>!x.key.endsWith('_v2_photo')).map(x=>a(x.key)).join('')}</div>`;
-    pageHtml=`<h2>${isSix?'任务二：动手制作原型':esc(s.task_flow.steps[1].label)}</h2>
+    pageHtml=`<h2>${isSeven?'实体原型：按实际需要反复迭代':isSix?'任务二：动手制作原型':esc(s.task_flow.steps[1].label)}</h2>
       <p>${esc(s.subtitle||'根据当前进度继续制作、测试或改进。')}</p>
       <div class="wizard-short-fields">${renderFields(task2Fields)}</div>${photoHtml}${counter('task2',min2)}
       <div class="wizard-nav">${btn('上一步',2,'secondary')}${btn('下一步：回顾今天',4)}</div>`;
   }else{
     pageHtml=`<h2>${hasHelpScaffold?'下课前回顾AI求助':'下课前记录任务进度'}</h2><p>${hasHelpScaffold?'选择本节真实AI对话，想想建议是否有用、自己怎样处理。':'简单写下今天做到了哪里，下一步准备做什么；没有完成也可以保存。'}</p>
       ${lessonReviewHtml(s)}
-      <div class="wizard-summary">${counter('task1',min1)}${counter('task2',min2)}</div>
+      <div class="wizard-summary">${isSeven?counter('task2',min2):counter('task1',min1)+counter('task2',min2)}</div>
       ${secondDone?'<p class="wizard-complete">这节课已经完成并提交。</p>':
-       `<div class="wizard-nav">${btn('返回继续任务',firstDone?3:2,'secondary')}<button type="button" class="btn orange" id="submitW8Task2" ${firstDone&&!r.submitted_at&&!state.session_locked?'':'disabled'}>检查并提交本节</button></div><p class="small">还没完成对话或作品要求时，先保存进度即可。</p>`}`;
+       `<div class="wizard-nav">${btn('返回继续任务',firstDone?3:2,'secondary')}<button type="button" class="btn orange" id="submitW8Task2" ${firstDone&&!r.submitted_at&&!state.session_locked?'':'disabled'}>检查并提交本节</button></div><p class="small">还没完成要求时先保存进度。第7节最终提交需要本节累计10轮完整AI对话和至少一版已配对的真实原型（整体图、佩戴图）。</p>`}`;
   }
   const exit=r.submitted_at&&!state.session_locked?'<button type="button" class="btn secondary" id="reopenSession">继续修改本节记录</button>':`<button type="button" class="btn secondary" id="saveAndExit" ${state.session_locked?'disabled':''}>保存进度并退出</button>`;
   return `<section class="lesson-wizard"><div class="wizard-heading"><div><span class="eyebrow">第${lesson}节 · 每节60分钟</span><h1>${esc(s.title)}</h1><p>一次只做一步。没做完也可以保存。</p></div><span class="wizard-badge">${secondDone?'已完成':firstDone?'已进入任务二':'进行中'}</span></div>
