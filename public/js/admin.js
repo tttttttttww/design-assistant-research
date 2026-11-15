@@ -2,6 +2,7 @@ const api = async (path, options = {}) => {
   const r = await fetch('/express/api/admin' + path, {
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options,
+    cache: 'no-store',
   });
   let d=null,raw='';
   try{raw=await r.text();d=JSON.parse(raw);}catch{}
@@ -35,6 +36,32 @@ let liveDetailCache = { id:'', session_id:'', messages:[], events:[], revisions:
 let liveLastRefreshAt = '';
 const esc = App.escapeHtml;
 const fmtSeconds = v => v == null ? '—' : v < 60 ? `${v}s` : `${Math.floor(v / 60)}m ${v % 60}s`;
+
+const RELEASE_FINGERPRINT='20261115c';
+async function verifyCurrentDeployment(){
+  const label=document.getElementById('deployedBuildStatus');
+  const btn=document.getElementById('verifyDeployment');
+  if(!label)return;
+  if(btn)btn.disabled=true;
+  label.textContent='正在检查目前真正运行的服务器…';
+  try{
+    const response=await fetch('/express/health?nocache='+Date.now(),{cache:'no-store',headers:{'Accept':'application/json'}});
+    const raw=await response.text();
+    let data=null;
+    try{data=JSON.parse(raw);}catch{}
+    if(!response.ok||!data||data.ok!==true){
+      label.textContent='云函数接口不可用（HTTP '+response.status+'）。网页打开不等于后台能够保存数据，请检查 EdgeOne 构建产物中的 Functions。';
+    }else if(data.release!==RELEASE_FINGERPRINT){
+      label.textContent='服务器版本不一致：当前运行 '+String(data.release||data.version||'未知旧版本')+'，要求 '+RELEASE_FINGERPRINT+'。请检查腾讯云构建部署及所选预览链接。';
+    }else{
+      label.textContent='网页与服务器版本一致（'+RELEASE_FINGERPRINT+'）。如学生状态仍失败，请检查 Blob 环境变量、存储绑定和云函数日志。';
+    }
+  }catch(e){
+    label.textContent='无法读取云函数版本：'+String(e.message||e)+'。请在腾讯云构建部署中检查 Functions 和最新提交。';
+  }finally{if(btn)btn.disabled=false;}
+}
+document.getElementById('verifyDeployment')?.addEventListener('click',verifyCurrentDeployment);
+verifyCurrentDeployment();
 
 async function check() {
   try {
