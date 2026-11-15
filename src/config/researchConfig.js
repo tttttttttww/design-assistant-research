@@ -2045,6 +2045,7 @@ if(FLEXIBLE_LESSON7){
     label:'检查已有图纸，自选修改与提交',
     task_phase:'lesson7_check',
     min_ai_exchanges:0,
+    require_drawing_evidence:true,
     required_artifacts:[],
     artifact_keys:['l07_design_version']
   });
