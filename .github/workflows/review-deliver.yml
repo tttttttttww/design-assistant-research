@@ -1,0 +1,41 @@
+name: Audit and package classroom ZIP
+on:
+  push:
+    branches:
+      - reviewed-zip-20261115
+  workflow_dispatch:
+jobs:
+  review-zip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Validate production build
+        run: npm run build
+      - name: Package complete minimal runtime project
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          root=Path.cwd()
+          include_dirs=['public','src','cloud-functions','scripts']
+          include_files=['package.json','edgeone.json','server.js','.env.example','.gitignore']
+          output=Path('workshop-lesson7-2026-11-16-checked.zip')
+          paths=[p for d in include_dirs for p in (root/d).rglob('*') if p.is_file()]
+          paths += [root/f for f in include_files if (root/f).is_file()]
+          with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+            for p in sorted(set(paths)):
+              if any(part in ['node_modules','.git','__pycache__'] for part in p.parts): continue
+              z.write(p,p.relative_to(root).as_posix())
+          print('Files in classroom ZIP:',len(zipfile.ZipFile(output).namelist()))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reviewed-classroom-zip
+          path: workshop-lesson7-2026-11-16-checked.zip
+          retention-days: 7
