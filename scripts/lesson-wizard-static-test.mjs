@@ -31,9 +31,11 @@ for(let n=6;n<=10;n++){
   assert.ok(!html.includes('关联上一课作品')&&!html.includes('关联一条AI回复'),'去除技术性无效表单');
   if(page===0)assert.ok(html.includes('看'),'第一页须查看既有成果');
   if(page===1)assert.equal((html.match(/data-field="l\d+_check[123]"/g)||[]).length,3,'自检选项只能出现一次');
-  if(page===2)assert.ok(html.includes('data-w8-exchange-count="task1"'),'本页应计数任务一对话');
-  if(page===3)assert.ok(html.includes('data-w8-exchange-count="task2"'),'本页应计数任务二对话');
+  if(page===2)assert.ok(html.includes('data-w8-exchange-count="'+(n===7?'total':'task1')+'"'),'本页应计数当前对话');
+  if(page===3)assert.ok(html.includes('data-w8-exchange-count="'+(n===7?'total':'task2')+'"'),'本页应计数当前对话');
   if(page===4)assert.ok(html.includes('id="lessonReview"'),'回顾只在结束页面显示');
+  if(n===7 && page===2){assert.ok(html.includes('data-artifact="l07_design_version"'),'第7节图纸可自由上传');assert.ok(html.includes('图纸已满意'),'无需改图可继续制作');}
+  if(n===7 && page===3){assert.ok(html.includes('data-artifact="l07_prototype_overview"'),'第7节原型整体图');assert.ok(html.includes('data-artifact="l07_prototype_wear"'),'第7节原型佩戴图');}
  }
  const control=createContext(s,'free');
  vm.runInContext('wizardPage=0;wizardSessionId=s.id',control);

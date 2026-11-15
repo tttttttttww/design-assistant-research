@@ -2010,6 +2010,68 @@ for(const session of SESSIONS.filter(x=>Number(x.actual_lesson)>=6&&Number(x.act
     for(const f of session.fields)if(renames[f.key])f.label=renames[f.key];
   }
 }
+
+// 2026-11-16 / 第7节：按学生真实进度自由迭代图纸与实体原型。
+// 只拓展当前 W7；W6 和历史 Blob 键、双智能体/求助训练规则保持不变。
+const FLEXIBLE_LESSON7=SESSIONS.find(s=>s.id==='W7');
+if(FLEXIBLE_LESSON7){
+  FLEXIBLE_LESSON7.date='11/16';
+  FLEXIBLE_LESSON7.title='第7节：自主修改图纸与迭代原型';
+  FLEXIBLE_LESSON7.subtitle='图纸满意可直接制作；需要改进可追加任意版图纸和原型，最后累计完成10轮有效AI对话再提交。';
+  FLEXIBLE_LESSON7.student_label='第7节课 · 图纸与原型自主迭代';
+  FLEXIBLE_LESSON7.brief=[
+    '先回看上一节课已保存的真实图纸与原型，完成设计自检与同伴复核；每个人进度不同，可以接着上一节的实际进度做。',
+    '图纸不满意：修改后上传一版；仍不满意可以再改再传，系统保留各版及修改原因。图纸已满意：不必重复上传，点击进入原型制作。',
+    '制作原型时可按真实需要反复迭代；每版正式原型上传整体图及实际佩戴图。尚未制作完成可仅上传制作进度照片。',
+    '本节最终提交需要累计10轮学生真实提问且收到AI完整回复的对话，图纸阶段和制作阶段合并计算；中途随时保存，下节继续。',
+    '结束前按本节真实AI对话完成回顾（或如实填写无记录原因）；不要编造设计修改、测试结论或AI采纳情况。'
+  ];
+  FLEXIBLE_LESSON7.requirements=[
+    '按真实进度检查已有图纸，记录自检、同伴复核和当前问题；没有新修改不必上传重复图纸。',
+    '设计图与原型按实际修改追加版本，记录修改内容、依据和AI建议处理情况；图纸版本与实体原型版本分别编号。',
+    '每版正式原型使用整体照片与佩戴照片配套记录；没有完成的内容可只保存，不必假装已经做好。',
+    '本节所有阶段共计至少10轮有效学生—AI完整问答才能最终提交，回顾内容与作品、照片均需保留。'
+  ];
+  FLEXIBLE_LESSON7.artifacts.unshift(artifact('l07_design_version','我的图纸｜修改后可继续提交下一版',{
+    required:false,helper:'查看上节已有图纸。不想修改就不用再上传；每次真正调整后上传新照片，原版本和理由永久保留。',
+    version_questionnaire:true,version_book:true,compare_previous_version:true,book_item_label:'设计图'
+  }));
+  FLEXIBLE_LESSON7.version_predecessors_by_artifact={
+    l07_design_version:[{sid:'W6',artifact_key:'l06_design_version'}]
+  };
+  FLEXIBLE_LESSON7.task_flow.key='lesson7-flexible-drawing-prototype-v2';
+  FLEXIBLE_LESSON7.task_flow.min_ai_exchanges_total=10;
+  Object.assign(FLEXIBLE_LESSON7.task_flow.steps[0],{
+    label:'检查已有图纸，自选修改与提交',
+    task_phase:'lesson7_check',
+    min_ai_exchanges:0,
+    require_drawing_evidence:true,
+    required_artifacts:[],
+    artifact_keys:['l07_design_version']
+  });
+  Object.assign(FLEXIBLE_LESSON7.task_flow.steps[1],{
+    label:'制作／迭代原型，完成本节提交',
+    task_phase:'lesson7_work',
+    min_ai_exchanges:0,
+    min_ai_exchanges_total:10,
+    require_prototype_evidence:true,
+    artifact_keys:['l07_prototype_overview','l07_prototype_wear','l07_process_photo'],
+    required_artifacts:[]
+  });
+  const overall=FLEXIBLE_LESSON7.artifacts.find(a=>a.key==='l07_prototype_overview');
+  const wear=FLEXIBLE_LESSON7.artifacts.find(a=>a.key==='l07_prototype_wear');
+  if(overall){
+    overall.label='我的原型｜第1版及后续迭代整体图';
+    overall.helper='原型改动后再追加新版本，系统自动延续上一节的版本号；拍清整个真实作品。';
+  }
+  if(wear){wear.label='本版原型的实际佩戴照片';wear.helper='同一版原型必须配套真实佩戴照片；不要上传没有戴在手上的照片。';}
+  const progress=FLEXIBLE_LESSON7.artifacts.find(a=>a.key==='l07_process_photo');
+  if(progress){progress.label='制作未完成｜仅保存过程照片';progress.helper='保存真实进度，不计为新版本，不要求配套佩戴照片。';}
+  FLEXIBLE_LESSON7.ai_instruction='图纸或实体原型都可按真实需要反复修改；没有必要修改的地方无需重复上传。本节最终提交须累计10轮完整AI对话。具体提问应围绕真实设计或制作疑问，不能为了凑数虚构问题。';
+  FLEXIBLE_LESSON7.prompt_context='第7节（2026-11-16）：设计图纸可自选迭代任意版、满意即可直接制作原型；原型按实际迭代版本并提交整体图和佩戴图；最终提交本节累计10轮有效AI对话。A组正常AI求助，B组保持既定结构化求助学习与反馈机制。';
+  FLEXIBLE_LESSON7.ai_public_context.stage='第7节：回看已有图纸，自选修改并保留版本；继续制作并迭代实体原型，结合真实证据对AI建议作出判断。';
+}
+
 export function getSessionConfig(id) { return SESSIONS.find(s => s.id === id) || null; }
 
 export function aiVariantFor({ session, condition, isTest = false }) {

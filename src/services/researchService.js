@@ -812,6 +812,18 @@ class ResearchService {
   async prototypeVersionBase(id, sid, artifactKey) {
     const current = getSessionConfig(sid);
     const pair = (current?.paired_artifacts || []).find(p => p.overview===artifactKey || p.wear===artifactKey);
+    // Drawing versions for the current class are numbered after last week's uploaded drawings,
+    // without modifying or renumbering last week's actual saved artifacts.
+    const explicit = current?.version_predecessors_by_artifact?.[artifactKey];
+    if (Array.isArray(explicit)) {
+      let count = 0;
+      for (const source of explicit) {
+        const previousRows = await this.getArtifactVersions(id, source.sid);
+        const images = previousRows[source.artifact_key] || [];
+        count += new Set(images.filter(v=>v.file_path && v.kind!=='progress' && v.kind!=='correction').map(v=>v.file_path)).size;
+      }
+      return count;
+    }
     const predecessors = current?.prototype_version_predecessors || [];
     if (!pair || !predecessors.length) return 0;
     let count = 0;
@@ -918,6 +930,7 @@ class ResearchService {
       completed_steps: Object.keys(completed),
       step_events: completed,
       ai_exchange_counts: counts,
+      total_ai_exchanges: flow.steps.reduce((sum,step)=>sum+Number(counts[step.key]||0),0),
       steps: flow.steps.map(step => ({
         key: step.key, label: step.label, min_ai_exchanges: Number(step.min_ai_exchanges || 0),
         ai_exchanges: Number(counts[step.key] || 0), completed: Boolean(completed[step.key]),
@@ -947,6 +960,14 @@ class ResearchService {
       if (!String(record.text_fields?.[key] || '').trim()) {
         throw Object.assign(new Error(`请先完成：${field?.label || key}`), { status: 400 });
       }
+    }
+    // Students who already uploaded a drawing in the previous lesson do not upload it again.
+    // Anyone still without a saved drawing must upload one before starting the prototype.
+    if(step.require_drawing_evidence){
+      const currentDrawings=(await this.getArtifactVersions(id,sid,record)).l07_design_version||[];
+      const earlierDrawings=(await this.getArtifactVersions(id,'W6')).l06_design_version||[];
+      const hasDrawing=[...earlierDrawings,...currentDrawings].some(v=>v?.file_path && v.kind!=='progress');
+      if(!hasDrawing)throw Object.assign(new Error('目前没有找到你的设计图。请先上传一版真实图纸；之前课次已经上传的图纸不需要重复交。'),{status:400});
     }
     for (const key of step.required_artifacts || []) {
       if (!record.artifacts?.[key]) {
@@ -989,6 +1010,39 @@ class ResearchService {
       }
     }
     const counts = await this.getTaskPhaseExchangeCounts(id, sid, flow);
+    const totalAiExchanges=flow.steps.reduce((sum,item)=>sum+Number(counts[item.key]||0),0);
+    const minimumTotal=Number(step.min_ai_exchanges_total||0);
+    if(minimumTotal>0 && totalAiExchanges<minimumTotal){
+      await this.appendEvent(id,sid,'task_step_gate_blocked',{
+        step_key:step.key,observed_ai_exchanges:totalAiExchanges,required_ai_exchanges:minimumTotal,
+        count_basis:'completed_student_ai_interaction_pairs_across_current_lesson'
+      });
+      throw Object.assign(new Error(`本节累计已有${totalAiExchanges}轮有效AI对话，还需要${minimumTotal-totalAiExchanges}轮。图纸讨论与原型制作的真实问答都会计入。`),{status:400});
+    }
+    // Only a genuinely saved complete prototype pair qualifies for final submission.
+    // Prior-lesson versions may be carried forward when they were already completed.
+    if(step.require_prototype_evidence){
+      let hasCompletedPair=false;
+      for(const pair of config.paired_artifacts||[]){
+        const currentVersions=await this.getArtifactVersions(id,sid,record);
+        const validPairs=(overall,wear)=>{
+          const ov=new Set(overall.filter(v=>v?.file_path&&v.kind!=='progress'&&v.kind!=='correction').map(v=>Number(v.version_no)||0));
+          const wr=new Set(wear.filter(v=>v?.file_path&&v.kind!=='progress'&&v.kind!=='correction').map(v=>Number(v.version_no)||0));
+          return [...ov].some(n=>n>0&&wr.has(n));
+        };
+        if(validPairs(currentVersions[pair.overview]||[],currentVersions[pair.wear]||[]))hasCompletedPair=true;
+        if(!hasCompletedPair){
+          for(const previousSid of config.prototype_version_predecessors||[]){
+            const prevConfig=getSessionConfig(previousSid);
+            const previousPair=(prevConfig?.paired_artifacts||[])[0];
+            if(!previousPair)continue;
+            const previousVersions=await this.getArtifactVersions(id,previousSid);
+            if(validPairs(previousVersions[previousPair.overview]||[],previousVersions[previousPair.wear]||[])){hasCompletedPair=true;break;}
+          }
+        }
+      }
+      if(!hasCompletedPair)throw Object.assign(new Error('请至少完成一版真实原型，并上传同一版的整体照片与佩戴照片；之前课次已经配对完成的版本也有效。没做完先保存进度。'),{status:400});
+    }
     const exchangeCount = Number(counts[step.key] || 0);
     const minimum = Number(step.min_ai_exchanges || 0);
     if (exchangeCount < minimum) {
