@@ -172,7 +172,13 @@ router.post('/logout', requireAdmin, async (req, res) => {
   res.json({ success: true });
 });
 
-router.get('/settings', requireAdmin, async (req, res) => res.json({ ...(await researchService.getSettings()), sessions: SESSIONS }));
+router.get('/settings', requireAdmin, async (req, res) => {
+  try { res.json({ ...(await researchService.getSettings()), sessions: SESSIONS }); }
+  catch (e) {
+    console.error('teacher settings read failure',e);
+    res.status(503).json({ error:'当前无法读取课堂设置。请检查 EdgeOne Blob 存储绑定及 BLOB_STORE_NAME 配置。原有学生数据不会因此被清空。' });
+  }
+});
 router.post('/settings', requireAdmin, async (req, res) => {
   try {
     const input = req.body || {};
@@ -252,14 +258,29 @@ router.get('/participants', requireAdmin, async (req, res) => {
   try {
     const settings = await researchService.getSettings();
     const ids = await allIds(true);
-    const rows=[];
+    const rows=[];let failedCount=0;
+    // One broken student object must not hide the entire class or prevent a teacher
+    // from switching lessons. Failed reads stay null/unknown, never invented zeroes.
     for(let i=0;i<ids.length;i+=4){
-      const batch=await Promise.allSettled(ids.slice(i,i+4).map(id=>summary(id,settings.active_session_id)));
-      if(batch.some(x=>x.status==='rejected')){
-        return res.status(503).json({error:'云端学生数据读取失败；没有用0轮冒充丢失记录。请运行只读存储诊断。'});
-      }
-      rows.push(...batch.map(x=>x.value));
+      const chunk=ids.slice(i,i+4);
+      const batch=await Promise.allSettled(chunk.map(id=>summary(id,settings.active_session_id)));
+      batch.forEach((result,index)=>{
+        if(result.status==='fulfilled') rows.push(result.value);
+        else {
+          failedCount++;
+          console.error('student status read failed',chunk[index],settings.active_session_id,result.reason);
+          rows.push({
+            participant_id:chunk[index],active_session_id:settings.active_session_id,
+            is_test:isTestParticipant(chunk[index]),read_error:true,live_status:'read_error',
+            condition:'',grade:'',login_name_ready:null,started:null,ai_used:null,
+            user_turn_count:null,assistant_turn_count:null,artifact_count:null,
+            chat_image_count:null,submitted:null,first_ai_open_latency_seconds:null,
+            first_user_message_latency_seconds:null,
+          });
+        }
+      });
     }
+    res.setHeader('X-Student-Read-Failures',String(failedCount));
     res.json(rows);
   } catch (e) {
     console.error(e);
