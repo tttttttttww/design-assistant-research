@@ -271,7 +271,7 @@ function renderGroupAdjuster() {
       ? `<strong>${label}</strong><div class="small">${esc(x.condition_fixed_reason || '')}</div>`
       : `<select class="manual-condition-select" data-id="${x.participant_id}"><option value="unassigned" ${x.condition==='unassigned'?'selected':''}>未分组</option><option value="A" ${x.condition==='A'?'selected':''}>对照组 A（普通AI）</option><option value="B" ${x.condition==='B'?'selected':''}>求助支架组 B</option></select>`}</td><td>${fixed ? '—' : `<button class="btn ghost mini save-condition" data-id="${x.participant_id}" type="button">保存组别</button>`}</td></tr>`;
   }).join('');
-  box.innerHTML = `<div class="notice warn"><strong>课次分组核对：</strong>第6—10节 A=普通AI，B=求助指导。S04、S05在旧版被固定为B对照组，现在不会自动改动其编号或分组。请核对真实分组后再开启课堂；以历史聊天保存的实际AI版本为准。</div><div class="table-wrap group-adjust-table"><table class="admin-table"><thead><tr><th>编号</th><th>年级</th><th>当前组别</th><th>操作</th></tr></thead><tbody>${body || '<tr><td colspan="4">请先导入正式学生名单。</td></tr>'}</tbody></table></div>`;
+  box.innerHTML = `${rows.some(x=>x.read_error)?'<div class="notice warn"><strong>警告：</strong>部分学生记录当前读取失败，不能根据缺失数据显示或重新分组。</div>':''}<div class="notice warn"><strong>课次分组核对：</strong>第6—10节 A=普通AI，B=求助指导。S04、S05在旧版被固定为B对照组，现在不会自动改动其编号或分组。请核对真实分组后再开启课堂；以历史聊天保存的实际AI版本为准。</div><div class="table-wrap group-adjust-table"><table class="admin-table"><thead><tr><th>编号</th><th>年级</th><th>当前组别</th><th>操作</th></tr></thead><tbody>${body || '<tr><td colspan="4">${rows.some(x=>x.read_error)?'学生资料读取失败，请先修复存储读取':'请先导入正式学生名单。'}</td></tr>'}</tbody></table></div>`;
   box.querySelectorAll('.save-condition').forEach(btn => btn.onclick = async () => {
     const id = btn.dataset.id;
     const select = box.querySelector(`.manual-condition-select[data-id="${id}"]`);
@@ -503,8 +503,8 @@ function mergeLiveStatuses(payload){
   }
 }
 
-async function refreshLiveMonitor(){
-  if(!liveAutoRefresh||document.hidden) return;
+async function refreshLiveMonitor({force=false}={}){
+  if((!liveAutoRefresh&&!force)||document.hidden) return;
   if(liveRefreshing){ liveRefreshQueued=true; setLiveRefreshState('上一轮仍在刷新，已排队下一次…','busy'); return; }
   liveRefreshing=true;
   const btn=document.getElementById('liveRefresh'); if(btn){btn.disabled=true;btn.textContent='刷新中…';}
@@ -513,7 +513,7 @@ async function refreshLiveMonitor(){
     const fresh=await api('/live-statuses');
     mergeLiveStatuses(fresh);
     renderLiveParticipantList();
-    if(fresh.partial){setLiveRefreshState(`有${fresh.failed_count}个账号读取失败，不能计为0轮。请只读诊断。`,'error');liveAutoRefresh=false;}
+    if(fresh.partial){setLiveRefreshState(`有${fresh.failed_count}个账号读取失败，不能计为0轮。自动刷新已暂停，可点击「立即刷新」重试。`,'error');liveAutoRefresh=false;const toggle=document.getElementById('liveToggle');if(toggle)toggle.textContent='继续自动刷新';}
     if(liveSelectedParticipantId) await loadLiveParticipant(liveSelectedParticipantId,false,false);
     liveLastRefreshAt=fresh?.server_time||new Date().toISOString();
     if(!fresh.partial)setLiveRefreshState(`已更新 ${refreshClockText(liveLastRefreshAt)} · 下一次约15秒后`,'ok');
@@ -536,11 +536,9 @@ function startLiveTimer(){
 }
 
 document.getElementById('liveRefresh')?.addEventListener('click',async()=>{
-  if(liveTimer) clearTimeout(liveTimer);
-  const old=liveAutoRefresh; liveAutoRefresh=true;
-  await refreshLiveMonitor();
-  liveAutoRefresh=old;
-  if(liveAutoRefresh) scheduleLiveTimer();
+  if(liveTimer)clearTimeout(liveTimer);
+  await refreshLiveMonitor({force:true});
+  if(liveAutoRefresh)scheduleLiveTimer();
 });
 document.getElementById('liveToggle')?.addEventListener('click',e=>{
   liveAutoRefresh=!liveAutoRefresh;
