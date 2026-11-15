@@ -24,6 +24,12 @@ let liveTimer = null;
 let liveRefreshing = false;
 let liveRefreshQueued = false;
 const LIVE_POLL_MS = 15000;
+function showAdminWarning(message=''){
+  const box=document.getElementById('adminDataWarning');
+  if(!box)return;
+  box.textContent=message;
+  box.classList.toggle('hidden',!message);
+}
 let liveDetailCache = { id:'', session_id:'', messages:[], events:[], revisions:[] };
 let liveLastRefreshAt = '';
 const esc = App.escapeHtml;
@@ -36,7 +42,12 @@ async function check() {
     await loadSettings();
     await loadParticipants();
     startLiveTimer();
-  } catch {}
+  } catch (e) {
+    const loginWarning=document.getElementById('loginError');
+    if(document.getElementById('app')?.classList.contains('hidden')){
+      if(loginWarning && !/HTTP 401|未登录|Unauthorized/i.test(String(e.message||''))){ loginWarning.textContent='后台服务暂时不可用：'+e.message;loginWarning.classList.remove('hidden'); }
+    } else showAdminWarning('后台初始化失败：'+e.message);
+  }
 }
 function showApp() {
   document.getElementById('login').classList.add('hidden');
@@ -76,23 +87,42 @@ async function loadSettings() {
 }
 document.getElementById('settingsForm').onsubmit = async e => {
   e.preventDefault();
-  const f = e.target;
+  const f=e.target,requested=f.active_session_id.value;
   try {
-    const r = await api('/settings', { method: 'POST', body: JSON.stringify({ active_session_id: f.active_session_id.value, session_open: f.session_open.checked, questionnaire_enabled: f.questionnaire_enabled.checked, active_session_locked: f.active_session_locked.checked }) });
-    alert('设置已保存');
+    const saved=await api('/settings',{method:'POST',body:JSON.stringify({
+      active_session_id:requested,session_open:f.session_open.checked,
+      questionnaire_enabled:f.questionnaire_enabled.checked,active_session_locked:f.active_session_locked.checked,
+    })});
+    if(saved.active_session_id!==requested) throw new Error('服务器未切换到所选课次，请确认当前部署包含 '+requested+'。');
     await loadSettings();
-    await loadParticipants();
-  } catch (x) { alert(x.message); }
+    if(settings.active_session_id!==requested) throw new Error('保存后读取的课次与所选课次不一致。请检查 EdgeOne Blob 存储绑定和运行环境配置。');
+    const loaded=await loadParticipants();
+    if(loaded)showAdminWarning('');
+    alert('当前课次已切换为 '+requested+'。'+(!loaded?'学生状态读取失败，请看页面顶部提示；课次设置已成功保存。':''));
+  } catch(x){showAdminWarning('切换课堂失败：'+x.message);alert('无法切换课次：'+x.message);}
 };
 
 function renderSessionCards() {
   const visible=sessions.filter(s=>!s.archived).sort((a,b)=>(a.actual_lesson||a.order)-(b.actual_lesson||b.order));
   document.getElementById('sessionCards').innerHTML = visible.map(s => `<div class="session-card ${s.id === settings.active_session_id ? 'current' : ''}"><div class="row between"><strong>${s.actual_lesson?'第'+s.actual_lesson+'节':'历史课次'} · ${s.date}</strong><span class="badge">${s.ai_mode === 'condition' ? '按组AI' : s.ai_mode === 'free' ? '自由AI' : '无AI'}</span></div><h3>${esc(s.title)}</h3><p>${esc(s.subtitle)}</p><p class="small">${esc(s.brief.slice(0,1).join(' '))}</p><details><summary>查看完整教学任务</summary><p>${esc(s.brief.join(' '))}</p></details>${s.candidate ? '<div class="notice"><strong>教师说明：</strong>候选任务，正式实施前仍可替换。</div>' : ''}<button class="btn ghost set-current" data-id="${s.id}">设为当前课次</button></div>`).join('');
-  document.querySelectorAll('.set-current').forEach(b => b.onclick = async () => {
-    const r = await api('/settings', { method: 'POST', body: JSON.stringify({ active_session_id: b.dataset.id, session_open: settings.session_open, questionnaire_enabled: settings.questionnaire_enabled }) });
-    await loadSettings();
-    await loadParticipants();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  document.querySelectorAll('.set-current').forEach(b=>b.onclick=async()=>{
+    const requested=b.dataset.id;
+    try{
+      b.disabled=true;
+      const saved=await api('/settings',{method:'POST',body:JSON.stringify({
+        active_session_id:requested,session_open:settings.session_open,questionnaire_enabled:settings.questionnaire_enabled,
+      })});
+      if(saved.active_session_id!==requested)throw new Error('服务器没有接受所选课次 '+requested+'，请核对部署版本。');
+      await loadSettings();
+      if(settings.active_session_id!==requested)throw new Error('服务器写入后未读到新课次，请检查 Blob 数据存储连接。');
+      const loaded=await loadParticipants();
+      if(loaded)showAdminWarning('');
+      window.scrollTo({top:0,behavior:'smooth'});
+      if(!loaded)alert(requested+' 已切换成功，但学生状态未能加载。请看页面顶部的读取错误提示。');
+    }catch(e){
+      showAdminWarning('无法切换到 '+requested+'：'+e.message);
+      alert('切换失败：'+e.message);
+    }finally{b.disabled=false;}
   });
 }
 
@@ -270,12 +300,31 @@ function renderGroupAdjuster() {
 }
 
 async function loadParticipants() {
-  rows = await api('/participants');
+  let fetched;
+  try { fetched=await api('/participants'); }
+  catch(e){
+    const message='学生状态读取失败：'+e.message+'。这不代表学生记录为0。请先检查云函数日志、BLOB_STORE_NAME 和 EdgeOne Blob 绑定。课次切换功能仍可独立使用。';
+    showAdminWarning(message);
+    document.getElementById('participantTable').innerHTML='<div class="notice warn">'+esc(message)+'</div>';
+    document.getElementById('liveParticipantList').innerHTML='<div class="notice warn">学生列表读取失败，当前没有可信的计数。</div>';
+    document.getElementById('summary').innerHTML='<div class="notice warn">统计暂不可用（不是0）。</div>';
+    setLiveRefreshState(message,'error');
+    return false;
+  }
+  if(!Array.isArray(fetched)){
+    showAdminWarning('学生状态接口返回了非列表数据，可能是页面与后台部署版本不一致。');
+    return false;
+  }
+  rows=fetched;
+  const failedCount=rows.filter(x=>x.read_error).length;
+  if(failedCount)showAdminWarning('有 '+failedCount+' 个学生编号读取失败；这些状态为未知，不是0轮、未进入或丢失。请检查存储诊断及云函数日志。');
+  else showAdminWarning('');
   renderGroupAdjuster();
-  const formal = rows.filter(x => !x.is_test), sid = settings?.active_session_id || '';
+  const formal = rows.filter(x => !x.is_test && !x.read_error), sid = settings?.active_session_id || '';
   document.getElementById('currentTitle').textContent = `${sid} 课堂数据总览`;
   const stats = [
-    ['正式学生', formal.length],
+    ['正式编号', rows.filter(x=>!x.is_test).length],
+    ['状态读取失败', failedCount],
     ['姓名校验已设置', formal.filter(x => x.login_name_ready).length],
     ['已进入任务', formal.filter(x => x.started).length],
     ['打开过AI', formal.filter(x => x.first_ai_open_latency_seconds != null).length],
@@ -284,11 +333,13 @@ async function loadParticipants() {
     ['已提交', formal.filter(x => x.submitted).length],
   ];
   document.getElementById('summary').innerHTML = stats.map(([k, v]) => `<div class="summary-card"><strong>${v}</strong><span>${k}</span></div>`).join('');
-  const rosterReady = formal.filter(x => x.login_name_ready).length;
-  const rosterNotice = rosterReady === formal.length
-    ? `<div class="notice roster-ready"><strong>姓名校验名单已就绪：</strong>${rosterReady}/${formal.length}。学生需要“编号 + 姓名”同时匹配才能进入。</div>`
-    : `<div class="notice warn roster-warning"><strong>上课前还要完成姓名校验名单：</strong>目前 ${rosterReady}/${formal.length} 已设置。未设置姓名的正式编号将无法登录。</div>`;
-  document.getElementById('participantTable').innerHTML = `${rosterNotice}<div class="table-wrap"><table class="admin-table"><thead><tr><th>编号</th><th>姓名校验</th><th>年级</th><th>condition</th><th>进入任务</th><th>首次打开AI</th><th>首次发消息</th><th>学生消息</th><th>聊天图片</th><th>任务图片</th><th>提交</th><th>操作</th></tr></thead><tbody>${rows.map(x => `<tr data-id="${x.participant_id}" class="p-row ${selectedParticipantId === x.participant_id ? 'selected-row' : ''}"><td><button class="participant-link view-detail" data-id="${x.participant_id}" type="button"><strong>${x.participant_id}</strong></button>${x.is_test ? ' <span class="badge">测试</span>' : ''}</td><td>${x.is_test ? '<span class="small">教师测试号 · 免校验</span>' : (x.login_name_ready ? '<span class="badge">已设置</span>' : '<span class="small warn-text">未设置</span>')}</td><td>${esc(x.grade || '')}</td><td>${esc(x.condition)}${x.condition_fixed?' <span class="badge">固定</span>':''}</td><td>${badge(x.started)}</td><td>${fmtSeconds(x.first_ai_open_latency_seconds)}</td><td>${fmtSeconds(x.first_user_message_latency_seconds)}</td><td>${x.user_turn_count}</td><td>${x.chat_image_count || 0}</td><td>${x.artifact_count || 0}</td><td>${badge(x.submitted)}</td><td class="reset-cell"><div class="row action-row"><button class="btn ghost mini view-detail" data-id="${x.participant_id}" type="button">查看记录</button><button class="btn danger ghost mini reset-current" data-id="${x.participant_id}" type="button">重置本课次</button></div></td></tr>`).join('')}</tbody></table></div>`;
+  const rosterReady = formal.filter(x=>x.login_name_ready).length;
+  const rosterNotice=failedCount
+    ? `<div class="notice warn roster-warning"><strong>学生数据部分读取失败：</strong>${failedCount}个编号的状态未知。已成功读取${formal.length}名学生的资料，其中${rosterReady}名有姓名校验。请勿把读取失败算成未设置或0轮。</div>`
+    : rosterReady===formal.length
+      ? `<div class="notice roster-ready"><strong>姓名校验名单已就绪：</strong>${rosterReady}/${formal.length}。学生需要“编号 + 姓名”同时匹配才能进入。</div>`
+      : `<div class="notice warn roster-warning"><strong>上课前还要完成姓名校验名单：</strong>目前 ${rosterReady}/${formal.length} 已设置。未设置姓名的正式编号将无法登录。</div>`;
+  document.getElementById('participantTable').innerHTML = `${rosterNotice}<div class="table-wrap"><table class="admin-table"><thead><tr><th>编号</th><th>姓名校验</th><th>年级</th><th>condition</th><th>进入任务</th><th>首次打开AI</th><th>首次发消息</th><th>学生消息</th><th>聊天图片</th><th>任务图片</th><th>提交</th><th>操作</th></tr></thead><tbody>${rows.map(x => x.read_error?`<tr data-id="${x.participant_id}" class="p-row"><td><strong>${x.participant_id}</strong></td><td colspan="11"><strong>读取失败（不是0）</strong> · 此账号的状态未知，请检查云端存储。</td></tr>`:`<tr data-id="${x.participant_id}" class="p-row ${selectedParticipantId === x.participant_id ? 'selected-row' : ''}"><td><button class="participant-link view-detail" data-id="${x.participant_id}" type="button"><strong>${x.participant_id}</strong></button>${x.is_test ? ' <span class="badge">测试</span>' : ''}</td><td>${x.is_test ? '<span class="small">教师测试号 · 免校验</span>' : (x.login_name_ready ? '<span class="badge">已设置</span>' : '<span class="small warn-text">未设置</span>')}</td><td>${esc(x.grade || '')}</td><td>${esc(x.condition)}${x.condition_fixed?' <span class="badge">固定</span>':''}</td><td>${badge(x.started)}</td><td>${fmtSeconds(x.first_ai_open_latency_seconds)}</td><td>${fmtSeconds(x.first_user_message_latency_seconds)}</td><td>${x.user_turn_count}</td><td>${x.chat_image_count || 0}</td><td>${x.artifact_count || 0}</td><td>${badge(x.submitted)}</td><td class="reset-cell"><div class="row action-row"><button class="btn ghost mini view-detail" data-id="${x.participant_id}" type="button">查看记录</button><button class="btn danger ghost mini reset-current" data-id="${x.participant_id}" type="button">重置本课次</button></div></td></tr>`).join('')}</tbody></table></div>`;
   document.querySelectorAll('.p-row').forEach(tr => tr.onclick = e => {
     if (e.target.closest('button')) return;
     selectLiveParticipant(tr.dataset.id, true);
@@ -304,6 +355,7 @@ async function loadParticipants() {
     resetOne(btn.dataset.id, sid);
   });
   renderLiveParticipantList();
+  return failedCount===0;
 }
 
 
