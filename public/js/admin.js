@@ -3,9 +3,10 @@ const api = async (path, options = {}) => {
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options,
   });
-  let d = {};
-  let raw='';try{raw=await r.text();d=JSON.parse(raw);}catch{}
-  if(!r.ok)throw new Error(d.error||`HTTP ${r.status}：云函数返回异常或超时（不能判断历史为空）`);
+  let d=null,raw='';
+  try{raw=await r.text();d=JSON.parse(raw);}catch{}
+  if(!r.ok)throw new Error(d?.error||`HTTP ${r.status}：云函数返回异常或超时（不能判断历史为空）`);
+  if(d===null||typeof d!=='object')throw new Error('教师后台接口没有返回JSON数据，可能当前 Pages 只部署了静态网页、云函数未生效，或预览网址已失效。请检查 /express/api/admin/settings 的云函数请求与部署日志。');
   return d;
 };
 
@@ -73,7 +74,8 @@ document.getElementById('logout').onclick = async () => { await api('/logout', {
 
 async function loadSettings() {
   settings = await api('/settings');
-  sessions = settings.sessions || [];
+  if(!Array.isArray(settings.sessions)||!settings.active_session_id)throw new Error('后台未返回有效课次设置。请确认当前 Pages 部署包含云函数及完整配置，不能把空数据当作正常设置。');
+  sessions = settings.sessions;
   const f = document.getElementById('settingsForm');
   const activeOptions=sessions.filter(s=>!s.archived||s.id===settings.active_session_id).sort((a,b)=>(a.actual_lesson||a.order)-(b.actual_lesson||b.order));
   f.active_session_id.innerHTML = activeOptions.map(s => `<option value="${s.id}">${s.actual_lesson?'第'+s.actual_lesson+'节':'历史课次'} · ${esc(s.title)}（${s.id}）</option>`).join('');
