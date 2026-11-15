@@ -75,7 +75,7 @@ function lessonWizardHtml(s,r){
        <div class="wizard-short-fields">${renderFields(all.filter(f=>f.stage==='task1'&&/^l06_(science_point|science_application|material_plan)$/.test(f.key)))}</div>
        <h3>提交两份不同的成果</h3><p class="small">① 填写完整的科学知识与材料学习单；② 标出科学知识、材料和用途的新版设计图。每项各选择一次照片，系统自动保存；没有新修改不必重复上传。</p><div class="wizard-files mini-evidence-grid">${a('l06_science_learning_sheet')}${a('l06_design_version')}</div>`;
     };
-    const seventhDrawingHtml=()=>`<div class="wizard-help"><strong>图纸修改多少版，由你自己决定</strong><p>还不满意就修改并再上传，系统自动续编版本；已经满意就不必重复上传，直接点击下方按钮制作原型。</p></div><h3>我的图纸与版本记录</h3><div class="wizard-files">${a('l07_design_version')}</div><p class="small">每次上传前说明修改了什么、依据是什么、是否采用AI建议；没有真实修改不用上传新照片。</p>`;
+    const seventhDrawingHtml=()=>`<div class="wizard-help"><strong>图纸修改多少版，由你自己决定</strong><p>还不满意就修改并再上传，系统自动续编版本；已经满意就不必重复上传，直接点击下方按钮制作原型。</p></div><h3>我的图纸与版本记录</h3><div class="wizard-files">${a('l07_design_version')}</div>${hasHelpScaffold?`<div class="wizard-help"><strong>求助提示</strong><p>我现在的图纸是……，发现……，尝试过……，想请AI帮我分析哪一处还需要验证。收到建议后，我决定……。</p></div>`:''}<p class="small">每次上传前说明修改了什么、依据是什么、是否采用AI建议；没有真实修改不用上传新照片。</p>`;
     pageHtml=`<h2>${isSeven?'图纸：需要就改，满意就制作':isSix?'任务一：完善设计图':'把检查结果告诉AI'}</h2>
       <p>${isSeven?'已经有图纸的同学可直接保留已有版本，未完成的同学从自己的进度继续。':isSix?(hasHelpScaffold?'选一个适合自己设计的科学知识，说明应用位置。向AI求助时可以结合自己的真实图纸说明困难。':'选一个适合自己设计的科学知识，说明应用位置和用途，再完成设计图。'):(hasHelpScaffold?'把检查结果、不确定的地方或同伴的意见告诉AI，结合实际情况判断。':'根据今天的任务，自主选择需要讨论的设计问题，继续完成作品。')}</p>
       ${isSeven?seventhDrawingHtml():isSix?W6():(hasHelpScaffold?`<div class="wizard-help"><strong>求助提示</strong><p>“我检查到……，已经试过……，但还不确定……。应该先检查什么？”</p><span class="small">不需要照抄，根据自己的情况提问。</span></div>`:'')}
