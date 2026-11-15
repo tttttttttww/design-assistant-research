@@ -23,6 +23,8 @@ function makePage(session,variant,page){
     artifactUrl:()=>'/asset'
   };
   vm.createContext(ctx);
+  const helper=task.slice(task.indexOf('function w7DrawingRevisionHtml(){'),task.indexOf('function compactW6EvidenceHtml('));
+  vm.runInContext(helper,ctx);
   vm.runInContext(wizard,ctx);
   return vm.runInContext('wizardPage='+page+';wizardSessionId=state.session.id;lessonWizardHtml(state.session,state.record)',ctx);
 }
@@ -40,7 +42,8 @@ for(let n=6;n<=10;n++){
   assert.ok(b0.includes('今天的求助方法'),'scaffold group must see help-seeking guidance');
   const a2=makePage(s,'free',2),b2=makePage(s,'supported',2);
   assert.ok(!a2.includes('可以这样问')&&!a2.includes('求助提示')&&!a2.includes('向AI求助时可以结合'),'no prompt exemplars in the control group');
-  if(n>6)assert.ok(b2.includes('求助提示'),'scaffold group must see context-bound exemplar');
+  if(n>7)assert.ok(b2.includes('求助提示'),'scaffold group must see context-bound exemplar');
+  if(n===7){assert.ok(b2.includes('改了哪里？')&&a2.includes('改了哪里？'),'双方都能用相同简洁的图纸上传界面');assert.ok(!b2.includes('这次主要参考什么？'),'图纸迭代只填写修改内容');}
   const a4=makePage(s,'free',4),b4=makePage(s,'supported',4);
   assert.ok(a4.includes('下课前记录任务进度'),'ordinary group gets neutral progress note');
   assert.ok(!a4.includes('下课前回顾AI求助'),'ordinary group must not get help reflection');

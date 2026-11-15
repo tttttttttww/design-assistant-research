@@ -19,7 +19,11 @@ const createContext=(s,variant='supported',completed=false)=>{
   lessonReviewHtml:()=>'<div id="lessonReview"></div>',
   scienceDiagramCardsHtml:()=>'<div>科学知识小图</div>',
   artifactUrl:()=>''};
- vm.createContext(ctx);vm.runInContext(src,ctx);
+ vm.createContext(ctx);
+ // Exercise the actual W7-only compact upload UI, not a placeholder.
+ const helper=task.slice(task.indexOf('function w7DrawingRevisionHtml(){'),task.indexOf('function compactW6EvidenceHtml('));
+ vm.runInContext(helper,ctx);
+ vm.runInContext(src,ctx);
  return ctx;
 };
 for(let n=6;n<=10;n++){
@@ -35,11 +39,19 @@ for(let n=6;n<=10;n++){
   assert.ok(!html.includes('关联上一课作品')&&!html.includes('关联一条AI回复'),'去除技术性无效表单');
   if(page===0){if(n===7){assert.ok(html.includes('上传上节课的设计图纸'),'第七节必须提供明确的上节图纸上传入口');assert.ok(html.includes('data-artifact="l07_design_version"'),'第七节须有真实文件上传控件');assert.ok(!html.includes('查看上节已保存的成果')&&!html.includes('unrelated-ai-chat-photo.png')&&!html.includes('unrelated-gloves.png'),'不能混入上一课其他图片');}else assert.ok(html.includes('看'),'其他课次仍查看既有成果');}
   if(page===1)assert.equal((html.match(/data-field="l\d+_check[123]"/g)||[]).length,3,'自检选项只能出现一次');
-  if(page===2)assert.ok(html.includes('data-w8-exchange-count="'+(n===7?'total':'task1')+'"'),'本页应计数当前对话');
-  if(page===3)assert.ok(html.includes('data-w8-exchange-count="'+(n===7?'total':'task2')+'"'),'本页应计数当前对话');
+  if(page===2&&n!==7)assert.ok(html.includes('data-w8-exchange-count="task1"'),'本页应计数当前对话');
+  if(page===3&&n!==7)assert.ok(html.includes('data-w8-exchange-count="task2"'),'其他课次仍在当前阶段显示对话轮次');
   if(page===4)assert.ok(html.includes('id="lessonReview"'),'回顾只在结束页面显示');
-  if(n===7 && page===2){assert.ok(html.includes('data-artifact="l07_design_version"'),'第7节图纸可自由上传');assert.ok(html.includes('图纸已满意'),'无需改图可继续制作');}
-  if(n===7 && page===3){assert.ok(html.includes('data-artifact="l07_prototype_overview"'),'第7节原型整体图');assert.ok(html.includes('data-artifact="l07_prototype_wear"'),'第7节原型佩戴图');}
+  if(n===7 && page===2){assert.ok(html.includes('data-artifact="l07_design_version"'),'第7节图纸可自由上传');assert.ok(html.includes('图纸已满意'),'无需改图可继续制作');assert.ok(html.includes('改了哪里？')&&html.includes('选择修改后的图纸照片'),'第7节要直接显示修改说明与上传入口');assert.ok(!html.includes('这次主要参考什么？')&&!html.includes('AI建议最后怎样处理？'),'图纸迭代不可有冗余选择题');assert.equal((html.match(/data-artifact="l07_design_version"/g)||[]).length,1,'仅保留一个图纸上传入口');}
+  if(n===7 && page===3){
+    assert.ok(html.includes('原型迭代'),'第7节原型界面标题');
+    assert.ok(html.includes('做了/改了哪里？'),'原型每版仅填写一句修改说明');
+    assert.ok(html.includes('① 选择原型整体图') && html.includes('② 选择实际佩戴图'),'两张照片入口必须明显');
+    assert.equal((html.match(/data-artifact="l07_prototype_overview"/g)||[]).length,1,'整体图仅一个上传入口');
+    assert.equal((html.match(/data-artifact="l07_prototype_wear"/g)||[]).length,1,'佩戴图仅一个上传入口');
+    assert.ok(html.includes('data-artifact="l07_process_photo"'),'制作未完时保留进度照片入口');
+    assert.ok(!html.includes('这次主要参考什么？')&&!html.includes('AI建议最后怎样处理？')&&!html.includes('本节累计有效AI对话'),'原型页不再堆叠多余选项和轮数说明');
+  }
  }
  const control=createContext(s,'free');
  vm.runInContext('wizardPage=0;wizardSessionId=s.id',control);

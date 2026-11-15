@@ -88,21 +88,21 @@ function lessonWizardHtml(s,r){
        <div class="wizard-short-fields">${renderFields(all.filter(f=>f.stage==='task1'&&/^l06_(science_point|science_application|material_plan)$/.test(f.key)))}</div>
        <h3>提交两份不同的成果</h3><p class="small">① 填写完整的科学知识与材料学习单；② 标出科学知识、材料和用途的新版设计图。每项各选择一次照片，系统自动保存；没有新修改不必重复上传。</p><div class="wizard-files mini-evidence-grid">${a('l06_science_learning_sheet')}${a('l06_design_version')}</div>`;
     };
-    const seventhDrawingHtml=()=>`<div class="wizard-help"><strong>图纸需要修改几版，就提交几版</strong><p>不满意就修改并上传新版；已满意不必重复上传，直接点击下方按钮制作原型。</p></div><h3>我的图纸与版本记录</h3><div class="wizard-files">${a('l07_design_version')}</div>${hasHelpScaffold?`<div class="wizard-help"><strong>求助提示</strong><p>我现在的图纸是……，发现……，尝试过……，想请AI帮我分析哪一处还需要验证。收到建议后，我决定……。</p></div>`:''}<p class="small">每次上传前说明修改了什么、依据是什么、是否采用AI建议；没有真实修改不用上传新照片。</p>`;
+    const seventhDrawingHtml=()=>w7DrawingRevisionHtml()
     pageHtml=`<h2>${isSeven?'图纸：需要就改，满意就制作':isSix?'任务一：完善设计图':'把检查结果告诉AI'}</h2>
-      <p>${isSeven?'从第1步上传的上节图纸出发；需要修改就追加新版本，满意就直接开始制作。':isSix?(hasHelpScaffold?'选一个适合自己设计的科学知识，说明应用位置。向AI求助时可以结合自己的真实图纸说明困难。':'选一个适合自己设计的科学知识，说明应用位置和用途，再完成设计图。'):(hasHelpScaffold?'把检查结果、不确定的地方或同伴的意见告诉AI，结合实际情况判断。':'根据今天的任务，自主选择需要讨论的设计问题，继续完成作品。')}</p>
+      <p>${isSeven?'修改了就填写“改了哪里”并上传新图；不修改直接制作原型。':isSix?(hasHelpScaffold?'选一个适合自己设计的科学知识，说明应用位置。向AI求助时可以结合自己的真实图纸说明困难。':'选一个适合自己设计的科学知识，说明应用位置和用途，再完成设计图。'):(hasHelpScaffold?'把检查结果、不确定的地方或同伴的意见告诉AI，结合实际情况判断。':'根据今天的任务，自主选择需要讨论的设计问题，继续完成作品。')}</p>
       ${isSeven?seventhDrawingHtml():isSix?W6():(hasHelpScaffold?`<div class="wizard-help"><strong>求助提示</strong><p>“我检查到……，已经试过……，但还不确定……。应该先检查什么？”</p><span class="small">不需要照抄，根据自己的情况提问。</span></div>`:'')}
-      ${counter('task1',min1)}<div class="wizard-nav">${btn('返回检查',1,'secondary')}
+      ${isSeven?'':counter('task1',min1)}<div class="wizard-nav">${btn('返回检查',1,'secondary')}
       ${firstDone?btn(isSeven?'继续制作原型':'进入今天的新任务',3):isSeven?'<button type="button" class="btn orange" id="submitW8Task1">图纸已满意／已上传修改，开始制作原型</button>':'<button type="button" class="btn orange" id="submitW8Task1">完成任务一，进入下一步</button>'}</div>`;
   }else if(wizardPage===3){
-    const photoHtml=isSeven?`<h3>实体原型：不限迭代次数</h3><p class="small">有修改就追加新版本；每一正式版本都要有整体图与实际佩戴图。没完成的同学先保存进度，旧版永不覆盖。</p><div class="wizard-files">${a('l07_prototype_overview')}${a('l07_prototype_wear')}</div><details class="wizard-info"><summary>还没做完？保存制作过程照片（不算正式版本）</summary>${a('l07_process_photo')}</details><p class="small">如发现图纸需要再修改，可返回第3步提交新版图纸。</p>`:isSix?
+    const photoHtml=isSeven?w7PrototypeIterationHtml():isSix?
       `<h3>照片记录</h3><p class="small">完成正式原型时分别上传整体图和真实佩戴图；没做完先上传进度照。</p>
        <div class="wizard-files">${a('l06_prototype_versions')}${a('l06_wear_versions')}</div><details class="wizard-info"><summary>还没有完成正式原型？上传制作进度</summary>${a('l06_build_progress')}</details>`:
       `<h3>作品与测试照片</h3><p class="small">没有改变结构就不必生成新版本；真实修改后才上传新照片。</p><div class="wizard-files">${s.artifacts.filter(x=>!x.key.endsWith('_v2_photo')).map(x=>a(x.key)).join('')}</div>`;
-    pageHtml=`<h2>${isSeven?'实体原型：按实际需要反复迭代':isSix?'任务二：动手制作原型':esc(s.task_flow.steps[1].label)}</h2>
-      <p>${esc(s.subtitle||'根据当前进度继续制作、测试或改进。')}</p>
-      ${isSeven?'':`<div class="wizard-short-fields">${renderFields(task2Fields)}</div>`}${photoHtml}${counter('task2',min2)}
-      <div class="wizard-nav">${btn('上一步',2,'secondary')}${btn('下一步：回顾今天',4)}</div>`;
+    pageHtml=`<h2>${isSeven?'原型迭代':isSix?'任务二：动手制作原型':esc(s.task_flow.steps[1].label)}</h2>
+      ${isSeven?'<p>做好或修改了原型，就上传整体图和佩戴图。</p>':`<p>${esc(s.subtitle||'根据当前进度继续制作、测试或改进。')}</p><div class="wizard-short-fields">${renderFields(task2Fields)}</div>`}
+      ${photoHtml}${isSeven?'':counter('task2',min2)}
+      <div class="wizard-nav">${btn(isSeven?'返回图纸':'上一步',2,'secondary')}${btn('下一步：回顾今天',4)}</div>`;
   }else{
     pageHtml=`<h2>${hasHelpScaffold?'下课前回顾AI求助':'下课前记录任务进度'}</h2><p>${hasHelpScaffold?'选择本节真实AI对话，想想建议是否有用、自己怎样处理。':'简单写下今天做到了哪里，下一步准备做什么；没有完成也可以保存。'}</p>
       ${lessonReviewHtml(s)}

@@ -329,6 +329,89 @@ function prototypeVersionBookHtml(a, meta){
     ${artifactUploadPanelHtml(a,versions,carryOptions,recentReplies,false)}
   </div>`;
 }
+// W7-only: one small latest-drawing preview, one change note, one obvious upload control.
+// Original artifact/version records and back-end upload API are unchanged.
+function w7DrawingRevisionHtml(){
+  const key='l07_design_version';
+  const versions=state.artifact_versions?.[key] || (state.record?.artifacts?.[key]?[state.record.artifacts[key]]:[]);
+  const latest=versions.at(-1),previous=versions.slice(0,-1);
+  const next=latest?Number(latest.version_no||versions.length)+1:1;
+  const disabled=Boolean(state.record?.submitted_at||state.session_locked);
+  const oldVersions=previous.length?`<details class="w7-drawing-history"><summary>查看之前的图纸（${previous.length}版）</summary><div class="w7-drawing-thumbnails">${previous.map((v,i)=>`<figure><img src="${artifactUrl(v)}" alt="第${v.version_no||i+1}版图纸" loading="lazy"><figcaption>第${v.version_no||i+1}版</figcaption></figure>`).join('')}</div></details>`:'';
+  return `<div class="w7-drawing-editor" data-artifact-card="${key}">
+    <div class="w7-drawing-current">
+      <strong>当前图纸 · ${latest?`第${latest.version_no||versions.length}版`:'尚未上传'}</strong>
+      ${latest?`<img src="${artifactUrl(latest)}" alt="当前最新图纸" loading="lazy">`:'<p class="small">先在第1步上传上节课图纸。</p>'}
+      ${latest?.change_note&&versions.length>1?`<span class="small">上次修改：${esc(latest.change_note)}</span>`:''}
+      ${oldVersions}
+    </div>
+    <div class="w7-drawing-revise">
+      <strong>想修改？上传新图纸</strong>
+      <label for="w7DrawingChangeNote">改了哪里？</label>
+      <textarea id="w7DrawingChangeNote" rows="2" maxlength="250" data-artifact-note="${key}" placeholder="例如：把固定画笔的位置向上移动了2厘米。" ${disabled?'disabled':''}></textarea>
+      <input type="hidden" data-artifact-kind="revision" value="revision">
+      <input type="hidden" data-artifact-status="${key}" value="modified">
+      <input type="hidden" data-artifact-source="${key}" value="unknown">
+      <label class="w7-drawing-file" for="w7DrawingRevisionFile">选择修改后的图纸照片</label>
+      <input id="w7DrawingRevisionFile" type="file" data-artifact="${key}" accept="image/jpeg,image/png,image/webp" ${disabled?'disabled':''}>
+      <span class="small" data-upload-status="${key}">选好照片后自动保存为第${next}版。</span>
+    </div>
+  </div>`;
+}
+// W7-only: a small current-prototype preview and two clear photo uploads.
+// The original append-only artifact records, backend checks and A/B intervention are unchanged.
+function w7PrototypeIterationHtml(){
+  const overviewKey='l07_prototype_overview', wearKey='l07_prototype_wear';
+  const allOverview=(state.artifact_versions?.[overviewKey]||(state.record?.artifacts?.[overviewKey]?[state.record.artifacts[overviewKey]]:[])).filter(v=>v?.file_path&&v.kind!=='correction'&&v.kind!=='progress');
+  const allWear=(state.artifact_versions?.[wearKey]||(state.record?.artifacts?.[wearKey]?[state.record.artifacts[wearKey]]:[])).filter(v=>v?.file_path&&v.kind!=='correction'&&v.kind!=='progress');
+  const carrySid=state.carry_from?.session?.id||'W6';
+  const oldOverview=(state.carry_artifact_versions?.l06_prototype_versions||[]).filter(v=>v?.file_path&&v.kind!=='correction'&&v.kind!=='progress');
+  const oldWear=(state.carry_artifact_versions?.l06_wear_versions||[]).filter(v=>v?.file_path&&v.kind!=='correction'&&v.kind!=='progress');
+  const chosen=allOverview.at(-1)||oldOverview.at(-1)||null;
+  const chosenSid=allOverview.length?state.session.id:carrySid;
+  const chosenWear=(allOverview.length?allWear:oldWear).find(v=>Number(v.version_no)===Number(chosen?.version_no))||null;
+  const currentNumber=chosen?Number(chosen.version_no||1):0;
+  const nextNumber=currentNumber+1;
+  const pending=allOverview.find(v=>!allWear.some(w=>Number(w.version_no)===Number(v.version_no)));
+  const locked=Boolean(state.record?.submitted_at||state.session_locked);
+  const overviewDisabled=locked||Boolean(pending);
+  const wearDisabled=locked||!pending;
+  const previous=[...oldOverview.map(v=>({...v,sourceSid:carrySid})),...allOverview.slice(0,-1).map(v=>({...v,sourceSid:state.session.id}))];
+  const history=previous.length?`<details class="w7-drawing-history"><summary>查看之前的原型（${previous.length}版）</summary><div class="w7-drawing-thumbnails">${previous.map((v,i)=>`<figure><img src="${artifactUrl(v,v.sourceSid)}" alt="第${v.version_no||i+1}版原型" loading="lazy"><figcaption>第${v.version_no||i+1}版</figcaption></figure>`).join('')}</div></details>`:'';
+  const image=(v,what)=>v?`<img src="${artifactUrl(v,chosenSid)}" alt="当前${what}" loading="lazy">`:`<div class="w7-prototype-photo-empty">${what==='佩戴图'&&chosen?'待上传':'暂无照片'}</div>`;
+  const doneLabel=pending?'这版还差一张佩戴图。':`选图后自动保存为第${nextNumber}版。`;
+  const progress=(state.artifact_versions?.l07_process_photo||[]).length;
+  return `<div class="w7-drawing-editor w7-prototype-editor">
+    <div class="w7-drawing-current">
+      <strong>当前原型 · ${chosen?`第${currentNumber}版`:'尚未上传'}</strong>
+      <div class="w7-prototype-photos"><figure><figcaption>整体图</figcaption>${image(chosen,'整体图')}</figure><figure><figcaption>佩戴图</figcaption>${image(chosenWear,'佩戴图')}</figure></div>
+      ${chosen?.change_note?`<span class="small">本版：${esc(chosen.change_note)}</span>`:''}
+      ${history}
+    </div>
+    <div class="w7-drawing-revise">
+      <strong>上传新原型</strong>
+      <div class="w7-prototype-upload-part" data-artifact-card="${overviewKey}">
+        <label for="w7PrototypeChangeNote">做了/改了哪里？</label>
+        <textarea id="w7PrototypeChangeNote" rows="2" maxlength="250" data-artifact-note="${overviewKey}" placeholder="例如：把橡皮筋换成了魔术贴。" ${overviewDisabled?'disabled':''}></textarea>
+        <input type="hidden" data-artifact-kind="${currentNumber?'revision':'draft'}">
+        <input type="hidden" data-artifact-status="${overviewKey}" value="${currentNumber?'modified':'first_version'}">
+        <input type="hidden" data-artifact-source="${overviewKey}" value="unknown">
+        <label class="w7-drawing-file" for="w7PrototypeOverallFile">① 选择原型整体图</label>
+        <input id="w7PrototypeOverallFile" type="file" data-artifact="${overviewKey}" accept="image/jpeg,image/png,image/webp" ${overviewDisabled?'disabled':''}>
+        <span class="small" data-upload-status="${overviewKey}">${doneLabel}</span>
+      </div>
+      <div class="w7-prototype-upload-part" data-artifact-card="${wearKey}">
+        <input type="hidden" data-artifact-kind="${currentNumber?'revision':'draft'}">
+        <label class="w7-drawing-file" for="w7PrototypeWearFile">② 选择实际佩戴图</label>
+        <input id="w7PrototypeWearFile" type="file" data-artifact="${wearKey}" accept="image/jpeg,image/png,image/webp" ${wearDisabled?'disabled':''}>
+        <span class="small" data-upload-status="${wearKey}">${pending?'请上传刚才这一版的佩戴照片。':'上传整体图后即可选择佩戴图。'}</span>
+      </div>
+    </div>
+  </div>
+  <details class="w7-prototype-progress"><summary>还没做完？保存制作进度照片（选填）</summary>
+    <div data-artifact-card="l07_process_photo" class="w7-prototype-progress-content"><input type="hidden" data-artifact-kind="progress"><input type="file" data-artifact="l07_process_photo" accept="image/jpeg,image/png,image/webp" ${locked?'disabled':''}><span class="small" data-upload-status="l07_process_photo">${progress?`已保存${progress}张进度照片。`:'选择照片后自动保存。'}</span></div>
+  </details>`;
+}
 function compactW6EvidenceHtml(a,meta){
   const key=esc(a.key),isDiagram=a.key==='l06_design_version';
   const versions=state.artifact_versions?.[a.key]||(meta?[meta]:[]);
