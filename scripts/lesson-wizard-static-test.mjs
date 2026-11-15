@@ -5,7 +5,11 @@ import {getSessionConfig} from '../src/config/researchConfig.js';
 const src=readFileSync(new URL('../public/js/lesson-wizard.js',import.meta.url),'utf8');
 const task=readFileSync(new URL('../public/js/task.js',import.meta.url),'utf8');
 const createContext=(s,variant='supported',completed=false)=>{
- const state={session:s,record:{submitted_at:null},session_locked:false,ai_variant:variant,carry_from:null};
+ const state={session:s,record:{submitted_at:null},session_locked:false,ai_variant:variant,
+  artifact_versions:{},carry_from:s.id==='W7'?{session:{id:'W6'},record:{artifacts:{
+    legacy_chat_image:{file_name:'unrelated.png',file_path:'unrelated-ai-chat-photo.png'},
+    legacy_material_image:{file_name:'gloves.png',file_path:'unrelated-gloves.png'}
+  }}}:null};
  const ctx={id:'S00',s,state,sessionStorage:{getItem:()=>null,setItem:()=>{}},
   esc:x=>String(x||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'),
   w8StepDone:key=>Boolean(completed),
@@ -29,7 +33,7 @@ for(let n=6;n<=10;n++){
   assert.ok(html.includes('第'+n+'节'),'学生显示真实课次');
   assert.ok(!html.includes('实验组')&&!html.includes('对照组'),'学生端不能暴露分组');
   assert.ok(!html.includes('关联上一课作品')&&!html.includes('关联一条AI回复'),'去除技术性无效表单');
-  if(page===0)assert.ok(html.includes('看'),'第一页须查看既有成果');
+  if(page===0){if(n===7){assert.ok(html.includes('上传上节课的设计图纸'),'第七节必须提供明确的上节图纸上传入口');assert.ok(html.includes('data-artifact="l07_design_version"'),'第七节须有真实文件上传控件');assert.ok(!html.includes('查看上节已保存的成果')&&!html.includes('unrelated-ai-chat-photo.png')&&!html.includes('unrelated-gloves.png'),'不能混入上一课其他图片');}else assert.ok(html.includes('看'),'其他课次仍查看既有成果');}
   if(page===1)assert.equal((html.match(/data-field="l\d+_check[123]"/g)||[]).length,3,'自检选项只能出现一次');
   if(page===2)assert.ok(html.includes('data-w8-exchange-count="'+(n===7?'total':'task1')+'"'),'本页应计数当前对话');
   if(page===3)assert.ok(html.includes('data-w8-exchange-count="'+(n===7?'total':'task2')+'"'),'本页应计数当前对话');

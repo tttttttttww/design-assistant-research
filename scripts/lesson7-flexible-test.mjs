@@ -23,7 +23,7 @@ const task=readFileSync(new URL('../public/js/task.js',import.meta.url),'utf8');
 const wizard=readFileSync(new URL('../public/js/lesson-wizard.js',import.meta.url),'utf8');
 const backend=readFileSync(new URL('../src/services/researchService.js',import.meta.url),'utf8');
 const storage=readFileSync(new URL('../src/services/storageService.js',import.meta.url),'utf8');
-for(const marker of ['l07_design_version','l07_prototype_overview','l07_prototype_wear','图纸已满意','data-w8-exchange-count','本节累计']){
+for(const marker of ['上传上节课的设计图纸','l07_design_version','l07_prototype_overview','l07_prototype_wear','图纸已满意','data-w8-exchange-count','本节累计']){
   assert.ok(task.includes(marker)||wizard.includes(marker),'missing UI '+marker);
 }
 for(const marker of ['require_drawing_evidence','require_prototype_evidence','minimumTotal','totalAiExchanges','version_predecessors_by_artifact']){

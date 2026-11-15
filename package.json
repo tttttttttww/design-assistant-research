@@ -1,6 +1,6 @@
 {
   "name": "design-thinking-help-seeking-platform",
-  "version": "12.4.0",
+  "version": "12.4.1",
   "type": "module",
   "description": "第7节课堂版：图纸与原型按需迭代、真实10轮AI对话后提交、教师实时状态与数据导出",
   "main": "cloud-functions/express/[[default]].js",

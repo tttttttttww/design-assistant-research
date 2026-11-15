@@ -20,7 +20,10 @@ function wizardAfterSubmit(stepKey){
 async function wizardGo(target){
   const page=Number(target);
   if(!Number.isInteger(page)||page<0||page>4)return;
-  if(page===3&&!w8StepDone('task1')){alert('请先完成任务一，才能进入制作或新任务。');return;}
+  if(state.session?.id==='W7' && page>=1 && !state.record?.artifacts?.l07_design_version?.file_path && !(state.artifact_versions?.l07_design_version||[]).length){
+    alert('请先在第1步上传上节课的设计图纸（作为本节修改起点）。');return;
+  }
+  if(page===3&&!w8StepDone('task1')){alert('请先完成图纸自检，才能开始制作原型。');return;}
   if(page===2&&!w8StepDone('task1')){
     const values={...displayTextFields(),...collectFields()},fields=state.session.fields||[];
     const needed=fields.filter(f=>f.stage==='task1'&&f.required&&(/_check[123]$|_check_evidence$|_peer$|_focus$/.test(f.key)));
@@ -48,7 +51,7 @@ function lessonWizardHtml(s,r){
   const lesson=Number(s.actual_lesson||0),isSix=lesson===6,isSeven=lesson===7,firstDone=w8StepDone('task1'),secondDone=w8StepDone('task2');
   const hasHelpScaffold=state.ai_variant==='supported';
   const min1=Number(s.task_flow.steps[0].min_ai_exchanges||0),min2=Number(s.task_flow.steps[1].min_ai_exchanges||0);
-  const labels=isSeven?['回看已有进度','设计自检','图纸自主迭代','原型自主迭代','回顾与提交']:['看已有成果','找问题','AI讨论与任务一','做今天的任务','回顾与提交'];
+  const labels=isSeven?['上传上节图纸','设计自检','图纸自主迭代','原型自主迭代','回顾与提交']:['看已有成果','找问题','AI讨论与任务一','做今天的任务','回顾与提交'];
   const tabs=labels.map((label,i)=>`<button type="button" class="wizard-tab ${i===wizardPage?'current':''}" data-wizard-page="${i}" ${i===3&&!firstDone?'disabled':''}><span>${i+1}</span><small>${esc(label)}</small></button>`).join('');
   const vals=displayTextFields(), all=s.fields||[];
   const renderFields=arr=>arr.map(f=>fieldHtml(f,vals[f.key]??'',Boolean(r.submitted_at||state.session_locked||(firstDone&&f.stage==='task1')))).join('');
@@ -62,7 +65,17 @@ function lessonWizardHtml(s,r){
   let pageHtml='';
   if(wizardPage===0){
     const help=hasHelpScaffold?`<div class="wizard-help"><strong>今天的求助方法</strong><p>先检查自己做到了什么，弄清楚不确定的地方；向AI说明现象和已尝试的方法，再判断AI建议是否可行。</p><span class="small">如果不确定怎么问，可以按这三个步骤整理自己的问题。</span></div>`:'';
-    pageHtml=`<h2>先看看上节做到了哪里</h2><p>拿出已有图纸或实物。已上传的照片不用再传一遍。</p>${help}${wizardPriorHtml()}
+    const savedW7Drawings=state.artifact_versions?.l07_design_version||[];
+    const originalDrawing=savedW7Drawings[0]||r.artifacts?.l07_design_version||null;
+    const uploadDisabled=Boolean(r.submitted_at||state.session_locked);
+    const W7Start=()=>`<h2>上传上节课的设计图纸</h2>
+      <p>请拍照上传你上节课最后使用的图纸，作为今天继续修改、制作原型的起点。只上传<strong>设计图纸</strong>，不要上传聊天截图、材料照片或其他资料。</p>
+      <div class="upload-card" data-artifact-card="l07_design_version"><strong>上节课的图纸（本节起点）</strong>
+        ${originalDrawing?`<div class="mini-evidence-saved"><img src="${artifactUrl(originalDrawing)}" alt="已上传的上节课图纸" loading="lazy"><div><strong>图纸已保存</strong><p>这张图纸已作为本节起点。无需重复上传；需要修改可在第3步上传新版本。</p></div></div>`:
+        `<p class="small">尚未上传。上传成功后才可以进入下一步。</p><input type="hidden" data-artifact-kind="draft"><input type="hidden" data-artifact-note="l07_design_version" value="上节课图纸，作为本节修改起点"><input type="hidden" data-artifact-status="l07_design_version" value="first_version"><input type="hidden" data-artifact-source="l07_design_version" value="self"><input type="hidden" data-artifact-ai-role="l07_design_version" value="not_used"><input type="file" data-artifact="l07_design_version" accept="image/jpeg,image/png,image/webp" ${uploadDisabled?'disabled':''}><span class="small" data-upload-status="l07_design_version">请选择清晰的图纸照片，选完自动保存。</span>`}
+      </div>`;
+    pageHtml=isSeven?`${W7Start()}${help}<div class="wizard-nav">${btn('下一步：检查设计',1)}</div>`:
+      `<h2>先看看上节做到了哪里</h2><p>拿出已有图纸或实物。已上传的照片不用再传一遍。</p>${help}${wizardPriorHtml()}
        ${isSix?`<h3>上节学习单或设计记录</h3>${a('l06_previous_task_sheet')}`:''}
        <div class="wizard-nav">${btn('下一步：检查设计',1)}</div>`;
   }else if(wizardPage===1){
@@ -75,9 +88,9 @@ function lessonWizardHtml(s,r){
        <div class="wizard-short-fields">${renderFields(all.filter(f=>f.stage==='task1'&&/^l06_(science_point|science_application|material_plan)$/.test(f.key)))}</div>
        <h3>提交两份不同的成果</h3><p class="small">① 填写完整的科学知识与材料学习单；② 标出科学知识、材料和用途的新版设计图。每项各选择一次照片，系统自动保存；没有新修改不必重复上传。</p><div class="wizard-files mini-evidence-grid">${a('l06_science_learning_sheet')}${a('l06_design_version')}</div>`;
     };
-    const seventhDrawingHtml=()=>`<div class="wizard-help"><strong>图纸修改多少版，由你自己决定</strong><p>还不满意就修改并再上传，系统自动续编版本；已经满意就不必重复上传，直接点击下方按钮制作原型。</p></div><h3>我的图纸与版本记录</h3><div class="wizard-files">${a('l07_design_version')}</div>${hasHelpScaffold?`<div class="wizard-help"><strong>求助提示</strong><p>我现在的图纸是……，发现……，尝试过……，想请AI帮我分析哪一处还需要验证。收到建议后，我决定……。</p></div>`:''}<p class="small">每次上传前说明修改了什么、依据是什么、是否采用AI建议；没有真实修改不用上传新照片。</p>`;
+    const seventhDrawingHtml=()=>`<div class="wizard-help"><strong>图纸需要修改几版，就提交几版</strong><p>不满意就修改并上传新版；已满意不必重复上传，直接点击下方按钮制作原型。</p></div><h3>我的图纸与版本记录</h3><div class="wizard-files">${a('l07_design_version')}</div>${hasHelpScaffold?`<div class="wizard-help"><strong>求助提示</strong><p>我现在的图纸是……，发现……，尝试过……，想请AI帮我分析哪一处还需要验证。收到建议后，我决定……。</p></div>`:''}<p class="small">每次上传前说明修改了什么、依据是什么、是否采用AI建议；没有真实修改不用上传新照片。</p>`;
     pageHtml=`<h2>${isSeven?'图纸：需要就改，满意就制作':isSix?'任务一：完善设计图':'把检查结果告诉AI'}</h2>
-      <p>${isSeven?'已经有图纸的同学可直接保留已有版本，未完成的同学从自己的进度继续。':isSix?(hasHelpScaffold?'选一个适合自己设计的科学知识，说明应用位置。向AI求助时可以结合自己的真实图纸说明困难。':'选一个适合自己设计的科学知识，说明应用位置和用途，再完成设计图。'):(hasHelpScaffold?'把检查结果、不确定的地方或同伴的意见告诉AI，结合实际情况判断。':'根据今天的任务，自主选择需要讨论的设计问题，继续完成作品。')}</p>
+      <p>${isSeven?'从第1步上传的上节图纸出发；需要修改就追加新版本，满意就直接开始制作。':isSix?(hasHelpScaffold?'选一个适合自己设计的科学知识，说明应用位置。向AI求助时可以结合自己的真实图纸说明困难。':'选一个适合自己设计的科学知识，说明应用位置和用途，再完成设计图。'):(hasHelpScaffold?'把检查结果、不确定的地方或同伴的意见告诉AI，结合实际情况判断。':'根据今天的任务，自主选择需要讨论的设计问题，继续完成作品。')}</p>
       ${isSeven?seventhDrawingHtml():isSix?W6():(hasHelpScaffold?`<div class="wizard-help"><strong>求助提示</strong><p>“我检查到……，已经试过……，但还不确定……。应该先检查什么？”</p><span class="small">不需要照抄，根据自己的情况提问。</span></div>`:'')}
       ${counter('task1',min1)}<div class="wizard-nav">${btn('返回检查',1,'secondary')}
       ${firstDone?btn(isSeven?'继续制作原型':'进入今天的新任务',3):isSeven?'<button type="button" class="btn orange" id="submitW8Task1">图纸已满意／已上传修改，开始制作原型</button>':'<button type="button" class="btn orange" id="submitW8Task1">完成任务一，进入下一步</button>'}</div>`;

@@ -250,6 +250,7 @@ function fieldHtml(f, value='', forceDisabled=false){
   return `<label>${esc(f.label)} ${req}<textarea data-field="${esc(f.key)}" placeholder="${esc(f.placeholder)}" ${disabled}>${esc(value)}</textarea>${f.helper?`<span class="small">${esc(f.helper)}</span>`:''}</label>`;
 }
 function artifactStepForKey(key){
+  if(state?.session?.id==='W7' && key==='l07_design_version')return null; // May revise drawing throughout this lesson.
   return (state?.session?.task_flow?.steps||[]).find(step=>(step.required_artifacts||[]).includes(key)||(step.required_any_artifact_keys||[]).includes(key))||null;
 }
 function artifactStepCompleted(key){
@@ -262,7 +263,7 @@ function artifactRequiredForCurrentFlow(key){
 function artifactQuestionnaireHtml(a,versions,carryOptions,options){
   const disabled=(state.record.submitted_at||state.session_locked||artifactStepCompleted(a.key))?'disabled':'';
   const key=esc(a.key),priorKey=a.key==='l07_design_version'?'l06_design_version':a.key==='l07_prototype_overview'?'l06_prototype_versions':'';
-  const hadPrevious=state.session?.id==='W7'&&priorKey&&Boolean((state.carry_artifact_versions||{})[priorKey]?.length);
+  const hadPrevious=state.session?.id==='W7'&&a.key==='l07_prototype_overview'&&priorKey&&Boolean((state.carry_artifact_versions||{})[priorKey]?.length);
   const first=!versions.length&&!hadPrevious;
   return `<div class="form version-questionnaire">
     <input type="hidden" data-artifact-kind="${first?'draft':'revision'}">
@@ -316,7 +317,7 @@ function prototypeVersionBookHtml(a, meta){
   const carryId=state.carry_from?.session?.id||'';
   const carryVersions=Object.entries(state.carry_artifact_versions||{}).flatMap(([key,entries])=>entries.map((v,i)=>({...v,carry_key:key,ordinal:i+1})));
   const carryOptions=carryVersions.map(v=>`<option value="${esc(`${carryId}:${v.version_id}`)}">${esc(carryId)} · ${esc(v.carry_key)} · ${v.original_order_unknown?'旧图（顺序未知）':`第${v.ordinal}版`}</option>`).join('');
-  const previousKey=state.session?.id==='W7'?(a.key==='l07_design_version'?'l06_design_version':a.key==='l07_prototype_overview'?'l06_prototype_versions':''):'';
+  const previousKey=state.session?.id==='W7'?(a.key==='l07_prototype_overview'?'l06_prototype_versions':''):'';
   const olderVersions=previousKey?(state.carry_artifact_versions?.[previousKey]||[]):[];
   const latestOlder=olderVersions.at(-1);
   const latestNumber=versions.at(-1)?.version_no||latestOlder?.version_no||0;

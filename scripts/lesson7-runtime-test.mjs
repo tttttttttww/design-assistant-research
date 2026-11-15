@@ -38,12 +38,17 @@ try{
   await r.addArtifact('S00','W6','l06_wear_versions',{...photo('l06_wear_versions'),file_path:'uploads/S00/W6/l06_wear_versions/v1.png'});
   const prior=await r.getArtifactVersions('S00','W6');
   assert.equal(prior.l06_design_version.length,1);
+  // Prior W6 images alone must not satisfy W7 first step: upload a current-session copy of the actual drawing.
+  await shouldFail(()=>r.submitTaskStep('S00','W7','task1',fields),/上节课.*图纸|设计图纸/);
+  const baseline=await r.addArtifact('S00','W7','l07_design_version',{
+    ...photo('l07_design_version'),change_note:'上节课图纸，作为本节修改起点'});
+  assert.equal(baseline.artifact_versions.l07_design_version.length,1);
   await r.submitTaskStep('S00','W7','task1',fields);
-  // This is deliberately allowed while already making a prototype: revised drawing becomes V2 then V3.
-  const second=await r.addArtifact('S00','W7','l07_design_version',photo('l07_design_version'));
-  assert.equal(second.artifact_versions.l07_design_version[0].version_no,2);
+  // Drawing remains editable after beginning prototype work. Versions continue after the W6 baseline.
+  const second=await r.addArtifact('S00','W7','l07_design_version',{...photo('l07_design_version'),file_path:'uploads/S00/W7/l07_design_version/test-2.png'});
+  assert.equal(second.artifact_versions.l07_design_version[1].version_no,baseline.artifact_versions.l07_design_version[0].version_no+1);
   const third=await r.addArtifact('S00','W7','l07_design_version',{...photo('l07_design_version'),file_path:'uploads/S00/W7/l07_design_version/test-3.png'});
-  assert.equal(third.artifact_versions.l07_design_version[1].version_no,3);
+  assert.equal(third.artifact_versions.l07_design_version[2].version_no,second.artifact_versions.l07_design_version[1].version_no+1);
   assert.equal((await r.getArtifactVersions('S00','W6')).l06_design_version.length,1,'Historical version must remain unchanged');
   // The two formal pictures must inherit exactly the same version number.
   const prototype=await r.addArtifact('S00','W7','l07_prototype_overview',photo('l07_prototype_overview'));
