@@ -20,5 +20,7 @@ for(const marker of ['Promise.allSettled','X-Student-Read-Failures',"user_turn_c
  assert.ok(routes.includes(marker),'后端缺少单人读取失败隔离：'+marker);
 }
 assert.ok(html.includes('adminDataWarning'),'教师后台必须可见错误，而非静默无响应');
+assert.ok(browser.includes('教师后台接口没有返回JSON数据'),'必须识别纯静态站点返回HTML的错误');
+assert.ok(browser.includes('后台未返回有效课次设置'),'不能把无效课次设置当作成功');
 assert.ok(read('src/services/storageService.js').includes("course-v11-enhanced"),'不得改变原数据前缀');
 console.log('TEACHER STATUS CHECK OK: W7 available; errors visible; unknown status not reported as zero; stored keys unchanged.');
