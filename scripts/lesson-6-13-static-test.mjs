@@ -6,7 +6,7 @@ for(let n=6;n<=10;n++){
  const s=getSessionConfig('W'+n);
  assert.equal(s.actual_lesson,n);
  assert.equal(s.order,n);
- assert.deepEqual(s.task_flow.steps.map(x=>x.min_ai_exchanges),n===6?[10,5]:[4,3]);
+ assert.deepEqual(s.task_flow.steps.map(x=>x.min_ai_exchanges),n===6?[10,5]:n===7?[0,0]:[4,3]);
  const keys=new Set(s.fields.map(x=>x.key));
  const photos=new Set(s.artifacts.map(x=>x.key));
  for(const step of s.task_flow.steps){
@@ -14,6 +14,7 @@ for(let n=6;n<=10;n++){
    for(const k of step.required_artifacts||[])assert.ok(photos.has(k),'missing artifact '+k);
  }
  assert.ok(s.paired_artifacts?.length>0);
+ if(n===7){assert.equal(s.task_flow.steps[1].min_ai_exchanges_total,10);assert.ok(photos.has('l07_design_version'));}
  assert.equal(aiVariantFor({session:s,condition:'A'}),'free');
  assert.equal(aiVariantFor({session:s,condition:'B'}),'supported');
  assert.equal(INTERVENTION_ORIENTATION[s.id].supported.reflection_activity,false);
