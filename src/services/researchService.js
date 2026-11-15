@@ -961,6 +961,14 @@ class ResearchService {
         throw Object.assign(new Error(`请先完成：${field?.label || key}`), { status: 400 });
       }
     }
+    // Students who already uploaded a drawing in the previous lesson do not upload it again.
+    // Anyone still without a saved drawing must upload one before starting the prototype.
+    if(step.require_drawing_evidence){
+      const currentDrawings=(await this.getArtifactVersions(id,sid,record)).l07_design_version||[];
+      const earlierDrawings=(await this.getArtifactVersions(id,'W6')).l06_design_version||[];
+      const hasDrawing=[...earlierDrawings,...currentDrawings].some(v=>v?.file_path && v.kind!=='progress');
+      if(!hasDrawing)throw Object.assign(new Error('目前没有找到你的设计图。请先上传一版真实图纸；之前课次已经上传的图纸不需要重复交。'),{status:400});
+    }
     for (const key of step.required_artifacts || []) {
       if (!record.artifacts?.[key]) {
         const artifact = config.artifacts.find(item => item.key === key);
