@@ -40,7 +40,8 @@ router.post('/upload', upload.single('image'), async (req, res) => {
           return res.status(409).json({ error: `请先完成并提交${previousStep.label}，再上传下一项任务作品。` });
         }
       }
-      if (flowState?.completed_steps?.includes(flowStep.key)) return res.status(409).json({ error: '这一任务已提交，相关图片版本已锁定。后续课时请在新的版本记录中继续。' });
+      const allowW7DrawingRevision = sid === 'W7' && artifactKey === 'l07_design_version';
+      if (flowState?.completed_steps?.includes(flowStep.key) && !allowW7DrawingRevision) return res.status(409).json({ error: '这一任务已提交，相关图片版本已锁定。后续课时请在新的版本记录中继续。' });
     }
     if (!req.file) return res.status(400).json({ error: '请选择 JPG、PNG 或 WEBP 图片' });
     const artifactDefinition=config.artifacts.find(a=>a.key===artifactKey);

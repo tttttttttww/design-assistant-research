@@ -2067,6 +2067,12 @@ if(FLEXIBLE_LESSON7){
   if(wear){wear.label='本版原型的实际佩戴照片';wear.helper='同一版原型必须配套真实佩戴照片；不要上传没有戴在手上的照片。';}
   const progress=FLEXIBLE_LESSON7.artifacts.find(a=>a.key==='l07_process_photo');
   if(progress){progress.label='制作未完成｜仅保存过程照片';progress.helper='保存真实进度，不计为新版本，不要求配套佩戴照片。';}
+  // 第七节只保留简短自检与真实问题记录为必填；其他字段仍保留供历史兼容与自愿填写。
+  for(const f of FLEXIBLE_LESSON7.fields){
+    if(['l07_peer','l07_focus','l07_work','l07_decision'].includes(f.key))f.required=false;
+  }
+  FLEXIBLE_LESSON7.task_flow.steps[0].required_fields=['l07_check1','l07_check2','l07_check3','l07_check_evidence'];
+  FLEXIBLE_LESSON7.task_flow.steps[1].required_fields=[];
   FLEXIBLE_LESSON7.ai_instruction='图纸或实体原型都可按真实需要反复修改；没有必要修改的地方无需重复上传。本节最终提交须累计10轮完整AI对话。具体提问应围绕真实设计或制作疑问，不能为了凑数虚构问题。';
   FLEXIBLE_LESSON7.prompt_context='第7节（2026-11-16）：设计图纸可自选迭代任意版、满意即可直接制作原型；原型按实际迭代版本并提交整体图和佩戴图；最终提交本节累计10轮有效AI对话。A组正常AI求助，B组保持既定结构化求助学习与反馈机制。';
   FLEXIBLE_LESSON7.ai_public_context.stage='第7节：回看已有图纸，自选修改并保留版本；继续制作并迭代实体原型，结合真实证据对AI建议作出判断。';

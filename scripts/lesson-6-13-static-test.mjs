@@ -23,7 +23,7 @@ assert.equal(getSessionConfig('W11').carry_from,'W10');
 assert.equal(getSessionConfig('W12').ai_mode,'free');
 assert.equal(getSessionConfig('W13').ai_mode,'none');
 const task=read('public/js/task.js'),rs=read('src/services/researchService.js');
-assert.ok(task.includes("s.id==='W6'?w8TaskFlowHtml"));
+assert.ok(task.includes("lessonWizardHtml(s,r)"),"课程页面须使用当前翻页任务流程");
 assert.ok(task.includes('l06_wear_versions'));
 assert.ok(rs.includes("this.getSessionRecord(id, 'W10')"));
 assert.ok(rs.includes('course-v11-enhanced')||read('src/services/storageService.js').includes('course-v11-enhanced'));

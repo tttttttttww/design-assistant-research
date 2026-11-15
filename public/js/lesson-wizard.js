@@ -23,7 +23,7 @@ async function wizardGo(target){
   if(page===3&&!w8StepDone('task1')){alert('请先完成任务一，才能进入制作或新任务。');return;}
   if(page===2&&!w8StepDone('task1')){
     const values={...displayTextFields(),...collectFields()},fields=state.session.fields||[];
-    const needed=fields.filter(f=>f.stage==='task1'&&(/_check[123]$|_check_evidence$|_peer$|_focus$/.test(f.key)));
+    const needed=fields.filter(f=>f.stage==='task1'&&f.required&&(/_check[123]$|_check_evidence$|_peer$|_focus$/.test(f.key)));
     const missing=needed.find(f=>!String(values[f.key]||'').trim());
     if(missing){alert('请先完成第2步“找问题”：'+missing.label+'。没做过就如实选择。');return;}
   }
@@ -54,7 +54,7 @@ function lessonWizardHtml(s,r){
   const renderFields=arr=>arr.map(f=>fieldHtml(f,vals[f.key]??'',Boolean(r.submitted_at||state.session_locked||(firstDone&&f.stage==='task1')))).join('');
   const a=key=>{const art=(s.artifacts||[]).find(x=>x.key===key);return art?artifactHtml(art,r.artifacts?.[key]):'';};
   const checkFields=all.filter(f=>f.stage==='task1'&&/_check[123]$/.test(f.key));
-  const notes=all.filter(f=>f.stage==='task1'&&/(_check_evidence|_peer|_focus)$/.test(f.key));
+  const notes=all.filter(f=>f.stage==='task1'&&(isSeven?/(_check_evidence|_peer)$/.test(f.key):/(_check_evidence|_peer|_focus)$/.test(f.key)));
   const task2Fields=all.filter(f=>f.stage==='task2');
   const counter=(step,min)=>{const total=isSeven;const n=total?w8Count("task1")+w8Count("task2"):w8Count(step);const goal=total?Number(s.task_flow.min_ai_exchanges_total||10):min;return `<div class="wizard-counter">${total?"本节累计有效AI对话":"AI对话"}：<b data-w8-exchange-count="${total?"total":step}">${n}</b> / ${goal} 轮 <span>（一问一答算1轮）</span></div>`;};
   const btn=(text,page,kind='orange')=>`<button type="button" class="btn ${kind}" data-wizard-next="${page}">${text}</button>`;
@@ -70,7 +70,7 @@ function lessonWizardHtml(s,r){
       <div class="wizard-checks">${renderFields(checkFields)}</div><div class="wizard-short-fields">${renderFields(notes)}</div>
       <div class="wizard-nav">${btn('上一步',0,'secondary')}${btn('保存检查，下一步',2)}</div>`;
   }else if(wizardPage===2){
-    const W6=science=>{
+    const W6=()=>{
       return `<details class="wizard-info"><summary>需要时展开科学知识小图</summary>${scienceDiagramCardsHtml()}</details>
        <div class="wizard-short-fields">${renderFields(all.filter(f=>f.stage==='task1'&&/^l06_(science_point|science_application|material_plan)$/.test(f.key)))}</div>
        <h3>提交两份不同的成果</h3><p class="small">① 填写完整的科学知识与材料学习单；② 标出科学知识、材料和用途的新版设计图。每项各选择一次照片，系统自动保存；没有新修改不必重复上传。</p><div class="wizard-files mini-evidence-grid">${a('l06_science_learning_sheet')}${a('l06_design_version')}</div>`;
@@ -88,7 +88,7 @@ function lessonWizardHtml(s,r){
       `<h3>作品与测试照片</h3><p class="small">没有改变结构就不必生成新版本；真实修改后才上传新照片。</p><div class="wizard-files">${s.artifacts.filter(x=>!x.key.endsWith('_v2_photo')).map(x=>a(x.key)).join('')}</div>`;
     pageHtml=`<h2>${isSeven?'实体原型：按实际需要反复迭代':isSix?'任务二：动手制作原型':esc(s.task_flow.steps[1].label)}</h2>
       <p>${esc(s.subtitle||'根据当前进度继续制作、测试或改进。')}</p>
-      <div class="wizard-short-fields">${renderFields(task2Fields)}</div>${photoHtml}${counter('task2',min2)}
+      ${isSeven?'':`<div class="wizard-short-fields">${renderFields(task2Fields)}</div>`}${photoHtml}${counter('task2',min2)}
       <div class="wizard-nav">${btn('上一步',2,'secondary')}${btn('下一步：回顾今天',4)}</div>`;
   }else{
     pageHtml=`<h2>${hasHelpScaffold?'下课前回顾AI求助':'下课前记录任务进度'}</h2><p>${hasHelpScaffold?'选择本节真实AI对话，想想建议是否有用、自己怎样处理。':'简单写下今天做到了哪里，下一步准备做什么；没有完成也可以保存。'}</p>
