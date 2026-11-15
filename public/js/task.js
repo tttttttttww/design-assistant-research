@@ -261,7 +261,9 @@ function artifactRequiredForCurrentFlow(key){
 }
 function artifactQuestionnaireHtml(a,versions,carryOptions,options){
   const disabled=(state.record.submitted_at||state.session_locked||artifactStepCompleted(a.key))?'disabled':'';
-  const key=esc(a.key),first=!versions.length;
+  const key=esc(a.key),priorKey=a.key==='l07_design_version'?'l06_design_version':a.key==='l07_prototype_overview'?'l06_prototype_versions':'';
+  const hadPrevious=state.session?.id==='W7'&&priorKey&&Boolean((state.carry_artifact_versions||{})[priorKey]?.length);
+  const first=!versions.length&&!hadPrevious;
   return `<div class="form version-questionnaire">
     <input type="hidden" data-artifact-kind="${first?'draft':'revision'}">
     <input type="hidden" data-artifact-status="${key}" value="${first?'first_version':'modified'}">
@@ -314,9 +316,14 @@ function prototypeVersionBookHtml(a, meta){
   const carryId=state.carry_from?.session?.id||'';
   const carryVersions=Object.entries(state.carry_artifact_versions||{}).flatMap(([key,entries])=>entries.map((v,i)=>({...v,carry_key:key,ordinal:i+1})));
   const carryOptions=carryVersions.map(v=>`<option value="${esc(`${carryId}:${v.version_id}`)}">${esc(carryId)} · ${esc(v.carry_key)} · ${v.original_order_unknown?'旧图（顺序未知）':`第${v.ordinal}版`}</option>`).join('');
-  const viewer=prototypeVersionPageHtml(versions,safeIndex,itemLabel);
-  return `<div class="upload-card prototype-book-card" data-prototype-book="${esc(a.key)}" data-prototype-item-label="${esc(itemLabel)}"><div class="row between"><div><strong>${esc(a.label)} ${required}</strong><p class="small">${esc(a.helper)}；有实际修改才上传新版本，旧版保留。</p></div><span class="badge">${versions.length?`已保存 ${versions.length} 张照片`:'尚无记录'}</span></div>
-    <div data-prototype-viewer="${esc(a.key)}">${viewer}</div>
+  const previousKey=state.session?.id==='W7'?(a.key==='l07_design_version'?'l06_design_version':a.key==='l07_prototype_overview'?'l06_prototype_versions':''):'';
+  const olderVersions=previousKey?(state.carry_artifact_versions?.[previousKey]||[]):[];
+  const latestOlder=olderVersions.at(-1);
+  const latestNumber=versions.at(-1)?.version_no||latestOlder?.version_no||0;
+  const earlierPreview=olderVersions.length?`<details class="wizard-carry"><summary>查看上节保存的${esc(itemLabel)}（${olderVersions.length}版）</summary><div class="wizard-image-grid">${olderVersions.map((row,i)=>`<figure><img src="${artifactUrl(row,carryId)}" alt="上节第${row.version_no||i+1}版${esc(itemLabel)}" loading="lazy"><figcaption class="small">第${row.version_no||i+1}版 · 真实历史</figcaption></figure>`).join('')}</div></details>`:'';
+  const viewer=versions.length?prototypeVersionPageHtml(versions,safeIndex,itemLabel):latestOlder?`<div class="prototype-page"><div class="prototype-page-meta"><strong>沿用上节第${latestOlder.version_no||olderVersions.length}版${esc(itemLabel)}</strong></div><img class="prototype-page-image" src="${artifactUrl(latestOlder,carryId)}" alt="上节保存的${esc(itemLabel)}"><p class="small">没有新修改不必再次上传；需要时从这版继续修改。</p></div>`:prototypeVersionPageHtml(versions,safeIndex,itemLabel);
+  return `<div class="upload-card prototype-book-card" data-prototype-book="${esc(a.key)}" data-prototype-item-label="${esc(itemLabel)}"><div class="row between"><div><strong>${esc(a.label)} ${required}</strong><p class="small">${esc(a.helper)}；有实际修改才上传新版本，旧版保留。</p></div><span class="badge">${latestNumber?`当前至第 ${latestNumber} 版`:'尚无版本'}</span></div>
+    ${earlierPreview}<div data-prototype-viewer="${esc(a.key)}">${viewer}</div>
     ${versions.length>1?`<div class="row prototype-page-controls"><button type="button" class="btn secondary mini" data-prototype-prev="${esc(a.key)}" ${safeIndex===0?'disabled':''}>上一版</button><button type="button" class="btn secondary mini" data-prototype-next="${esc(a.key)}" ${safeIndex>=versions.length-1?'disabled':''}>下一版</button></div>`:''}
     ${artifactUploadPanelHtml(a,versions,carryOptions,recentReplies,false)}
   </div>`;
@@ -379,7 +386,7 @@ function chatPanel(){
   const variantLabel=state.participant.is_test ? `${id}测试预览` : 'AI设计助手';
   const requiredOnce=Boolean(state.session.ai_use_required_once);
   const activeFlowStep=state.session.task_flow?.steps?.find(x=>x.key===currentW8ChatStep());
-  const flowBadge=activeFlowStep?`本阶段至少${Number(activeFlowStep.min_ai_exchanges||0)}轮完整对话`:'';
+  const flowBadge=state.session.task_flow?.min_ai_exchanges_total?`本节累计需${Number(state.session.task_flow.min_ai_exchanges_total)}轮完整对话`:activeFlowStep?`本阶段至少${Number(activeFlowStep.min_ai_exchanges||0)}轮完整对话`:'';
   const policyText=state.ai_variant==='supported'?(state.session.ai_instruction||'遇到困难时可以向AI求助。'):'你可以使用AI设计助手讨论今天的设计任务。';
   const chatImageEnabled=state.session.chat_image_enabled!==false;
   return `${reminder}<section class="card sticky-card ai-card"><div class="row between"><div><span class="eyebrow">${esc(variantLabel)}</span><h2>AI设计助手</h2></div><span class="badge">${esc(flowBadge|| (requiredOnce?'本节至少使用1次':'可选'))}</span></div>
@@ -678,6 +685,8 @@ function updateW8ExchangeCounter(){
     const el=document.querySelector(`[data-w8-exchange-count="${step.key}"]`);
     if(el)el.textContent=String(w8Count(step.key));
   }
+  const total=document.querySelector('[data-w8-exchange-count="total"]');
+  if(total)total.textContent=String((state.session.task_flow.steps||[]).reduce((sum,step)=>sum+w8Count(step.key),0));
 }
 function w8Artifact(key){return (state?.session?.artifacts||[]).find(a=>a.key===key);}
 
@@ -784,7 +793,9 @@ async function submitW8Step(stepKey){
   if(state.session_locked||state.record.submitted_at)return;
   const step=state.session.task_flow?.steps?.find(x=>x.key===stepKey);
   if(!step)return;
-  const count=w8Count(stepKey), minimum=Number(step.min_ai_exchanges||0);
+  const useTotal=stepKey==='task2'&&Number(step.min_ai_exchanges_total||0)>0;
+  const count=useTotal?(state.session.task_flow.steps||[]).reduce((sum,x)=>sum+w8Count(x.key),0):w8Count(stepKey);
+  const minimum=Number(useTotal?step.min_ai_exchanges_total:step.min_ai_exchanges||0);
   if(count<minimum){alert(`当前已完成${count}轮完整AI对话，还需要${minimum-count}轮。你可以继续与AI讨论，也可以先保存进度并下节课继续。`);return;}
   if(!confirm(`确认提交${step.label}吗？提交后${stepKey==='task1'?'将解锁任务二。':'本课记录将标记为完成并锁定AI对话。'}未完成的内容请先保存进度。`))return;
   try{
