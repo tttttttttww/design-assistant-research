@@ -6,10 +6,10 @@
   "main": "cloud-functions/express/[[default]].js",
   "scripts": {
     "start": "node server.js",
-    "build": "node scripts/check.mjs && node scripts/v12-2-intervention-test.mjs && node scripts/v12-3-upload-ui-test.mjs && node scripts/v12-3-1-ui-test.mjs",
+    "build": "node scripts/check.mjs && node scripts/lesson7-flexible-test.mjs && node scripts/v12-2-intervention-test.mjs && node scripts/v12-3-upload-ui-test.mjs && node scripts/v12-3-1-ui-test.mjs",
     "check": "node scripts/check.mjs",
-    "test": "node scripts/check.mjs && node scripts/lesson-6-13-static-test.mjs && node scripts/lesson-wizard-static-test.mjs && node scripts/v12-2-intervention-test.mjs && node scripts/v12-3-upload-ui-test.mjs && node scripts/v12-3-1-ui-test.mjs",
-    "test:course": "node scripts/check.mjs && node scripts/lesson-6-13-static-test.mjs && node scripts/lesson-wizard-static-test.mjs && node scripts/v12-2-intervention-test.mjs && node scripts/v12-3-upload-ui-test.mjs && node scripts/v12-3-1-ui-test.mjs"
+    "test": "node scripts/check.mjs && node scripts/lesson7-flexible-test.mjs && node scripts/lesson-6-13-static-test.mjs && node scripts/lesson-wizard-static-test.mjs && node scripts/v12-2-intervention-test.mjs && node scripts/v12-3-upload-ui-test.mjs && node scripts/v12-3-1-ui-test.mjs",
+    "test:course": "node scripts/check.mjs && node scripts/lesson7-flexible-test.mjs && node scripts/lesson-6-13-static-test.mjs && node scripts/lesson-wizard-static-test.mjs && node scripts/v12-2-intervention-test.mjs && node scripts/v12-3-upload-ui-test.mjs && node scripts/v12-3-1-ui-test.mjs"
   },
   "dependencies": {
     "@edgeone/pages-blob": "0.0.16",
