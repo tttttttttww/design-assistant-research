@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {getSessionConfig} from '../src/config/researchConfig.js';
+const task=readFileSync(new URL('../public/js/task.js',import.meta.url),'utf8');
+const html=task.slice(task.indexOf('function lesson8FlexibleHtml(s,r){'),task.indexOf('function weeklyTaskFlowHtml(s,r){'));
+assert.equal((html.match(/lessonReviewHtml\(s\)/g)||[]).length,1,'W8 renders one end-of-class note in peer step');
+assert.ok(html.includes('const storyFields=(s.fields||[]).filter(f=>f.stage===\'task2\'&&f.key!==\'l08_dt_reflection\')'),'W8 optional redundant reflection not rendered');
+assert.ok(!html.includes('<summary>下课前回顾</summary>'),'W8 repeated review card removed');
+const config=getSessionConfig('W8');
+assert.equal(config.task_flow.steps.length,3);
+assert.equal(config.task_flow.min_ai_exchanges_total,3);
+assert.ok(config.fields.some(f=>f.key==='lesson_review_reference'),'review data key kept');
+assert.ok(config.fields.some(f=>f.key==='lesson_review_use'),'review data key kept');
+assert.ok(config.fields.some(f=>f.key==='lesson_review_next'),'review data key kept');
+assert.ok(config.fields.some(f=>f.key==='lesson_exit_note'),'review data key kept');
+assert.ok(task.includes('state.ai_variant===\'supported\''),'B group still differentiated');
+console.log('W8 SINGLE REVIEW OK: review form once, optional duplicate hidden, A/B/data keys and 3 turns preserved.');
