@@ -651,3 +651,12 @@ details.admin-extra>section {margin:0!important;border:0!important;box-shadow:no
  .student-simple-grid .w8-upload-pair{grid-template-columns:1fr}
  .student-simple-grid .w8-photos-grid img{height:130px}
 }
+
+/* v12.5.1: one compact end-of-class note, inside W8 peer review only. */
+.student-simple-grid .w8-once-review{border:1px solid #dce7e0;border-radius:12px;background:#f9fbf9;padding:12px 14px;margin:10px 0;display:grid;gap:9px}
+.student-simple-grid .w8-once-review h3{margin:0;font-size:16px}
+.student-simple-grid .w8-once-review label{font-size:14px}
+.student-simple-grid .w8-review-two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.student-simple-grid .w8-once-review input[type=text],.student-simple-grid .w8-once-review select{min-width:0;width:100%;padding:9px 10px;font-size:14px}
+.student-simple-grid .w8-review-save{align-items:center;gap:8px}
+@media(max-width:680px){.student-simple-grid .w8-review-two{grid-template-columns:1fr}}

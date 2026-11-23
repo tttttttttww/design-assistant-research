@@ -17,7 +17,7 @@ app.use(express.json({ limit: '12mb' }));
 app.use(express.urlencoded({ extended: true, limit: '12mb' }));
 app.use(cookieParser());
 app.use(express.static(join(__dirname, '../../../public')));
-app.get('/health', (req, res) => { res.setHeader('Cache-Control','no-store, max-age=0'); res.json({ ok: true, version: 'course-v12.5.0-flexible-iteration', release: '20261123n', runtime: 'edgeone-pages-express' }); });
+app.get('/health', (req, res) => { res.setHeader('Cache-Control','no-store, max-age=0'); res.json({ ok: true, version: 'course-v12.5.1-single-review', release: '20261123p', runtime: 'edgeone-pages-express' }); });
 app.use('/api', authRoutes);
 app.use('/api', courseRoutes);
 app.use('/api', chatRoutes);

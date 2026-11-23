@@ -846,6 +846,26 @@ function w8TaskFlowHtml(s,r){
 // 每节课结束前只回顾当前真实对话，不回忆一周前的对话。课中可以随时保存反思，不影响保存未完成任务。
 function lessonReviewHtml(s){
   if(!s?.task_flow || !['W6','W7','W8','W9','W10'].includes(s.id))return '';
+  // W8: only one short end-of-class note, shown inside the peer-review step.
+  // Preserve the existing field keys and server validation to avoid modifying old data.
+  if(s.id==='W8'){
+    const fields=displayTextFields();
+    const disabled=(state.record.submitted_at||state.session_locked)?'disabled':'';
+    const phases=new Set((s.task_flow?.steps||[]).map(x=>x.task_phase));
+    const messages=(state.chat_messages||[]).filter(m=>m.role==='assistant'&&m.message_id&&phases.has(m.task_context?.task_phase));
+    const chosen=String(fields.lesson_review_reference||'');
+    const latest=messages.filter((m,i)=>i>=messages.length-8||m.message_id===chosen);
+    const supported=state.ai_variant==='supported';
+    const reviewContent=supported ? `
+      ${messages.length?`<label>选一条本节真实的AI回复<select data-field="lesson_review_reference" ${disabled}><option value="">请选择</option>${latest.map(m=>`<option value="${esc(m.message_id)}" ${chosen===m.message_id?'selected':''}>${esc(String(m.content||'').slice(0,55))}</option>`).join('')}</select></label>`:
+      `<label>本节无法找到AI回复<select data-field="lesson_no_history_reason" ${disabled}><option value="">请选择原因</option>${['今天没有向AI提问','提问了，但没收到有效回复','平台记录没有显示','其他原因'].map(x=>`<option value="${esc(x)}" ${fields.lesson_no_history_reason===x?'selected':''}>${esc(x)}</option>`).join('')}</select></label>`}
+      ${messages.length?`<div class="w8-review-two"><label>这条建议，我怎样处理？<input type="text" data-field="lesson_review_use" value="${esc(fields.lesson_review_use||'')}" maxlength="180" placeholder="一句话就好" ${disabled}></label>
+      <label>下次怎样问AI更合适？<input type="text" data-field="lesson_review_next" value="${esc(fields.lesson_review_next||'')}" maxlength="180" placeholder="一句话就好" ${disabled}></label></div>`:''}` :
+      `<label>今天完成了什么？接下来做什么？<input type="text" data-field="lesson_exit_note" value="${esc(fields.lesson_exit_note||'')}" maxlength="200" placeholder="简单写一句" ${disabled}></label>`;
+    return `<section class="w8-once-review" id="lessonReview"><h3>本节小结（填写一次）</h3>${reviewContent}
+      <div class="row w8-review-save"><button type="button" class="btn secondary mini" id="saveLessonReview" ${disabled}>保存小结</button>
+      ${supported?`<button type="button" class="btn ghost mini" id="refreshLessonReview" ${disabled}>更新可选回复</button>`:''}<span id="reviewSaveStatus" class="small">${(fields.lesson_review_use||fields.lesson_exit_note)?'已填写':'待填写'}</span></div></section>`;
+  }
   const saved=displayTextFields(),disabled=(state.record.submitted_at||state.session_locked)?'disabled':'';
   const phases=new Set((s.task_flow?.steps||[]).map(x=>x.task_phase));
   const messages=(state.chat_messages||[]).filter(m=>m.role==='assistant' && m.message_id && phases.has(m.task_context?.task_phase));
@@ -897,7 +917,7 @@ function lesson8FlexibleHtml(s,r){
       ${aligned&&!w8Iterating?`<button type="button" class="btn orange" id="submitW8Task1" ${locked?'disabled':''}>提交当前版本，填写五步设计过程</button>`:''}
     </div><p class="small">尚未完成时点下方“保存进度并退出”，所有已上传版本都保留。</p>`}
   </section>`;
-  const storyFields=(s.fields||[]).filter(f=>f.stage==='task2');
+  const storyFields=(s.fields||[]).filter(f=>f.stage==='task2'&&f.key!=='l08_dt_reflection');
   const task2=`<section class="card w8-step-panel ${chosen==='task2'?'':'hidden'}" data-w8-step-panel="task2">
     <h2>填写五步设计过程</h2><p>根据你真实做过的事情，每项简短填写；没测试过就如实说明。填写后上传并发布到作品墙。</p>
     <div class="form w8-story-grid">${storyFields.map(f=>fieldHtml(f,values[f.key]||'',!d1||d2)).join('')}</div>
@@ -914,11 +934,12 @@ function lesson8FlexibleHtml(s,r){
     ${peerField?`<div class="student-peer-decision">${fieldHtml(peerField,values[peerField.key]||'',!d2||d3)}</div>`:''}
     <details class="student-more student-change-record" ${hasShared?'open':''}><summary>记录本节修改与AI建议（简短）</summary><div class="form w8-change-grid">${shared.map(f=>fieldHtml(f,values[f.key]||'',!d2||d3)).join('')}</div></details>
     <div class="w8-counter student-counter"><strong>本节有效AI对话 <b data-w8-exchange-count="total">${total}</b> / 3 轮</strong></div>
+    ${lessonReviewHtml(s)}
     ${d3?'<p class="notice ok">本节已完成。</p>':`<button type="button" class="btn orange" id="submitW8Task3" ${!d2||locked?'disabled':''}>完成本节提交</button>`}
   </section>`;
   const nav=`<div class="w8-step-tabs w8-three-steps">${steps.map((item,i)=>`<button type="button" id="w8GoTask${i+1}" class="w8-step-tab ${chosen===item.key?'active':''}" ${i===1&&!d1||i===2&&!d2?'disabled':''}>${i+1}. ${['图纸与作品','五步设计','同伴互评'][i]} ${w8StepDone(item.key)?'✓':''}</button>`).join('')}</div>`;
   const exitAction=r.submitted_at&&!state.session_locked?'<button type="button" class="btn secondary" id="reopenSession">继续修改</button>':`<button type="button" class="btn secondary" id="saveAndExit" ${state.session_locked?'disabled':''}>保存进度并退出</button>`;
-  return `<section class="card w8-flow-shell student-simple w8-minimal w8-flexible">${nav}${task1}${task2}${task3}<details class="student-more student-review-wrap" ${chosen==='task3'?'open':''}><summary>下课前回顾</summary>${lessonReviewHtml(s)}</details><div class="row between w8-save-row"><span id="saveStatus" class="small"></span>${exitAction}</div></section>`;
+  return `<section class="card w8-flow-shell student-simple w8-minimal w8-flexible">${nav}${task1}${task2}${task3}<div class="row between w8-save-row"><span id="saveStatus" class="small"></span>${exitAction}</div></section>`;
 }
 
 function weeklyTaskFlowHtml(s,r){

@@ -37,7 +37,7 @@ let liveLastRefreshAt = '';
 const esc = App.escapeHtml;
 const fmtSeconds = v => v == null ? '—' : v < 60 ? `${v}s` : `${Math.floor(v / 60)}m ${v % 60}s`;
 
-const RELEASE_FINGERPRINT='20261123n';
+const RELEASE_FINGERPRINT='20261123p';
 async function verifyCurrentDeployment(){
   const label=document.getElementById('deployedBuildStatus');
   const btn=document.getElementById('verifyDeployment');
