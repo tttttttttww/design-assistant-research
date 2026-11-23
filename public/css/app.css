@@ -521,3 +521,15 @@ details.admin-extra>section {margin:0!important;border:0!important;box-shadow:no
 .w7-prototype-progress summary{cursor:pointer;font-size:13px;font-weight:650;padding:12px 15px;color:#48654f}
 .w7-prototype-progress-content{padding:0 15px 14px;display:grid;gap:7px}
 @media(max-width:440px){.w7-prototype-photos img,.w7-prototype-photo-empty{height:110px}}
+
+/* Lesson-8 peer-gallery: pseudonyms only, mobile/tablet responsive. */
+.peer-gallery{margin-top:16px;border-top:1px solid var(--line,#ddd);padding-top:12px}
+.peer-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,285px),1fr));gap:14px;margin-top:12px}
+.peer-card{border:1px solid #d8e0e7;border-radius:14px;background:#fff;padding:13px;min-width:0}
+.peer-card-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:9px}
+.peer-card img{width:100%;height:190px;object-fit:contain;background:#f5f8f9;border-radius:10px}
+.peer-steps p{margin:5px 0;line-height:1.5;font-size:0.9rem;overflow-wrap:anywhere}
+.peer-review-form{display:grid;gap:9px;border-top:1px solid #e4e8ed;margin-top:12px;padding-top:12px}
+.peer-review-form label{font-weight:600;font-size:.92rem}
+.peer-review-form textarea{width:100%;box-sizing:border-box;margin-top:5px;min-height:60px;font-weight:400}
+.peer-received{padding:9px 12px;border:1px solid #e0e7ec;border-radius:9px;margin-bottom:8px;overflow-wrap:anywhere}

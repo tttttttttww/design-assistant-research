@@ -15,6 +15,22 @@ export const COMMON_AI_RESPONSE_RULES = [
 export const HELP_SEEKING_ROUTE_PROTOCOL_VERSION = 'ihs-ehs-other-v1';
 export const HELP_SEEKING_ROUTE_MARKER = '[[HS_ROUTE:<IHS|EHS|OTHER>|SCAFFOLD:<NONE|EXECUTIVE_RESTRUCTURE>]]';
 
+// Optional opt-in protocol. Does NOT change group allocation, lessons, dataset storage,
+// or historical messages. Requires matching updated Coze bot prompt/workflow.
+export const AI_VARIANT_RUNTIME_RULES_V2 = [
+  '【V2响应式求助支持；仅学生主动发送消息后执行】本轮先依据学生原始输入、真实对话及双方可用的相同公开任务资料，选择一种主要响应。无需把学生每轮问题判为好/坏。',
+  'R0 正常帮助：问题具体、知识求助、要求解释/提示/局部示例/备选设计/比较或没有明确求助问题时，提供充分实质性帮助；不机械追问、不无端增加学习任务。',
+  'R1 需求澄清：只有缺少生成有针对性回复所必需的信息时才提示学生补充一个关键点；不能因为没说已尝试、没交测试证据或没按四栏格式提问而触发。正常帮助和必要的普通澄清需区分，避免强行策略化。',
+  'R2 核心代劳请求：只有学生明确要求AI直接代替完成当前核心设计任务与决策，并有充足上下文证据时，提供一个可用局部解释或比较依据，简短指出学生仍需根据实际条件作决定；可邀请学生自行选定下一问的目标，不能只有拒绝。',
+  'R3 帮助评价/利用：当学生准备采用重要设计建议、报告回复与材料或证据冲突、寻求验证时，适时提醒核对当前目标、约束和真实证据，并提供实质性检验/调整思路；已主动陈述理由时给予具体反馈，不重复说教。不能默认已经采纳或已实测。',
+  '学生收到R1/R2的反馈后，给学生自行补充或重新提问的机会，下一轮具体化后及时给出内容帮助，并用一句自然语言指出其改进的具体策略；不得暗中重写学生原始输入。',
+  '同一问题避免连续多轮重复元认知追问；同一轮只允许一个主要策略提示。没有充分触发证据时优先R0，不能猜测学生的知识掌握或心理状态。',
+  '劣构设计任务无唯一标准答案：方案请求不自动属于EHS；学生的设计目标和测试记录是帮助情境证据，绝不是缺失即错误的强制判据。仅使用学生已经提供或主动上传的个人信息，不从后台偷取设计档案。',
+  '共同回答能力和基础知识与普通AI相同：可以充分解释概念、提出多种备选思路并帮助分析；学生保留真实作品的核心决定权。',
+  '学生不可见研究术语、组别、路由、错误标签。不要强制“不得回答”、不固定≤3句、不规定每条回复以追问结尾。',
+  '必须将以下机器标记作为回复最后独立一行，且严格匹配：[[HS_ROUTE:IHS|SCAFFOLD:NONE]]、[[HS_ROUTE:OTHER|SCAFFOLD:NEED_CLARIFICATION]]、[[HS_ROUTE:EHS|SCAFFOLD:EXECUTIVE_RESTRUCTURE]]、[[HS_ROUTE:IHS|SCAFFOLD:HELP_EVALUATION]]；R0根据实际IHS/OTHER选NONE，标记不展示给学生。',
+];
+
 export const AI_VARIANT_RUNTIME_RULES = {
   free: [
     '按普通生成式AI方式自然回应学生当前请求。',
@@ -2076,6 +2092,65 @@ if(FLEXIBLE_LESSON7){
   FLEXIBLE_LESSON7.ai_instruction='图纸或实体原型都可按真实需要反复修改；没有必要修改的地方无需重复上传。本节最终提交须累计10轮完整AI对话。具体提问应围绕真实设计或制作疑问，不能为了凑数虚构问题。';
   FLEXIBLE_LESSON7.prompt_context='第7节（2026-11-16）：设计图纸可自选迭代任意版、满意即可直接制作原型；原型按实际迭代版本并提交整体图和佩戴图；最终提交本节累计10轮有效AI对话。A组正常AI求助，B组保持既定结构化求助学习与反馈机制。';
   FLEXIBLE_LESSON7.ai_public_context.stage='第7节：回看已有图纸，自选修改并保留版本；继续制作并迭代实体原型，结合真实证据对AI建议作出判断。';
+}
+
+// 2026-11-23 candidate lesson 8: prototype exhibition and anonymous peer review.
+// This only changes the NEW W8 classroom configuration. Old source and Blob keys are retained.
+const EXHIBIT_LESSON8=SESSIONS.find(s=>s.id==='W8');
+if(EXHIBIT_LESSON8){
+  EXHIBIT_LESSON8.title='第8节：原型完成、五步简介与班级互评';
+  EXHIBIT_LESSON8.subtitle='先完成并发布真实原型，再查看全班作品、开展互评，最后判断建议是否适用。';
+  EXHIBIT_LESSON8.date='11/23';
+  EXHIBIT_LESSON8.student_label='第8节课 · 原型展示与互评';
+  EXHIBIT_LESSON8.brief=[
+    '补全辅助绘画装置原型；若尚未完成，可以先保存进度，不能把未完成作品写成已完成。',
+    '简短填写共情、定义、构思、原型、测试五个环节的实际做法和一句收获；未测试就如实说明。',
+    '上传作品整体照片，点击“发布到班级作品墙”后，才能浏览同学发布的编号、作品与简介。',
+    '为其他同学的作品写具体优点、需要核实的问题与可行建议。至少与AI进行一轮真实问题的问答，最终是否采纳由自己判断。'
+  ];
+  EXHIBIT_LESSON8.brief.push('两组均填写相同的简短修改与AI建议处理记录：可以如实选择“未参考AI”“尚未修改”；不能把勾选采纳当成实际改动。');
+  EXHIBIT_LESSON8.requirements=[
+    '同伴只看到编号、发布作品照片与五步简介，不显示姓名、组别、聊天记录或私人测试资料。',
+    '本节至少完成一轮真实AI问答；不设置多轮配额，不要求AI替学生编写评语。',
+    '至少评价两份不同同学的作品；可发布作品不足两份时按实际可评价数量进行。',
+    '未完成或尚未测试的情况可如实记录；不能虚构用户反馈或测试结论。'
+  ];
+  // Historic fields are kept in the schema but not surfaced in the new two-step UI.
+  for(const f of EXHIBIT_LESSON8.fields){if(f.stage==='task1'||f.stage==='task2'){f.stage='legacy';f.required=false;}}
+  EXHIBIT_LESSON8.fields.push(
+    field('l08_dt_empathize','共情｜我了解了谁的什么需要？',{stage:'task1',required:true,placeholder:'例如：使用者握笔较困难，希望更容易固定铅笔。只写实际了解的情况。'}),
+    field('l08_dt_define','定义｜我想解决的核心问题是什么？',{stage:'task1',required:true,placeholder:'一句话说清目标和重要约束。'}),
+    field('l08_dt_ideate','构思｜我考虑过哪些办法？为什么选这个？',{stage:'task1',required:true,placeholder:'写1—2个真实想法和你的选择理由。'}),
+    field('l08_dt_prototype','原型｜我真正制作了什么？',{stage:'task1',required:true,placeholder:'写装置关键结构、材料和目前完成程度。'}),
+    field('l08_dt_test','测试｜我发现了什么？尚未测什么？',{stage:'task1',required:true,placeholder:'已测试写观察事实；未测试就写尚未测试。'}),
+    field('l08_dt_reflection','体会｜这次设计最重要的收获是什么？',{stage:'task1',required:true,placeholder:'一句自己的真实体会即可。'}),
+    field('l08_peer_decision','互评后｜我听到了什么建议，准备如何处理？',{stage:'task2',required:true,placeholder:'写具体建议和自己的决定；没有同学发表建议时，请说明原因和下一步。'}),
+    // Both A and B use the SAME minimal evidence form. Never infer adoption from a checkbox.
+    field('l08_shared_change','作品修改记录｜本节实际修改了什么？',{stage:'task2',required:false,placeholder:'例如：固定带加宽；如果暂未修改，请写“尚未修改”。'}),
+    field('l08_shared_change_reason','作品修改记录｜为什么修改（或暂不修改）？',{stage:'task2',required:false,placeholder:'依据实际制作、佩戴、同伴意见或测试观察填写；没有证据请说明。'}),
+    field('l08_shared_ai_reference','作品修改记录｜本次是否参考AI建议？',{stage:'task2',type:'select',required:false,choices:['参考过AI建议','没有参考AI建议','本节尚未收到有效AI建议','尚未决定']}),
+    field('l08_shared_ai_decision','作品修改记录｜如何处理AI建议？',{stage:'task2',type:'select',required:false,choices:['采纳','修改后采纳','未采纳','尚未决定','未参考AI建议']}),
+  );
+  EXHIBIT_LESSON8.artifacts.push(artifact('l08_showcase_photo','班级作品展示照片（拍清真实整体原型）',{
+    required:false,helper:'发布前上传一张真正的原型整体照片；新照片按原方式追加保存，不覆盖历史。',version_questionnaire:false,version_book:false
+  }));
+  EXHIBIT_LESSON8.task_flow={key:'lesson8-peer-gallery-v1',steps:[
+    {key:'task1',label:'完成原型、五步简介并发布',task_phase:'lesson8_exhibit',min_ai_exchanges:0,
+      required_fields:['l08_dt_empathize','l08_dt_define','l08_dt_ideate','l08_dt_prototype','l08_dt_test','l08_dt_reflection'],
+      required_artifacts:['l08_showcase_photo'],artifact_keys:['l08_showcase_photo']},
+    {key:'task2',label:'班级作品互评、AI讨论与判断',task_phase:'lesson8_peer',min_ai_exchanges:0,
+      required_fields:['l08_peer_decision'],required_artifacts:[],artifact_keys:[]}
+  ]};
+  // Other old artifact keys remain readable as historical/individual evidence,
+  // but are deliberately not required in the new peer-exhibition phase.
+  for(const a of EXHIBIT_LESSON8.artifacts){if(a.key!=='l08_showcase_photo')a.required=false;}
+  // Earlier paired-artifact checks are irrelevant to this new single-photo exhibition snapshot.
+  // W7 remains the appropriate location for paired prototype iteration originals.
+  EXHIBIT_LESSON8.paired_artifacts=[];
+  EXHIBIT_LESSON8.ai_use_required_once=true;
+  EXHIBIT_LESSON8.ai_instruction='本节需至少完成一轮真实AI问答，可问实际制作困难、同伴建议不清楚、设计方案比较或测试证据冲突；不要求凑固定轮数，不让AI代写评论，建议是否采纳由自己判断。';
+  EXHIBIT_LESSON8.ai_public_context.stage='第8节：完成原型、五步设计过程简述、匿名班级互评，再依据真实意见和材料条件判断修改，不得编造测试。';
+  EXHIBIT_LESSON8.prompt_context='第8节：学生上传原型照片和五步简介后进入班级互评；互评对所有学生条件一致；AI按原两种响应条件继续使用。新功能真实启用日期应记录，不回写既往实施史。';
 }
 
 export function getSessionConfig(id) { return SESSIONS.find(s => s.id === id) || null; }

@@ -1,15 +1,15 @@
 {
   "name": "design-thinking-help-seeking-platform",
-  "version": "12.4.3",
+  "version": "12.4.6",
   "type": "module",
-  "description": "第7节图纸与原型双简洁迭代：一处修改说明、两张原型照片、自动版本记录；保留求助干预和数据采集",
+  "description": "第7节图纸与原型双简洁迭代：一处修改说明、两张原型照片、自动版本记录；保留求助干预和数据采集；新增默认关闭的响应式求助工作流V2兼容路由；第8节班级原型展示与互评；两组共用设计决策记录；初始请求关联导出",
   "main": "cloud-functions/express/[[default]].js",
   "scripts": {
     "start": "node server.js",
-    "build": "node scripts/check.mjs && node scripts/lesson7-flexible-test.mjs && node scripts/v12-2-intervention-test.mjs && node scripts/v12-3-upload-ui-test.mjs && node scripts/v12-3-1-ui-test.mjs && node scripts/teacher-status-regression-test.mjs && node scripts/edgeone-deploy-visibility-test.mjs && node scripts/lesson7-runtime-test.mjs && node scripts/upload-gate-runtime-test.mjs && node scripts/w7-prototype-simple-ui-test.mjs",
+    "build": "node scripts/check.mjs && node scripts/lesson7-flexible-test.mjs && node scripts/v12-2-intervention-test.mjs && node scripts/v12-3-upload-ui-test.mjs && node scripts/v12-3-1-ui-test.mjs && node scripts/teacher-status-regression-test.mjs && node scripts/edgeone-deploy-visibility-test.mjs && node scripts/lesson7-runtime-test.mjs && node scripts/upload-gate-runtime-test.mjs && node scripts/w7-prototype-simple-ui-test.mjs && node scripts/help-seeking-v2-optin-test.mjs && node scripts/lesson8-peer-gallery-runtime-test.mjs",
     "check": "node scripts/check.mjs",
-    "test": "node scripts/check.mjs && node scripts/lesson7-flexible-test.mjs && node scripts/lesson-6-13-static-test.mjs && node scripts/lesson-wizard-static-test.mjs && node scripts/v12-2-intervention-test.mjs && node scripts/v12-3-upload-ui-test.mjs && node scripts/v12-3-1-ui-test.mjs && node scripts/teacher-status-regression-test.mjs && node scripts/edgeone-deploy-visibility-test.mjs && node scripts/lesson7-runtime-test.mjs && node scripts/upload-gate-runtime-test.mjs && node scripts/w7-prototype-simple-ui-test.mjs",
-    "test:course": "node scripts/check.mjs && node scripts/lesson7-flexible-test.mjs && node scripts/lesson-6-13-static-test.mjs && node scripts/lesson-wizard-static-test.mjs && node scripts/v12-2-intervention-test.mjs && node scripts/v12-3-upload-ui-test.mjs && node scripts/v12-3-1-ui-test.mjs && node scripts/teacher-status-regression-test.mjs && node scripts/edgeone-deploy-visibility-test.mjs && node scripts/lesson7-runtime-test.mjs && node scripts/upload-gate-runtime-test.mjs && node scripts/w7-prototype-simple-ui-test.mjs"
+    "test": "node scripts/check.mjs && node scripts/lesson7-flexible-test.mjs && node scripts/lesson-6-13-static-test.mjs && node scripts/lesson-wizard-static-test.mjs && node scripts/v12-2-intervention-test.mjs && node scripts/v12-3-upload-ui-test.mjs && node scripts/v12-3-1-ui-test.mjs && node scripts/teacher-status-regression-test.mjs && node scripts/edgeone-deploy-visibility-test.mjs && node scripts/lesson7-runtime-test.mjs && node scripts/upload-gate-runtime-test.mjs && node scripts/w7-prototype-simple-ui-test.mjs && node scripts/help-seeking-v2-optin-test.mjs && node scripts/lesson8-peer-gallery-runtime-test.mjs",
+    "test:course": "node scripts/check.mjs && node scripts/lesson7-flexible-test.mjs && node scripts/lesson-6-13-static-test.mjs && node scripts/lesson-wizard-static-test.mjs && node scripts/v12-2-intervention-test.mjs && node scripts/v12-3-upload-ui-test.mjs && node scripts/v12-3-1-ui-test.mjs && node scripts/teacher-status-regression-test.mjs && node scripts/edgeone-deploy-visibility-test.mjs && node scripts/lesson7-runtime-test.mjs && node scripts/upload-gate-runtime-test.mjs && node scripts/w7-prototype-simple-ui-test.mjs && node scripts/lesson8-peer-gallery-runtime-test.mjs"
   },
   "dependencies": {
     "@edgeone/pages-blob": "0.0.16",

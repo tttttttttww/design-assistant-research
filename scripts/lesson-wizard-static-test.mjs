@@ -26,7 +26,7 @@ const createContext=(s,variant='supported',completed=false)=>{
  vm.runInContext(src,ctx);
  return ctx;
 };
-for(let n=6;n<=10;n++){
+for(const n of [6,7,9,10]){
  const s=getSessionConfig('W'+n);
  const ctx=createContext(s);
  for(let page=0;page<=4;page++){

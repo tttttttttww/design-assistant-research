@@ -470,7 +470,7 @@ function chatPanel(){
   const variantLabel=state.participant.is_test ? `${id}测试预览` : 'AI设计助手';
   const requiredOnce=Boolean(state.session.ai_use_required_once);
   const activeFlowStep=state.session.task_flow?.steps?.find(x=>x.key===currentW8ChatStep());
-  const flowBadge=state.session.task_flow?.min_ai_exchanges_total?`本节累计需${Number(state.session.task_flow.min_ai_exchanges_total)}轮完整对话`:activeFlowStep?`本阶段至少${Number(activeFlowStep.min_ai_exchanges||0)}轮完整对话`:'';
+  const flowBadge=state.session.task_flow?.min_ai_exchanges_total?`本节累计需${Number(state.session.task_flow.min_ai_exchanges_total)}轮完整对话`:activeFlowStep&&Number(activeFlowStep.min_ai_exchanges||0)>0?`本阶段至少${Number(activeFlowStep.min_ai_exchanges)}轮完整对话`:'';
   const policyText=state.ai_variant==='supported'?(state.session.ai_instruction||'遇到困难时可以向AI求助。'):'你可以使用AI设计助手讨论今天的设计任务。';
   const chatImageEnabled=state.session.chat_image_enabled!==false;
   return `${reminder}<section class="card sticky-card ai-card"><div class="row between"><div><span class="eyebrow">${esc(variantLabel)}</span><h2>AI设计助手</h2></div><span class="badge">${esc(flowBadge|| (requiredOnce?'本节至少使用1次':'可选'))}</span></div>
@@ -858,15 +858,15 @@ function weeklyTaskFlowHtml(s,r){
   const panels=steps.map(step=>{
     const done=w8StepDone(step.key),unlocked=step.key==='task1'||done1,disabled=(state.session_locked||r.submitted_at||done||!unlocked);
     const fields=(s.fields||[]).filter(f=>f.stage===step.key).map(f=>fieldHtml(f,vals[f.key]||'',disabled)).join('');
-    const related=step.key==='task2'?(s.artifacts||[]).map(a=>artifactHtml(a,r.artifacts?.[a.key])).join(''):'';
+    const related=(s.id==='W8'?(s.artifacts||[]).filter(a=>(step.artifact_keys||[]).includes(a.key)):(step.key==='task2'?(s.artifacts||[]):[])).map(a=>artifactHtml(a,r.artifacts?.[a.key])).join('');
     const count=w8Count(step.key),minimum=Number(step.min_ai_exchanges||0);
-    const message=step.key==='task1'?'查看已保存的成果，按观察事实自检；与同伴复核，再和AI讨论需要解决或验证的事项。':s.subtitle;
+    const message=s.id==='W8'?(step.key==='task1'?'补全真实原型，写设计思维五步简述和一句体会，上传作品照片；发布后同学才能看到。':'浏览已发布的匿名作品，给至少两份可评价作品提出具体建议；带着真实疑问问AI，再决定是否修改。'):step.key==='task1'?'查看已保存的成果，按观察事实自检；与同伴复核，再和AI讨论需要解决或验证的事项。':s.subtitle;
     return `<section class="card w8-step-panel ${selected===step.key?'':'hidden'}">
       <div class="row between"><h2>${esc(step.label)}</h2><span class="badge">${done?'已完成':'进行中'}</span></div>
       <p>${esc(message)}</p><div class="form">${fields}</div>
-      ${related?`<div class="artifact-list">${related}</div><p class="small">如产生新版本，请配套上传原型整体图与佩戴图；未改动不必虚构新版本。</p>`:''}
-      <div class="w8-counter"><div><strong>本任务已完成AI问答</strong><span><b data-w8-exchange-count="${step.key}">${count}</b> / ${minimum}</span></div></div>
-      ${done?'<p class="small">本任务已经完成。</p>':`<div class="row"><button type="button" class="btn orange" id="${step.key==='task1'?'submitW8Task1':'submitW8Task2'}" ${disabled?'disabled':''}>${step.key==='task1'?'完成检查，进入本节任务':'完成本节任务'}</button></div>`}
+      ${related?`<div class="artifact-list">${related}</div>${s.id==='W8'?'<p class="small">只发布指定的整体原型照片；原作品及历史照片不会被删除。</p>':'<p class="small">如产生新版本，请配套上传原型整体图与佩戴图；未改动不必虚构新版本。</p>'}`:''}${s.id==='W8'&&step.key==='task2'?'<div id="peerGallery" class="peer-gallery"><p class="small">正在加载班级作品墙……</p></div>':''}
+      ${s.id==='W8'?`<p class="small">本节至少与AI完成一轮真实问题的问答（两组要求相同），无需凑多轮。可在制作或评价时提问，最终提交时检查。</p>`:`<div class="w8-counter"><div><strong>本任务已完成AI问答</strong><span><b data-w8-exchange-count="${step.key}">${count}</b> / ${minimum}</span></div></div>`}
+      ${done?'<p class="small">本任务已经完成。</p>':`<div class="row"><button type="button" class="btn orange" id="${step.key==='task1'?'submitW8Task1':'submitW8Task2'}" ${disabled?'disabled':''}>${s.id==='W8'?(step.key==='task1'?'发布作品，进入全班互评':'提交本节互评与回顾'):(step.key==='task1'?'完成检查，进入本节任务':'完成本节任务')}</button></div>`}
     </section>`;
   }).join('');
   const tabs=`<div class="w8-step-tabs">${steps.map((step,i)=>`<button type="button" class="w8-step-tab ${selected===step.key?'active':''}" id="${step.key==='task1'?'w8GoTask1':'w8GoTask2'}" ${i>0&&!done1?'disabled':''}>${i+1}. ${esc(step.label)} ${w8StepDone(step.key)?'✓':''}</button>`).join('')}</div>`;
@@ -891,6 +891,47 @@ async function submitW8Step(stepKey){
     clearLocalDraft();await load();
   }catch(e){alert(e.message);await load(false);}
 }
+async function loadPeerGallery(){
+  const mount=document.getElementById('peerGallery');
+  if(!mount || state.session?.id!=='W8' || !w8StepDone('task1'))return;
+  try{
+    const data=await App.api(`/peer/gallery?participantId=${encodeURIComponent(id)}`);
+    const mine=new Map((data.mine||[]).map(x=>[x.to,x]));
+    const imgs=(data.cards||[]).map(c=>{
+      const own=c.student_id===id,existing=mine.get(c.student_id);
+      const steps=[['共情',c.steps.empathize],['定义',c.steps.define],['构思',c.steps.ideate],['原型',c.steps.prototype],['测试',c.steps.test],['体会',c.steps.reflection]];
+      return `<article class="peer-card"><div class="peer-card-head"><strong>${esc(c.student_id)} 的作品</strong><span class="badge">${own?'我的作品':existing?'已评价':'待评价'}</span></div>
+       <img src="${esc(c.photo_url)}" alt="${esc(c.student_id)} 的原型作品" loading="lazy">
+       <div class="peer-steps">${steps.map(([name,val])=>`<p><strong>${name}：</strong>${esc(val)}</p>`).join('')}</div>
+       ${own?'<p class="small">自己的作品不能自评。</p>':`<div class="peer-review-form" data-peer-target="${esc(c.student_id)}">
+        <label>一个具体优点<textarea data-peer-field="strength" rows="2" maxlength="350" placeholder="作品的哪一点做得好？">${esc(existing?.strength||'')}</textarea></label>
+        <label>一个需要核实的问题<textarea data-peer-field="question" rows="2" maxlength="350" placeholder="例如：画线时画笔会不会滑动？">${esc(existing?.question||'')}</textarea></label>
+        <label>一条可操作的建议<textarea data-peer-field="suggestion" rows="2" maxlength="350" placeholder="建议先测试或修改哪一处？为什么？">${esc(existing?.suggestion||'')}</textarea></label>
+        <div class="row"><button type="button" class="btn secondary" data-peer-save="${esc(c.student_id)}" ${state.record.submitted_at||state.session_locked?'disabled':''}>${existing?'更新评价':'保存评价'}</button><span class="small" data-peer-status="${esc(c.student_id)}"></span></div></div>`}
+       </article>`;
+    }).join('');
+    const received=(data.received||[]).map(x=>`<div class="peer-received"><strong>${esc(x.from)}</strong>：优点「${esc(x.strength)}」；想确认「${esc(x.question)}」；建议「${esc(x.suggestion)}」</div>`).join('');
+    const other=(data.cards||[]).filter(c=>c.student_id!==id).length;
+    mount.innerHTML=`<h3>班级作品墙 · 已发布 ${(data.cards||[]).length} 份</h3><p class="small">只显示编号、作品和简介。已有 ${data.mine?.length||0} 份评价；当前可评价 ${other} 份。未发布的作品不会出现。没有足够同学发布时可以稍后刷新。</p>
+      <div class="row"><button type="button" class="btn ghost mini" id="reloadPeerGallery">刷新作品墙</button></div>
+      <div class="peer-grid">${imgs||'<p class="small">还没有作品发布。请稍后刷新，或先整理自己的作品并与AI讨论真实问题。</p>'}</div>
+      <h3>同学给我的建议</h3>${received||'<p class="small">还没有收到评价；无需虚构他人的反馈。</p>'}`;
+    mount.querySelector('#reloadPeerGallery')?.addEventListener('click',loadPeerGallery);
+    mount.querySelectorAll('[data-peer-save]').forEach(btn=>btn.addEventListener('click',async()=>{
+      const target=btn.dataset.peerSave,card=btn.closest('[data-peer-target]');
+      const get=key=>card?.querySelector(`[data-peer-field="${key}"]`)?.value||'';
+      const info=card?.querySelector('[data-peer-status]');
+      btn.disabled=true;if(info)info.textContent='正在保存……';
+      try{
+        await App.api('/peer/review',{method:'POST',body:JSON.stringify({participantId:id,target,strength:get('strength'),question:get('question'),suggestion:get('suggestion')})});
+        if(info)info.textContent='评价已保存 ✓';
+        // Refresh after a successful submission, without resetting any unsaved task fields.
+        setTimeout(loadPeerGallery,600);
+      }catch(e){if(info)info.textContent=e.message;btn.disabled=false;}
+    }));
+  }catch(e){mount.innerHTML=`<p class="small">${esc(e.message)}</p><button type="button" class="btn ghost mini" id="peerRetry">重新加载</button>`;mount.querySelector('#peerRetry')?.addEventListener('click',loadPeerGallery);}
+}
+
 function wireTaskFlowControls(){
   if(!state?.session?.task_flow)return;
   const done1=w8StepDone('task1');
@@ -943,7 +984,7 @@ function render(){
   document.getElementById('app').innerHTML=`
     <div class="course-header ${isW8Flow?'hidden':''}"><span class="eyebrow">${esc(s.student_label||s.title)}</span><div class="row between"><div><h1>${esc(s.title)}</h1><p>${esc(s.subtitle)}</p></div>${state.session_locked?'<span class="badge big">教师已结束本阶段</span>':r.submitted_at?'<span class="badge big">已标记完成</span>':''}</div></div>
     <div class="course-grid"><div class="course-main">${isW8Flow?'':taskCard(s)}${isW8Flow?'':carryCard(state.carry_from)}
-      ${isW8Flow?`<form id="taskForm" class="form">${lessonWizardHtml(s,r)}</form>`:`<section class="card"><span class="eyebrow">我的任务记录</span><h2>边做边记录，内容会及时自动保存</h2><p class="small">今天没做完就点“保存进度并退出”，下次老师继续开放本任务时，用同一编号和姓名进入即可接着做。完成按钮只是标记你认为本阶段已完成；在老师统一结束并锁定前，即使误点，也可以回来继续修改。</p>${state.session_locked?'<div class="notice"><strong>本阶段已由老师结束并锁定。</strong>现在可以查看已有记录，但不能继续修改。</div>':r.submitted_at?'<div class="notice"><strong>你已将本阶段标记为完成。</strong>如需继续修改，请点击“继续修改”。</div>':''}<form id="taskForm" class="form">${taskFieldsHtml(s)}${bonusTaskHtml(s)}<div class="artifact-list">${s.artifacts.map(a=>artifactHtml(a,r.artifacts?.[a.key])).join('')}</div><div id="saveStatus" class="small"></div><div class="row">${r.submitted_at&&!state.session_locked?'<button type="button" class="btn secondary" id="reopenSession">继续修改</button>':`<button type="button" class="btn secondary" id="saveAndExit" ${state.session_locked?'disabled':''}>保存进度并退出</button><button type="submit" class="btn orange" ${(r.submitted_at||state.session_locked)?'disabled':''}>${state.session_locked?'教师已结束本阶段':'完成本阶段'}</button>`}</div></form></section>`}
+      ${isW8Flow?`<form id="taskForm" class="form">${s.id==='W8'?weeklyTaskFlowHtml(s,r):lessonWizardHtml(s,r)}</form>`:`<section class="card"><span class="eyebrow">我的任务记录</span><h2>边做边记录，内容会及时自动保存</h2><p class="small">今天没做完就点“保存进度并退出”，下次老师继续开放本任务时，用同一编号和姓名进入即可接着做。完成按钮只是标记你认为本阶段已完成；在老师统一结束并锁定前，即使误点，也可以回来继续修改。</p>${state.session_locked?'<div class="notice"><strong>本阶段已由老师结束并锁定。</strong>现在可以查看已有记录，但不能继续修改。</div>':r.submitted_at?'<div class="notice"><strong>你已将本阶段标记为完成。</strong>如需继续修改，请点击“继续修改”。</div>':''}<form id="taskForm" class="form">${taskFieldsHtml(s)}${bonusTaskHtml(s)}<div class="artifact-list">${s.artifacts.map(a=>artifactHtml(a,r.artifacts?.[a.key])).join('')}</div><div id="saveStatus" class="small"></div><div class="row">${r.submitted_at&&!state.session_locked?'<button type="button" class="btn secondary" id="reopenSession">继续修改</button>':`<button type="button" class="btn secondary" id="saveAndExit" ${state.session_locked?'disabled':''}>保存进度并退出</button><button type="submit" class="btn orange" ${(r.submitted_at||state.session_locked)?'disabled':''}>${state.session_locked?'教师已结束本阶段':'完成本阶段'}</button>`}</div></form></section>`}
     </div><aside class="course-side">${chatPanel()}</aside></div>`;
   wire();
 }
@@ -1130,7 +1171,8 @@ function wire(){
   };
   if(document.getElementById('refreshLessonReview'))document.getElementById('refreshLessonReview').onclick=async()=>{try{await persistCurrentFields({saveReason:'refresh_lesson_reflection'});await load();}catch(e){alert(e.message);}};
   wireTaskFlowControls();
-  wizardWire();
+  if(state.session?.id==='W8')loadPeerGallery();
+  else wizardWire();
   wirePrototypeBook();
   wireChatRevisit();
   const messageArea=document.getElementById('messages');

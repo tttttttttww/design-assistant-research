@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { storageService } from './storageService.js';
+import { reviewsByAuthor, peerReviewCandidates } from './peerReviewService.js';
 import {
   DEFAULT_SETTINGS, CONDITIONS, SCHEMA_VERSION, SESSIONS, getSessionConfig,
   aiVariantFor, hiddenAiContext, PROMPT_VERSION_FREE, PROMPT_VERSION_SUPPORTED,
@@ -1008,6 +1009,20 @@ class ResearchService {
         throw Object.assign(new Error('请先写一句本节实际进度，再提交。'),{status:400});
       }
     }
+    // Class feedback is a shared task for both groups; if classmates have not yet
+    // published, lack of peers must not block a student from ending the class.
+    if(sid==='W8' && step.key==='task2'){
+      const available=[];
+      for(const target of peerReviewCandidates(id)){
+        if(target===id)continue;
+        const otherState=await this.getTaskFlowState(target,'W8');
+        if(otherState?.completed_steps?.includes('task1'))available.push(target);
+      }
+      const reviews=await reviewsByAuthor(id);
+      const required=Math.min(2,available.length);
+      const count=reviews.filter(x=>available.includes(x.to)).length;
+      if(count<required)throw Object.assign(new Error(`目前有${available.length}份同学作品可评，请至少评价${required}份不同作品（已完成${count}份）。`),{status:400});
+    }
     const counts = await this.getTaskPhaseExchangeCounts(id, sid, flow);
     const totalAiExchanges=flow.steps.reduce((sum,item)=>sum+Number(counts[item.key]||0),0);
     const minimumTotal=Number(step.min_ai_exchanges_total||0);
@@ -1265,6 +1280,12 @@ class ResearchService {
       scaffold_type: data.scaffold_type || '',
       route_parse_status: data.route_parse_status || '',
       route_protocol_version: data.route_protocol_version || '',
+      // Research observation only: user message is saved before the CURRENT AI response.
+      // Prior response linkage does not automatically make this a revised question.
+      request_capture_stage: data.request_capture_stage || '',
+      preceding_assistant_message_id: data.preceding_assistant_message_id || '',
+      preceding_ai_scaffold_type: data.preceding_ai_scaffold_type || '',
+      preceding_ai_route: data.preceding_ai_route || '',
     };
     await storageService.putObject(mKey(id, sid, message_index), JSON.stringify(row));
     return row;

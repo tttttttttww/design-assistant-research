@@ -11,8 +11,9 @@ for(let n=6;n<=10;n++){
  assert.equal(s.actual_lesson,n,'Actual lesson must equal W'+n);
  assert.equal(s.archived,false,'Live lesson incorrectly archived');
  assert.equal(s.ai_mode,'condition');
- assert.deepEqual(s.task_flow?.steps?.map(x=>x.min_ai_exchanges),n===6?[10,5]:n===7?[0,0]:[4,3]);
+ assert.deepEqual(s.task_flow?.steps?.map(x=>x.min_ai_exchanges),n===6?[10,5]:n===7||n===8?[0,0]:[4,3]);
  assert.ok(s.fields.filter(x=>x.type==='select').length>=3,'Missing observation self-check');
+ if(n===8){assert.equal(s.task_flow.key,'lesson8-peer-gallery-v1');assert.ok(s.artifacts.some(a=>a.key==='l08_showcase_photo'));}
  if(n===7){assert.equal(s.task_flow.min_ai_exchanges_total,10);assert.equal(s.task_flow.steps[1].require_prototype_evidence,true);assert.ok(s.artifacts.some(a=>a.key==='l07_design_version'));}
  const names=new Set(s.fields.map(f=>f.key)),photos=new Set(s.artifacts.map(f=>f.key));
  for(const k of ['lesson_review_reference','lesson_review_use','lesson_review_next','lesson_no_history_reason','lesson_exit_note'])assert.ok(names.has(k),'Missing review field '+k);

@@ -7,6 +7,7 @@ import * as XLSX from 'xlsx';
 import { requireAdmin } from '../middleware/auth.js';
 import { storageService } from '../services/storageService.js';
 import { researchService } from '../services/researchService.js';
+import { allPeerReviews } from '../services/peerReviewService.js';
 import { getMeasurements, getMessageCoding, putMessageCoding, codingDataset, getInterviewNote, putInterviewNote, interviewDataset, getArtifactAssessments, putArtifactAssessment, artifactEvidenceDataset, processSequenceDataset, measurementMeta } from '../services/measurementService.js';
 import { getFinalProductScores, putFinalProductScore, finalProductDataset, productScoreHeaders } from '../services/finalProductService.js';
 import { SESSIONS, QUESTIONNAIRE_ITEMS, QUESTIONNAIRE_META, QUESTIONNAIRE_VERSION, PROTECTED_SESSION_IDS } from '../config/researchConfig.js';
@@ -665,6 +666,10 @@ router.get('/export/chat-package.zip', requireAdmin, async (req, res) => {
             scaffold_type: m.scaffold_type || '',
             route_parse_status: m.route_parse_status || '',
             route_protocol_version: m.route_protocol_version || '',
+            request_capture_stage: m.request_capture_stage || '',
+            preceding_assistant_message_id: m.preceding_assistant_message_id || '',
+            preceding_ai_scaffold_type: m.preceding_ai_scaffold_type || '',
+            preceding_ai_route: m.preceding_ai_route || '',
           });
         }
         for (const rev of revisions) revisionRows.push({
@@ -719,7 +724,7 @@ router.get('/export/chat-package.zip', requireAdmin, async (req, res) => {
         }
       }
     }
-    const headers = ['participant_id','grade','condition','course_session_id','session_title','message_index','interaction_id','role','content','content_type','message_has_image','image_file_names','image_zip_paths','client_sent_at','server_received_at','ai_request_started_at','ai_response_received_at','ai_latency_ms','task_field_key','task_field_label','task_field_stage','task_context_json','created_at','conversation_id','chat_id','bot_id','model','ai_variant','prompt_version','agent_route','scaffold_triggered','scaffold_type','route_parse_status','route_protocol_version'];
+    const headers = ['participant_id','grade','condition','course_session_id','session_title','message_index','interaction_id','role','content','content_type','message_has_image','image_file_names','image_zip_paths','client_sent_at','server_received_at','ai_request_started_at','ai_response_received_at','ai_latency_ms','task_field_key','task_field_label','task_field_stage','task_context_json','created_at','conversation_id','chat_id','bot_id','model','ai_variant','prompt_version','agent_route','scaffold_triggered','scaffold_type','route_parse_status','route_protocol_version','request_capture_stage','preceding_assistant_message_id','preceding_ai_scaffold_type','preceding_ai_route'];
     archive.append(csvText(headers, rows), { name: 'chat_messages.csv' });
     const revisionHeaders = ['participant_id','grade','condition','session_id','session_title','revision_index','field_key','field_label','field_stage','field_revision_no','previous_text','text','created_at','save_reason','last_ai_message_id','last_ai_message_at','seconds_since_last_ai_reply'];
     archive.append(csvText(revisionHeaders, revisionRows), { name: 'task_revisions.csv' });
@@ -873,13 +878,19 @@ router.get('/export/task-package.zip', requireAdmin, async (req, res) => {
     const headers = ['participant_id','grade','condition_current','session_id','session_title','date','research_role','condition_at_time','ai_variant','started_at','first_ai_open_at','first_ai_open_latency_seconds','first_user_message_at','first_user_message_latency_seconds','ai_open_count','ai_used','task_text','text_fields_json','work_file_names','work_zip_paths','submitted_at','completed_at'];
     archive.append(csvText(headers, rows), { name: 'task_records.csv' });
     archive.append(csvText(['participant_id','session_id','artifact_key','version_no','version_id','version_kind','file_name','file_path','zip_path','uploaded_at','change_source','change_note','ai_message_id','based_on_version_ref','original_order_unknown'],workVersionRows),{name:'artifact_versions_and_image_paths.csv'});
-    archive.append(`正式数据仅含 S01-S30，自动排除 S00（实验组测试）与 S99（对照组测试）。\ntask_records.csv：每个学生每个课次的当前/最终任务记录。\nworks/：W1及W3以后历次上传的原始图像，按版本分目录（包括更正误传的旧图）；W2不要求最终图片。\n求助过程相关的 behavior_events.csv、task_revisions.csv 与 process_timeline.csv 已统一放入“AI求助过程数据 ZIP”，避免两个工作包重复。\n共 ${rows.length} 条课次记录、${imageCount} 张任务图片。\n`, { name: 'README.txt' });
+    archive.append(csvText(['session_id','from','to','strength','question','suggestion','created_at','updated_at','revision'],await allPeerReviews()),{name:'W8_class_peer_reviews.csv'});
+    archive.append(`正式数据仅含 S01-S30，自动排除 S00（实验组测试）与 S99（对照组测试）。\ntask_records.csv：每个学生每个课次的当前/最终任务记录。\nworks/：W1及W3以后历次上传的原始图像，按版本分目录（包括更正误传的旧图）；W2不要求最终图片。\nW8_class_peer_reviews.csv：匿名同伴互评及时间戳（不同于研究者的作品评分）。\n求助过程相关的 behavior_events.csv、task_revisions.csv 与 process_timeline.csv 已统一放入“AI求助过程数据 ZIP”，避免两个工作包重复。\n共 ${rows.length} 条课次记录、${imageCount} 张任务图片。\n`, { name: 'README.txt' });
     await archive.finalize();
   } catch (e) {
     console.error('task package export', e);
     if (!res.headersSent) res.status(500).json({ error: '任务记录与作品导出失败' });
     else res.destroy(e);
   }
+});
+
+router.get('/export/class-peer-reviews.csv',requireAdmin,async(req,res)=>{
+  try{sendCsv(res,'W8_class_peer_reviews.csv',['session_id','from','to','strength','question','suggestion','created_at','updated_at','revision'],await allPeerReviews());}
+  catch(e){res.status(500).json({error:'班级互评导出失败'});}
 });
 
 router.get('/export/questionnaire.csv', requireAdmin, async (req, res) => {
@@ -1009,7 +1020,7 @@ router.get('/export/sessions.csv', requireAdmin, async (req, res) => {
 router.get('/export/chat.csv', requireAdmin, async (req, res) => {
   const rows = [];
   for (const id of formalIds()) for (const s of SESSIONS) for (const m of await researchService.getMessages(id, s.id)) rows.push(m);
-  sendCsv(res, 'chat_messages.csv', ['participant_id','course_session_id','message_index','role','content','content_type','message_has_image','attachments','created_at','conversation_id','chat_id','bot_id','model','ai_variant','prompt_version','agent_route','scaffold_triggered','scaffold_type','route_parse_status','route_protocol_version'], rows);
+  sendCsv(res, 'chat_messages.csv', ['participant_id','course_session_id','message_index','role','content','content_type','message_has_image','attachments','created_at','conversation_id','chat_id','bot_id','model','ai_variant','prompt_version','agent_route','scaffold_triggered','scaffold_type','route_parse_status','route_protocol_version','request_capture_stage','preceding_assistant_message_id','preceding_ai_scaffold_type','preceding_ai_route'], rows);
 });
 router.get('/export/chat-attachments.csv', requireAdmin, async (req, res) => {
   const rows = [];
@@ -1132,7 +1143,7 @@ router.get('/export/research-tables/:sessionId.zip',requireAdmin,async(req,res)=
   const allMessages=rawGroups.flatMap(g=>g.messages.map(m=>({...m,participant_id:g.id})));
   const allEvents=rawGroups.flatMap(g=>g.events.map(e=>({...e,participant_id:g.id})));
   const allRevisions=rawGroups.flatMap(g=>g.revisions.map(r=>({...r,participant_id:g.id})));
-  archive.append(csvText(['participant_id','course_session_id','message_index','message_id','interaction_id','role','content','created_at','agent_route','scaffold_triggered','task_field_key','attachments'],allMessages),{name:'raw_full_ai_chat_both_roles.csv'});
+  archive.append(csvText(['participant_id','course_session_id','message_index','message_id','interaction_id','role','content','created_at','agent_route','scaffold_triggered','task_field_key','attachments','request_capture_stage','preceding_assistant_message_id','preceding_ai_scaffold_type','preceding_ai_route'],allMessages),{name:'raw_full_ai_chat_both_roles.csv'});
   archive.append(csvText(['participant_id','session_id','event_index','type','at','data'],allEvents),{name:'raw_action_trace_events.csv'});
   archive.append(csvText(['participant_id','session_id','revision_index','field_key','previous_text','text','created_at','last_ai_message_id','last_ai_message_at','save_reason'],allRevisions),{name:'raw_task_text_revisions.csv'});
 

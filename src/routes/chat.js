@@ -4,9 +4,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { cozeService } from '../services/cozeService.js';
 import { researchService } from '../services/researchService.js';
 import { storageService } from '../services/storageService.js';
-import { getSessionConfig, COMMON_AI_RESPONSE_RULES, AI_VARIANT_RUNTIME_RULES } from '../config/researchConfig.js';
+import { getSessionConfig, COMMON_AI_RESPONSE_RULES, AI_VARIANT_RUNTIME_RULES, AI_VARIANT_RUNTIME_RULES_V2 } from '../config/researchConfig.js';
 import { isAllowedParticipant, normalizeParticipantId, validateMessage, isTestParticipant } from '../utils/validators.js';
 import { parseAgentRouting } from '../utils/agentRouting.js';
+import { scaffoldV2Enabled } from '../utils/scaffoldV2Mode.js';
 
 const router = express.Router();
 const imageUpload = multer({
@@ -138,7 +139,8 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
     const updatedRecord = await researchService.markFirstUserMessage(id, sid);
     const firstStudentTurn = (s.user_turn_count || 0) === 0;
     const commonResponseRules = `【共同回答表达规则】\n${COMMON_AI_RESPONSE_RULES.map(x => `- ${x}`).join('\n')}`;
-    const variantRules = AI_VARIANT_RUNTIME_RULES[state.ai_variant] || AI_VARIANT_RUNTIME_RULES.free;
+    const useResponsiveV2 = scaffoldV2Enabled({participantId:id,variant:state.ai_variant});
+    const variantRules = useResponsiveV2 ? AI_VARIANT_RUNTIME_RULES_V2 : (AI_VARIANT_RUNTIME_RULES[state.ai_variant] || AI_VARIANT_RUNTIME_RULES.free);
     const variantResponseRules = `【回答规则】\n${variantRules.map(x => `- ${x}`).join('\n')}`;
     const baseTaskContextText = firstStudentTurn ? `${await researchService.hiddenContextForChat(sid)}\n\n` : '';
     const phaseContext = pendingTaskStep ? `当前活动阶段：${pendingTaskStep.label}。请根据学生具体提问、检查事实与真实进度提供帮助，不得替学生编造检查或测试结论。` : '';
@@ -157,6 +159,12 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
       client_sent_at: clientSentAt, server_received_at: serverReceivedAt,
       ai_request_started_at: aiRequestStartedAt, ai_response_received_at: '', ai_latency_ms: null,
       task_field_key: taskContext.field_key, task_field_label: taskContext.field_label, task_field_stage: taskContext.field_stage, task_context: taskContext,
+      // Student-authored text is already persisted before the current AI call.
+      // Keep prior feedback as CONTEXT only; whether this is a revision needs human coding.
+      request_capture_stage: 'student_sent_before_current_ai_reply',
+      preceding_assistant_message_id: s.last_assistant_message_id || '',
+      preceding_ai_scaffold_type: s.last_scaffold_type || '',
+      preceding_ai_route: s.last_agent_route || '',
     });
     committed = true;
     s.user_turn_count = (s.user_turn_count || 0) + 1;
@@ -191,7 +199,7 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
     });
     const aiResponseReceivedAt = new Date().toISOString();
     const aiLatencyMs = Math.max(0, Date.parse(aiResponseReceivedAt) - Date.parse(aiRequestStartedAt));
-    const routing = parseAgentRouting(ai.assistant_message, state.ai_variant);
+    const routing = parseAgentRouting(ai.assistant_message, state.ai_variant, {allowV2:useResponsiveV2});
     if (attachment && ai.coze_file_id) attachment.coze_file_id = ai.coze_file_id;
 
     userMessageRow = await researchService.updateMessage(id, sid, userMessageRow.message_index, {
@@ -225,6 +233,11 @@ router.post('/chat/send', imageUpload.single('image'), async (req, res) => {
       agent_route: routing.agentRoute, scaffold_triggered: routing.scaffoldTriggered, scaffold_type: routing.scaffoldType,
       route_parse_status: routing.routeParseStatus, route_protocol_version: routing.routeProtocolVersion,
     });
+    // Append-only link to the previous actual AI response; never replace original user text.
+    s.last_assistant_message_id = assistantMessageRow.message_id;
+    s.last_scaffold_type = routing.scaffoldType || '';
+    s.last_agent_route = routing.agentRoute || '';
+    await researchService.saveChatSession(id, sid, s);
     if (state.ai_variant === 'supported') {
       await researchService.appendEvent(id, sid, 'help_seeking_route_decision', {
         interaction_id: interactionId,
