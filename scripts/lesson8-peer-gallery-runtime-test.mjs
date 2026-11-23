@@ -28,13 +28,13 @@ try{
   assert.equal(getSessionConfig('W8').ai_use_required_once,true,'W8 requires real AI replies');
   assert.equal(getSessionConfig('W8').task_flow.min_ai_exchanges_total,3,'W8 requires three paired exchanges across the lesson');
   assert.equal(getSessionConfig('W8').task_flow.steps[0].min_ai_exchanges,0,'W8 task 1 publish does not require AI');
-  assert.equal(getSessionConfig('W8').task_flow.steps[2].min_ai_exchanges_total,3,'W8 task 3 checks full-lesson count');
+  assert.equal(getSessionConfig('W8').task_flow.steps[3].min_ai_exchanges_total,3,'W8 task 4 checks full-lesson count');
   const sharedKeys=['l08_shared_change','l08_shared_change_reason','l08_shared_ai_reference','l08_shared_ai_decision'];
   for(const key of sharedKeys){
     const f=getSessionConfig('W8').fields.find(x=>x.key===key);
-    assert.ok(f && f.stage==='task3' && f.required===false, `missing neutral shared evidence field ${key}`);
+    assert.ok(f && f.stage==='task4' && f.required===false, `missing neutral shared evidence field ${key}`);
   }
-  assert.equal(getSessionConfig('W8').task_flow.steps.length,3,'W8 has three task steps');
+  assert.equal(getSessionConfig('W8').task_flow.steps.length,4,'W8 has four task steps');
 
   assert.equal(getSessionConfig('W7').task_flow.steps[1].min_ai_exchanges_total,10,'W7 baseline unchanged');
   await r.saveSettings({active_session_id:'W8',session_open:true});
@@ -78,7 +78,10 @@ try{
   assert.equal((await reviewsByAuthor('S00')).length,1);
   assert.equal((await reviewsForTarget('S99')).length,1);
   assert.equal((await reviewsForTarget('S99')).length,1);
-  await expectFail(()=>r.submitTaskStep('S00','W8','task3',{l08_peer_decision:'听到建议，计划先测滑动',lesson_no_history_reason:'今天尚未提问'}),/还需要3轮/);
+  await r.submitTaskStep('S00','W8','task3',{l08_peer_decision:'听到建议，计划先测滑动'});
+  assert.equal((await r.getTaskFlowState('S00','W8')).completed_steps.includes('task3'),true);
+  assert.ok(!(await r.getSessionRecord('S00','W8')).submitted_at,'peer step alone must not finalize lesson');
+  await expectFail(()=>r.submitTaskStep('S00','W8','task4',{l08_ai_review_complete:'本节没有需要处理的AI建议',l08_ai_suggestion_reviews_json:'[]',lesson_no_history_reason:'今天尚未提问'}),/还需要3轮/);
   // Only successfully paired student+assistant messages count; chat phase is tracked.
   const m=(role,index,phase)=>({participant_id:'S00',session_id:'W8',role,interaction_id:`real-pair-${Math.ceil(index/2)}`,message_id:`m-${index}`,message_index:index,content:role==='user'?'同学建议加固，我怎么验证会不会滑动？':'可以先画相同线条，记录笔的移动。',task_context:{task_phase:phase},created_at:new Date().toISOString()});
   const saveMsg=async(index,role,phase)=>storage.putObject(`participants/S00/sessions/W8/chat/messages/${String(index).padStart(5,'0')}.json`,JSON.stringify(m(role,index,phase)));
@@ -86,17 +89,22 @@ try{
   await saveMsg(1,'user','lesson8_peer');await saveMsg(2,'assistant','lesson8_peer');
   await saveMsg(3,'user','lesson8_peer');
   assert.equal((await r.getTaskFlowState('S00','W8')).total_ai_exchanges,1,'unanswered message not counted');
-  const finalFields={l08_peer_decision:'根据同学建议，我会先进行画笔滑动测试。',lesson_review_reference:'m-2',lesson_review_use:'AI给出可检验步骤，我准备自己实验。',lesson_review_next:'以后说明已经做过的操作和实际观察。'};
-  await expectFail(()=>r.submitTaskStep('S00','W8','task3',finalFields),/还需要2轮/);
+  const finalFields={l08_ai_review_complete:'本节没有需要处理的AI建议',l08_ai_suggestion_reviews_json:'[]',l08_shared_change:'考虑加固夹笔位置',lesson_review_reference:'m-2',lesson_review_use:'AI给出可检验步骤，我准备自己实验。',lesson_review_next:'以后说明已经做过的操作和实际观察。'};
+  await expectFail(()=>r.submitTaskStep('S00','W8','task4',finalFields),/还需要2轮/);
   await saveMsg(4,'assistant','lesson8_peer');
   assert.equal((await r.getTaskFlowState('S00','W8')).total_ai_exchanges,2);
-  await expectFail(()=>r.submitTaskStep('S00','W8','task3',finalFields),/还需要1轮/);
+  await expectFail(()=>r.submitTaskStep('S00','W8','task4',finalFields),/还需要1轮/);
   await saveMsg(5,'user','lesson8_peer');await saveMsg(6,'assistant','lesson8_peer');
   assert.equal((await r.getTaskFlowState('S00','W8')).total_ai_exchanges,3);
   finalFields.lesson_review_reference='m-6';
-  await r.submitTaskStep('S00','W8','task3',finalFields);
+  const advice=[{message_id:'m-6',part_index:0,excerpt:'可以先画相同线条，记录笔的移动。',decision:'调整后采纳'}];
+  await expectFail(()=>r.submitTaskStep('S00','W8','task4',{...finalFields,l08_ai_review_complete:'已记录相关AI建议的处理方式',l08_ai_suggestion_reviews_json:JSON.stringify([{...advice[0],message_id:'fake-message'}])}),/对应本节真实回复/);
+  finalFields.l08_ai_review_complete='已记录相关AI建议的处理方式';
+  finalFields.l08_ai_suggestion_reviews_json=JSON.stringify(advice);
+  await r.submitTaskStep('S00','W8','task4',finalFields);
+  assert.deepEqual(JSON.parse((await r.getSessionRecord('S00','W8')).text_fields.l08_ai_suggestion_reviews_json),advice,'choices linked to real AI message are retained');
   assert.ok((await r.getSessionRecord('S00','W8')).submitted_at,'peer review and AI conversation qualify for final submission');
-  assert.equal((await r.getTaskFlowState('S00','W8')).completed_steps.includes('task3'),true);
+  assert.equal((await r.getTaskFlowState('S00','W8')).completed_steps.includes('task4'),true);
   console.log('LESSON8 FLEXIBLE VERSION + PEER GALLERY PASS: isolated data, publication gate, test cohort, anonymized gallery, no self-review, quality gate, review trace, three real AI exchanges, gated submission, read-only after completion.');
 }finally{
  await rm(dir,{recursive:true,force:true});

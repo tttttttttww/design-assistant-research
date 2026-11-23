@@ -57,7 +57,7 @@ function restoreTaskField(){
 }
 function currentW8ChatStep(){
   if(!state?.session?.task_flow)return 'task1';
-  if(state?.session?.id==='W8')return !w8StepDone('task1')?'task1':!w8StepDone('task2')?'task2':'task3';
+  if(state?.session?.id==='W8')return !w8StepDone('task1')?'task1':!w8StepDone('task2')?'task2':!w8StepDone('task3')?'task3':'task4';
   return w8StepDone('task1') ? 'task2' : 'task1';
 }
 function chatTaskContext(){
@@ -846,7 +846,7 @@ function w8TaskFlowHtml(s,r){
 // 每节课结束前只回顾当前真实对话，不回忆一周前的对话。课中可以随时保存反思，不影响保存未完成任务。
 function lessonReviewHtml(s){
   if(!s?.task_flow || !['W6','W7','W8','W9','W10'].includes(s.id))return '';
-  // W8: only one short end-of-class note, shown inside the peer-review step.
+  // W8: only one short end-of-class note, shown in step four after the peer-review step.
   // Preserve the existing field keys and server validation to avoid modifying old data.
   if(s.id==='W8'){
     const fields=displayTextFields();
@@ -881,12 +881,138 @@ function lessonReviewHtml(s){
   return `<section class="card lesson-review" id="lessonReview"><span class="eyebrow">下课前</span><h2>${neutral?'记录今天的任务进度':'回顾今天的AI交流'}</h2>${personal}
    <div class="row"><button type="button" class="btn secondary" id="saveLessonReview" ${disabled}>保存本节回顾</button><button type="button" class="btn ghost mini" id="refreshLessonReview">更新本节对话</button><span id="reviewSaveStatus" class="small">${(saved.lesson_review_use||saved.lesson_exit_note)?'已填写':'待填写'}</span></div></section>`;
 }
+
+// W8: full source dialogue + selectable decisions for candidate advice excerpts.
+// Segments are textual candidates, NOT an AI classification of what counts as advice.
+const W8_ADVICE_DECISIONS=['已采纳并尝试','调整后采纳','未采纳','准备尝试','还没有决定','仅解释或澄清，无需处理'];
+function w8AdviceParts(content){
+  const raw=String(content||'').trim();
+  if(!raw)return [];
+  const listed=raw.split(/\n(?=\s*(?:[-*•]|(?:\d{1,2}[.、)]))\s+)/).map(t=>t.trim()).filter(Boolean);
+  if(listed.length>=2)return listed.slice(0,12).map(t=>t.slice(0,450));
+  // Break down non-list responses into clear sentences; preserve the original full message separately.
+  const sentences=(raw.match(/[^。！？；;\n]+[。！？；;\n]?/g)||[]).map(t=>t.trim()).filter(t=>t.length>=6);
+  if(sentences.length>=2)return sentences.slice(0,12).map(t=>t.slice(0,450));
+  return [raw.slice(0,450)];
+}
+function w8ReviewRows(){
+  try{
+    const data=JSON.parse(displayTextFields().l08_ai_suggestion_reviews_json||'[]');
+    return Array.isArray(data)?data.filter(x=>x && x.message_id && Number.isInteger(x.part_index) && typeof x.decision==='string').slice(0,300):[];
+  }catch{return [];}
+}
+function w8ReviewableMessages(){
+  return (state?.chat_messages||[]).filter(m=>m?.role==='assistant' && m.message_id && String(m.content||'').trim());
+}
+// One short questionnaire page at a time. Keep the original AI text and message IDs.
+const W8_QUIZ_PAGE_SIZE=3;
+let w8QuizPage=0;
+function w8ReviewQuestionBank(){
+  return w8ReviewableMessages().flatMap((m,j)=>w8AdviceParts(m.content).map((excerpt,part_index)=>({
+    message_id:String(m.message_id),part_index,excerpt,reply_index:j+1,
+  })));
+}
+function w8AnsweredCount(bank,rows){
+  const answered=new Set(rows.map(x=>`${x.message_id}|${x.part_index}`));
+  return bank.filter(x=>answered.has(`${x.message_id}|${x.part_index}`)).length;
+}
+function w8DialogueReviewHtml(){
+  const messages=state?.chat_messages||[];
+  const saved=w8ReviewRows();
+  const reviews=new Map(saved.map(x=>[`${x.message_id}|${x.part_index}`,x.decision]));
+  const disabled=Boolean(state?.record?.submitted_at||state?.session_locked||!w8StepDone('task3'));
+  const full=messages.map((m,i)=>{
+    const who=m.role==='user'?'我':'AI';
+    const attachments=(m.attachments||[]).map(a=>{
+      const src=chatImageUrl(a);return src?`<img class="w8-review-photo" src="${esc(src)}" alt="对话图片" loading="lazy">`:'';
+    }).join('');
+    return `<div class="w8-convo-entry ${m.role==='user'?'w8-convo-student':'w8-convo-ai'}"><strong>${who} · ${i+1}</strong><div class="w8-convo-text">${esc(m.content||'[图片或非文字消息]')}</div>${attachments}</div>`;
+  }).join('');
+  const questions=w8ReviewQuestionBank();
+  const pages=Math.max(1,Math.ceil(questions.length/W8_QUIZ_PAGE_SIZE));
+  w8QuizPage=Math.min(Math.max(0,w8QuizPage),pages-1);
+  const answered=w8AnsweredCount(questions,saved);
+  const items=questions.map((q,i)=>{
+    const previous=reviews.get(`${q.message_id}|${q.part_index}`)||'';
+    const options=W8_ADVICE_DECISIONS.map((decision,j)=>{
+      const radioId=`w8Quiz_${i}_${j}`;
+      return `<label for="${radioId}" class="w8-quiz-option ${previous===decision?'is-selected':''}"><input type="radio" id="${radioId}" name="w8_quiz_${i}" value="${esc(decision)}" data-w8-advice-message="${esc(q.message_id)}" data-w8-advice-part="${q.part_index}" ${previous===decision?'checked':''} ${disabled?'disabled':''}><span>${esc(decision)}</span></label>`;
+    }).join('');
+    return `<article class="w8-quiz-question" data-w8-quiz-index="${i}" data-w8-quiz-page="${Math.floor(i/W8_QUIZ_PAGE_SIZE)}" ${Math.floor(i/W8_QUIZ_PAGE_SIZE)===w8QuizPage?'':'hidden'}>
+      <div class="w8-quiz-question-meta">第 ${i+1} 题 · 来自AI回复 ${q.reply_index}</div>
+      <div class="w8-quiz-prompt">${esc(q.excerpt)}</div>
+      <fieldset class="w8-quiz-options"><legend>你是怎样处理这项内容的？</legend>${options}</fieldset>
+    </article>`;
+  }).join('');
+  const vals=displayTextFields();
+  const currentFlag=String(vals.l08_ai_review_complete||'');
+  // The existing required field remains unchanged in storage and API, but is not another student question.
+  return `<section class="w8-dialogue-review w8-quiz-review">
+    <details class="student-more w8-conversation-all"><summary>查看本节完整对话（${messages.length}条学生/AI消息）</summary><div class="w8-convo-scroll">${full||'<p class="small">本节还没有对话。</p>'}</div></details>
+    <h3>AI建议处理小问卷</h3>
+    <p class="small">请按实际情况逐题单选，没有做过就选“准备尝试”或“还没有决定”。如果内容只是解释或澄清，请选“仅解释或澄清，无需处理”。没有标准答案。</p>
+    ${questions.length?`<div class="w8-quiz-status" role="status" aria-live="polite"><span id="w8QuizProgress">已答 ${answered} / ${questions.length} 题</span><span id="w8QuizPageStatus">第 ${w8QuizPage+1} / ${pages} 页</span></div>
+      <div class="w8-quiz-questions">${items}</div>
+      <div class="w8-quiz-navigation"><button type="button" class="btn secondary mini" id="w8QuizPrev" ${w8QuizPage===0?'disabled':''}>上一页</button><button type="button" class="btn secondary mini" id="w8QuizNext" ${w8QuizPage===pages-1?'disabled':''}>下一页</button></div>
+      <p class="small" id="w8QuizTip">${answered===questions.length?'全部题目已完成。':'选择会自动保存；可以先保存进度，下次再继续填写。'}</p>`:
+      '<p class="small">本节暂时没有可回看的AI回复。完成AI交流后可点击下方更新。</p>'}
+    <div class="row"><button type="button" class="btn secondary mini" id="w8RefreshReview" ${disabled?'disabled':''}>更新本节对话</button></div>
+    <input type="hidden" data-field="l08_ai_suggestion_reviews_json" value="${esc(vals.l08_ai_suggestion_reviews_json||'[]')}">
+    <input type="hidden" data-field="l08_ai_review_complete" value="${esc(currentFlag)}">
+  </section>`;
+}
+function w8UpdateQuizState(){
+  const root=document.querySelector('.w8-quiz-review');if(!root)return;
+  const bank=w8ReviewQuestionBank(),rows=w8ReviewRows();
+  const pages=Math.max(1,Math.ceil(bank.length/W8_QUIZ_PAGE_SIZE));
+  w8QuizPage=Math.max(0,Math.min(w8QuizPage,pages-1));
+  root.querySelectorAll('[data-w8-quiz-page]').forEach(el=>{el.hidden=Number(el.dataset.w8QuizPage)!==w8QuizPage;});
+  const answered=w8AnsweredCount(bank,rows);
+  const status=document.getElementById('w8QuizProgress');if(status)status.textContent=`已答 ${answered} / ${bank.length} 题`;
+  const pageStatus=document.getElementById('w8QuizPageStatus');if(pageStatus)pageStatus.textContent=`第 ${w8QuizPage+1} / ${pages} 页`;
+  const prev=document.getElementById('w8QuizPrev');if(prev)prev.disabled=w8QuizPage<=0;
+  const next=document.getElementById('w8QuizNext');if(next)next.disabled=w8QuizPage>=pages-1;
+  const tip=document.getElementById('w8QuizTip');if(tip)tip.textContent=answered===bank.length?'全部题目已完成。':'选择会自动保存；可以先保存进度，下次再继续填写。';
+  const confirm=document.querySelector('[data-field="l08_ai_review_complete"]');
+  if(confirm){
+    if(bank.length===0)confirm.value='本节没有需要处理的AI建议';
+    else if(answered===bank.length)confirm.value='已记录相关AI建议的处理方式';
+    else confirm.value='';
+  }
+  root.querySelectorAll('.w8-quiz-option').forEach(label=>label.classList.toggle('is-selected',Boolean(label.querySelector('input[type="radio"]:checked'))));
+}
+function wireW8AdviceChoices(){
+  const root=document.querySelector('.w8-dialogue-review');if(!root)return;
+  root.querySelectorAll('[data-w8-advice-message]').forEach(radio=>radio.addEventListener('change',()=>{
+    if(!radio.checked)return;
+    const field=document.querySelector('[data-field="l08_ai_suggestion_reviews_json"]');if(!field)return;
+    const rows=w8ReviewRows();
+    const mid=radio.dataset.w8AdviceMessage,n=Number(radio.dataset.w8AdvicePart);
+    const next=rows.filter(x=>!(x.message_id===mid&&x.part_index===n));
+    const message=w8ReviewableMessages().find(m=>String(m.message_id)===mid);
+    const parts=message?w8AdviceParts(message.content):[];
+    if(message&&parts[n]&&W8_ADVICE_DECISIONS.includes(radio.value))next.push({message_id:mid,part_index:n,excerpt:parts[n],decision:radio.value});
+    field.value=JSON.stringify(next);
+    writeLocalDraft(collectFields());
+    w8UpdateQuizState();
+    queueAutoSave();
+  }));
+  root.querySelector('#w8QuizPrev')?.addEventListener('click',()=>{w8QuizPage-=1;w8UpdateQuizState();root.scrollIntoView({block:'start',behavior:'smooth'});});
+  root.querySelector('#w8QuizNext')?.addEventListener('click',()=>{w8QuizPage+=1;w8UpdateQuizState();root.scrollIntoView({block:'start',behavior:'smooth'});});
+  root.querySelector('#w8RefreshReview')?.addEventListener('click',async()=>{
+    try{await persistCurrentFields({showStatus:true,saveReason:'review_refresh'});await load(true,true);}catch(e){alert(e.message);}
+  });
+  // Refresh the hidden confirmation field without adding a redundant student-facing select.
+  w8UpdateQuizState();
+}
+
 // W8 student view: only the current action, with drawings/works versioned before publishing.
 function lesson8FlexibleHtml(s,r){
   const steps=s.task_flow?.steps||[];
   const d1=w8StepDone('task1'),d2=w8StepDone('task2'),d3=w8StepDone('task3');
-  const available=!d1?'task1':!d2?'task2':'task3';
-  if(!activeW8Step || (activeW8Step==='task2'&&!d1) || (activeW8Step==='task3'&&!d2))activeW8Step=available;
+  const d4=w8StepDone('task4') || Boolean(r.submitted_at&&d3); // Legacy 3-step submission remains complete.
+  const available=!d1?'task1':!d2?'task2':!d3?'task3':'task4';
+  if(!activeW8Step || (activeW8Step==='task2'&&!d1) || (activeW8Step==='task3'&&!d2) || (activeW8Step==='task4'&&!d3))activeW8Step=available;
   const chosen=activeW8Step;
   const locked=Boolean(r.submitted_at||state.session_locked);
   const values=displayTextFields();
@@ -925,21 +1051,26 @@ function lesson8FlexibleHtml(s,r){
     ${d2?'<p class="notice ok">已发布到作品墙，可以开始评价同学作品。</p>':`<button type="button" class="btn orange" id="submitW8Task2" ${!d1||locked?'disabled':''}>上传并发布到作品墙，去互评</button>`}
   </section>`;
   const peerField=(s.fields||[]).find(f=>f.key==='l08_peer_decision');
-  const shared=(s.fields||[]).filter(f=>f.stage==='task3'&&f.key!=='l08_peer_decision');
-  const hasShared=shared.some(f=>String(values[f.key]||'').trim());
+  const shared=(s.fields||[]).filter(f=>f.stage==='task4'&&['l08_shared_change','l08_shared_change_reason'].includes(f.key));
   const total=steps.reduce((sum,item)=>sum+w8Count(item.key),0);
   const task3=`<section class="card w8-step-panel ${chosen==='task3'?'':'hidden'}" data-w8-step-panel="task3">
     <h2>评价同学作品</h2><p>查看同学的作品，写具体优点、疑问和建议；有需要随时与AI讨论，评价仍由自己完成。</p>
     ${d2?'<div id="peerGallery" class="peer-gallery"><p class="small">正在加载同学作品……</p></div>':'<p>请先完成作品发布。</p>'}
     ${peerField?`<div class="student-peer-decision">${fieldHtml(peerField,values[peerField.key]||'',!d2||d3)}</div>`:''}
-    <details class="student-more student-change-record" ${hasShared?'open':''}><summary>记录本节修改与AI建议（简短）</summary><div class="form w8-change-grid">${shared.map(f=>fieldHtml(f,values[f.key]||'',!d2||d3)).join('')}</div></details>
-    <div class="w8-counter student-counter"><strong>本节有效AI对话 <b data-w8-exchange-count="total">${total}</b> / 3 轮</strong></div>
-    ${lessonReviewHtml(s)}
-    ${d3?'<p class="notice ok">本节已完成。</p>':`<button type="button" class="btn orange" id="submitW8Task3" ${!d2||locked?'disabled':''}>完成本节提交</button>`}
+    ${d3?'<p class="notice ok">同伴评价已完成，下一步记录AI建议。</p>':`<button type="button" class="btn orange" id="submitW8Task3" ${!d2||locked?'disabled':''}>完成互评，填写AI建议记录</button>`}
   </section>`;
-  const nav=`<div class="w8-step-tabs w8-three-steps">${steps.map((item,i)=>`<button type="button" id="w8GoTask${i+1}" class="w8-step-tab ${chosen===item.key?'active':''}" ${i===1&&!d1||i===2&&!d2?'disabled':''}>${i+1}. ${['图纸与作品','五步设计','同伴互评'][i]} ${w8StepDone(item.key)?'✓':''}</button>`).join('')}</div>`;
+  const task4=`<section class="card w8-step-panel ${chosen==='task4'?'':'hidden'}" data-w8-step-panel="task4">
+    <h2>记录本节修改与AI建议</h2>
+    <p>简短记录今天的实际情况，没有修改或没有采纳AI建议也可以如实说明。</p>
+    ${w8DialogueReviewHtml()}
+    <details class="student-more"><summary>补充：今天的作品修改（选填）</summary><div class="form w8-change-grid">${shared.map(f=>fieldHtml(f,values[f.key]||'',!d3||d4)).join('')}</div></details>
+    ${!(r.submitted_at&&d3&&!w8StepDone('task4'))?`<div class="w8-counter student-counter"><strong>本节有效AI对话 <b data-w8-exchange-count="total">${total}</b> / 3 轮</strong></div>`:''}
+    ${lessonReviewHtml(s)}
+    ${d4?'<p class="notice ok">本节已完成。</p>':`<button type="button" class="btn orange" id="submitW8Task4" ${!d3||locked?'disabled':''}>完成本节提交</button>`}
+  </section>`;
+  const nav=`<div class="w8-step-tabs w8-four-steps">${steps.map((item,i)=>`<button type="button" id="w8GoTask${i+1}" class="w8-step-tab ${chosen===item.key?'active':''}" ${i===1&&!d1||i===2&&!d2||i===3&&!d3?'disabled':''}>${i+1}. ${['图纸与作品','五步设计','同伴互评','AI建议记录'][i]} ${w8StepDone(item.key)?'✓':''}</button>`).join('')}</div>`;
   const exitAction=r.submitted_at&&!state.session_locked?'<button type="button" class="btn secondary" id="reopenSession">继续修改</button>':`<button type="button" class="btn secondary" id="saveAndExit" ${state.session_locked?'disabled':''}>保存进度并退出</button>`;
-  return `<section class="card w8-flow-shell student-simple w8-minimal w8-flexible">${nav}${task1}${task2}${task3}<div class="row between w8-save-row"><span id="saveStatus" class="small"></span>${exitAction}</div></section>`;
+  return `<section class="card w8-flow-shell student-simple w8-minimal w8-flexible">${nav}${task1}${task2}${task3}${task4}<div class="row between w8-save-row"><span id="saveStatus" class="small"></span>${exitAction}</div></section>`;
 }
 
 function weeklyTaskFlowHtml(s,r){
@@ -989,11 +1120,23 @@ async function submitW8Step(stepKey){
   if(state.session_locked||state.record.submitted_at)return;
   const step=state.session.task_flow?.steps?.find(x=>x.key===stepKey);
   if(!step)return;
+  if(state.session.id==='W8' && stepKey==='task4'){
+    const questionBank=w8ReviewQuestionBank();
+    const completed=w8AnsweredCount(questionBank,w8ReviewRows());
+    if(questionBank.length && completed<questionBank.length){
+      const missing=questionBank.findIndex(q=>!w8ReviewRows().some(r=>r.message_id===q.message_id && r.part_index===q.part_index));
+      w8QuizPage=Math.floor(Math.max(0,missing)/W8_QUIZ_PAGE_SIZE);
+      w8UpdateQuizState();
+      document.querySelector('.w8-quiz-review')?.scrollIntoView({block:'start',behavior:'smooth'});
+      alert(`AI建议小问卷还有${questionBank.length-completed}题未选。请如实选择；不是建议的内容也可以选择“仅解释或澄清，无需处理”。`);
+      return;
+    }
+  }
   const useTotal=Number(step.min_ai_exchanges_total||0)>0;
   const count=useTotal?(state.session.task_flow.steps||[]).reduce((sum,x)=>sum+w8Count(x.key),0):w8Count(stepKey);
   const minimum=Number(useTotal?step.min_ai_exchanges_total:step.min_ai_exchanges||0);
   if(count<minimum){alert(`当前已完成${count}轮完整AI对话，还需要${minimum-count}轮。你可以继续与AI讨论，也可以先保存进度并下节课继续。`);return;}
-  if(!confirm(`确认提交${step.label}吗？提交后${stepKey==='task1'?'进入五步设计过程填写。':stepKey==='task2'&&state.session.id==='W8'?'发布作品后解锁同伴互评。':'本课记录将标记为完成并锁定AI对话。'}未完成的内容请先保存进度。`))return;
+  if(!confirm(`确认提交${step.label}吗？提交后${stepKey==='task1'?'进入五步设计过程填写。':stepKey==='task2'&&state.session.id==='W8'?'发布作品后解锁同伴互评。':stepKey==='task3'&&state.session.id==='W8'?'进入第四步记录AI建议。':'本课记录将标记为完成并锁定AI对话。'}未完成的内容请先保存进度。`))return;
   try{
     cancelQueuedAutoSave();await saveChain;await persistCurrentFields({showStatus:true,saveReason:`${stepKey}_submit`});
     const result=await App.api('/session/step-submit',{method:'POST',body:JSON.stringify({participantId:id,sessionId:state.session.id,stepKey,textFields:collectFields(),saveContext:saveContext(`${stepKey}_submit`)})});
@@ -1324,6 +1467,7 @@ function wire(){
   };
   if(document.getElementById('refreshLessonReview'))document.getElementById('refreshLessonReview').onclick=async()=>{try{await persistCurrentFields({saveReason:'refresh_lesson_reflection'});await load();}catch(e){alert(e.message);}};
   wireTaskFlowControls();
+  if(state.session?.id==='W8')wireW8AdviceChoices();
   if(state.session?.id==='W8')loadPeerGallery();
   else wizardWire();
   wirePrototypeBook();

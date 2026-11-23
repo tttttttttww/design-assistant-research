@@ -1027,6 +1027,25 @@ class ResearchService {
         throw Object.assign(new Error('请先写一句本节实际进度，再提交。'),{status:400});
       }
     }
+    // W8 fourth-step evidence: optional per-excerpt decisions link to real assistant messages.
+    // The existing session text_fields storage is used; no new Blob namespace or schema migration.
+    if(sid==='W8' && step.key==='task4'){
+      const raw=String(record.text_fields?.l08_ai_suggestion_reviews_json||'[]');
+      let items;
+      try{ items=JSON.parse(raw); }catch{throw Object.assign(new Error('AI建议记录格式有误，请刷新本节对话后重新选择。'),{status:400});}
+      if(!Array.isArray(items)||items.length>300||raw.length>150000)throw Object.assign(new Error('AI建议记录过多或格式不正确。'),{status:400});
+      const allowed=new Set(['已采纳并尝试','调整后采纳','未采纳','准备尝试','还没有决定','仅解释或澄清，无需处理']);
+      const currentMessages=await this.getMessages(id,sid);
+      const known=new Map(currentMessages.filter(x=>x.role==='assistant'&&x.message_id).map(x=>[String(x.message_id),String(x.content||'')]));
+      for(const item of items){
+        if(!item || !known.has(String(item.message_id||'')) || !Number.isInteger(item.part_index) || item.part_index<0 || item.part_index>=12 || !allowed.has(item.decision) || typeof item.excerpt!=='string' || !known.get(String(item.message_id)).includes(item.excerpt)){
+          throw Object.assign(new Error('部分AI建议无法对应本节真实回复，请刷新后检查。'),{status:400});
+        }
+      }
+      if(record.text_fields?.l08_ai_review_complete==='已记录相关AI建议的处理方式' && !items.length){
+        throw Object.assign(new Error('请选择至少一项实际AI回复的处理方式，或如实选择没有需要处理的建议。'),{status:400});
+      }
+    }
     // Class feedback is a shared task for both groups; if classmates have not yet
     // published, lack of peers must not block a student from ending the class.
     if(sid==='W8' && step.key==='task3'){

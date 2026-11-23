@@ -6,7 +6,7 @@ for(let n=6;n<=10;n++){
  const s=getSessionConfig('W'+n);
  assert.equal(s.actual_lesson,n);
  assert.equal(s.order,n);
- assert.deepEqual(s.task_flow.steps.map(x=>x.min_ai_exchanges),n===6?[10,5]:n===8?[0,0,0]:n===7?[0,0]:[4,3]);
+ assert.deepEqual(s.task_flow.steps.map(x=>x.min_ai_exchanges),n===6?[10,5]:n===8?[0,0,0,0]:n===7?[0,0]:[4,3]);
  const keys=new Set(s.fields.map(x=>x.key));
  const photos=new Set(s.artifacts.map(x=>x.key));
  for(const step of s.task_flow.steps){

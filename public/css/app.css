@@ -660,3 +660,48 @@ details.admin-extra>section {margin:0!important;border:0!important;box-shadow:no
 .student-simple-grid .w8-once-review input[type=text],.student-simple-grid .w8-once-review select{min-width:0;width:100%;padding:9px 10px;font-size:14px}
 .student-simple-grid .w8-review-save{align-items:center;gap:8px}
 @media(max-width:680px){.student-simple-grid .w8-review-two{grid-template-columns:1fr}}
+
+/* v12.5.2: independent fourth step for shared AI suggestion-use record. */
+.student-simple-grid .w8-four-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.student-simple-grid .w8-four-steps .w8-step-tab{font-size:13px;padding:10px 5px;white-space:normal}
+.student-simple-grid [data-w8-step-panel="task4"] .w8-change-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
+.student-simple-grid [data-w8-step-panel="task4"] .w8-change-grid label{font-size:14px}
+.student-simple-grid [data-w8-step-panel="task4"] .w8-change-grid textarea{min-height:72px}
+@media(max-width:680px){
+  .student-simple-grid .w8-four-steps{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .student-simple-grid [data-w8-step-panel="task4"] .w8-change-grid{grid-template-columns:1fr}
+}
+
+/* v12.5.3: transcript is optional to expand, and decisions are lightweight dropdowns. */
+.w8-dialogue-review{display:grid;gap:12px;margin:12px 0}
+.w8-convo-scroll{max-height:380px;overflow-y:auto;display:grid;gap:8px;padding:10px;background:var(--bg-soft,#f8faf9);border-radius:10px}
+.w8-convo-entry{border-radius:10px;padding:10px 12px;background:var(--card,#fff);font-size:13px}
+.w8-convo-entry strong{display:block;font-size:12px;margin-bottom:6px}
+.w8-convo-text{white-space:pre-wrap;overflow-wrap:anywhere}
+.w8-convo-ai{border-left:3px solid #94adad}
+.w8-convo-student{border-left:3px solid #b0a3d4}
+.w8-review-photo{max-width:140px;max-height:140px;object-fit:contain;margin-top:6px;border-radius:8px}
+.w8-advice-list{display:grid;gap:8px;max-height:520px;overflow-y:auto;padding-right:3px}
+.w8-advice-card{border:1px solid var(--line,#dce2e0);border-radius:10px;padding:10px;background:var(--card,#fff)}
+.w8-advice-card summary{cursor:pointer;font-weight:600;line-height:1.5;overflow-wrap:anywhere}
+.w8-advice-choices{display:grid;gap:10px;padding:12px 3px 3px}
+.w8-advice-item{display:grid;grid-template-columns:minmax(0,1fr) 175px;gap:12px;align-items:center;font-weight:400}
+.w8-advice-item select{max-width:100%;font-size:13px}
+.w8-advice-excerpt{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}
+@media(max-width:650px){.w8-advice-item{grid-template-columns:1fr;gap:5px}}
+
+/* v12.5.4: three-question pages, single-choice questionnaire. */
+.w8-quiz-review{gap:14px}
+.w8-quiz-status{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px 12px;background:var(--bg-soft,#f8faf9);border-radius:10px;font-weight:600;font-size:14px}
+.w8-quiz-questions{display:grid;gap:14px}
+.w8-quiz-question{border:1px solid var(--line,#dce2e0);border-radius:12px;padding:16px;background:var(--card,#fff)}
+.w8-quiz-question[hidden]{display:none!important}
+.w8-quiz-question-meta{font-size:12px;color:var(--muted,#57636c);margin-bottom:10px}
+.w8-quiz-prompt{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;background:var(--bg-soft,#f8faf9);border-radius:8px;font-size:14px;line-height:1.65}
+.w8-quiz-options{border:0;padding:0;margin:14px 0 0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.w8-quiz-options legend{font-size:14px;font-weight:600;margin-bottom:9px;padding:0}
+.w8-quiz-option{font-size:13px;font-weight:400;display:flex;gap:8px;align-items:center;cursor:pointer;border:1px solid var(--line,#dce2e0);border-radius:9px;padding:10px 11px;line-height:1.45;min-width:0}
+.w8-quiz-option input{margin:0;flex:0 0 auto;accent-color:#326e74}
+.w8-quiz-option.is-selected{border-color:#558b8d;background:var(--bg-soft,#f3f9f8);font-weight:600}
+.w8-quiz-navigation{display:flex;justify-content:space-between;gap:10px}
+@media(max-width:650px){.w8-quiz-options{grid-template-columns:1fr}.w8-quiz-question{padding:12px}}

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
-const release='20261123p';
+const release='20261123s';
 for(const page of ['admin.html','task.html','index.html']){
  const html=read('public/'+page);
  assert.ok(html.includes('v='+release),'HTML still references cached JS/CSS: '+page);

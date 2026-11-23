@@ -2136,9 +2136,9 @@ if(EXHIBIT_LESSON8){
   EXHIBIT_LESSON8.requirements=[
     'A、B两组都能在作品完善、五步设计过程和互评时随时与AI对话；保留原有两种不同求助支持。',
     '每次迭代都保存真实新版图纸和作品图；没有修改时不必强制迭代。',
-    '两组同样填写简短修改及AI建议处理记录；不要把采纳勾选当成已实际修改。',
+    '两组在最后一步同样查看本节真实AI回复，对需要处理的建议逐条选择方式；未填写不表示拒绝。',
     '只有主动发布后的作品、五步简介供同学匿名查看，不展示组别、聊天内容和未完成草稿。',
-    '至少评价两位同学的作品（不足两份时按实际可用数量）。最终提交累计至少3轮成功AI问答。'
+    '至少评价两位同学的作品（不足两份时按实际可用数量）。第四步最终提交累计至少3轮成功AI问答。'
   ];
   // Keep legacy keys for read-only historical records; remove them from today's visible UI.
   for(const f of EXHIBIT_LESSON8.fields){if(f.stage==='task1'||f.stage==='task2'){f.stage='legacy';f.required=false;}}
@@ -2150,10 +2150,12 @@ if(EXHIBIT_LESSON8){
     field('l08_dt_test','测试｜实际发现',{stage:'task2',required:true,placeholder:'试过什么？有何发现？还没测试就如实写。'}),
     field('l08_dt_reflection','我的一句收获（选填）',{stage:'task2',required:false,placeholder:'如有收获可以简单补充。'}),
     field('l08_peer_decision','收到同学建议后，我准备怎么做？',{stage:'task3',required:true,placeholder:'选一条具体意见，说说你的决定；如果暂无意见请说明。'}),
-    field('l08_shared_change','本节修改了什么？',{stage:'task3',required:false,placeholder:'没有修改可写“尚未修改”。'}),
-    field('l08_shared_change_reason','为什么这样改或暂不修改？',{stage:'task3',required:false,placeholder:'根据实际制作、同伴意见或测试填写。'}),
-    field('l08_shared_ai_reference','是否参考AI建议？',{stage:'task3',type:'select',required:false,choices:['参考过AI建议','没有参考AI建议','本节尚未收到有效AI建议','尚未决定']}),
-    field('l08_shared_ai_decision','怎样处理AI建议？',{stage:'task3',type:'select',required:false,choices:['采纳','修改后采纳','未采纳','尚未决定','未参考AI建议']}),
+    field('l08_shared_change','本节修改了什么？',{stage:'task4',required:false,placeholder:'没有修改可写“尚未修改”。'}),
+    field('l08_shared_change_reason','为什么这样改或暂不修改？',{stage:'task4',required:false,placeholder:'根据实际制作、同伴意见或测试填写。'}),
+    field('l08_shared_ai_reference','是否参考AI建议？',{stage:'task4',type:'select',required:false,choices:['参考过AI建议','没有参考AI建议','本节尚未收到有效AI建议','尚未决定']}),
+    field('l08_shared_ai_decision','怎样处理AI建议？',{stage:'task4',type:'select',required:false,choices:['采纳','修改后采纳','未采纳','尚未决定','未参考AI建议']}),
+    field('l08_ai_suggestion_reviews_json','逐条AI建议处理记录（消息关联）',{stage:'internal',required:false}),
+    field('l08_ai_review_complete','我已查看本节AI回复',{stage:'task4',type:'select',required:true,choices:['已记录相关AI建议的处理方式','本节没有需要处理的AI建议']}),
   );
   EXHIBIT_LESSON8.artifacts.push(
     artifact('l08_design_versions','图纸',{required:false,helper:'先上传当前真实图纸；每次修改后可上传新版，旧图不会覆盖。',version_book:true,book_item_label:'图纸'}),
@@ -2172,15 +2174,17 @@ if(EXHIBIT_LESSON8){
       required_fields:[],required_artifacts:['l08_design_versions','l08_showcase_photo'],artifact_keys:['l08_design_versions','l08_showcase_photo']},
     {key:'task2',label:'填写五步设计过程并发布',task_phase:'lesson8_story',min_ai_exchanges:0,
       required_fields:['l08_dt_empathize','l08_dt_define','l08_dt_ideate','l08_dt_prototype','l08_dt_test'],required_artifacts:[],artifact_keys:[]},
-    {key:'task3',label:'评价同学作品并完成本课',task_phase:'lesson8_peer',min_ai_exchanges:0,min_ai_exchanges_total:3,
+    {key:'task3',label:'评价同学作品',task_phase:'lesson8_peer',min_ai_exchanges:0,
       required_fields:['l08_peer_decision'],required_artifacts:[],artifact_keys:[]},
+    {key:'task4',label:'记录修改与AI建议，完成本课',task_phase:'lesson8_decision',min_ai_exchanges:0,min_ai_exchanges_total:3,
+      required_fields:['l08_ai_review_complete'],required_artifacts:[],artifact_keys:[]},
   ]};
   for(const a of EXHIBIT_LESSON8.artifacts){a.required=false;}
   EXHIBIT_LESSON8.paired_artifacts=[]; // W8 uses its own drawing+work pair check, NOT the worn-photo check.
   EXHIBIT_LESSON8.ai_use_required_once=true;
   EXHIBIT_LESSON8.ai_instruction='第8节从上传图纸与作品图、迭代、五步简介到同伴互评均可随时与AI交流；最终提交累计不少于3轮完整问答。A组正常AI，B组维持原有求助支架；不得替学生编造测试记录或同伴意见。';
-  EXHIBIT_LESSON8.ai_public_context.stage='第8节：先上传当前图纸及原型作品图，按需迭代；再简述设计思维五步并发布到作品墙；最后同伴互评。任何阶段均可求助AI。';
-  EXHIBIT_LESSON8.prompt_context='第8节按真实进度上传图纸及作品版本，完成后填写五步简介并发布供互评；允许未完成学生先保存；A/B不同求助支持保持原有协议，三轮完成门槛只适用于最终提交。';
+  EXHIBIT_LESSON8.ai_public_context.stage='第8节：先上传当前图纸及原型作品图，按需迭代；再简述设计思维五步并发布到作品墙；然后同伴互评，最后统一记录如何处理AI建议。任何阶段均可求助AI。';
+  EXHIBIT_LESSON8.prompt_context='第8节按真实进度上传图纸及作品版本，完成后填写五步简介并发布供互评；互评后单独记录AI建议处理；允许未完成学生先保存；A/B不同求助支持保持原有协议，三轮完成门槛只适用于最终提交。';
 }
 
 export function getSessionConfig(id) { return SESSIONS.find(s => s.id === id) || null; }

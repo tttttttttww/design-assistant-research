@@ -606,6 +606,7 @@ router.get('/export/chat-package.zip', requireAdmin, async (req, res) => {
     archive = openZip(res, 'AI_helpseeking_process_evidence.zip');
     const rows = [];
     const revisionRows = [];
+    const adviceRows = [];
     const eventRows = [];
     const timelineRows = [];
     let imageCount = 0;
@@ -617,6 +618,15 @@ router.get('/export/chat-package.zip', requireAdmin, async (req, res) => {
           researchService.getRevisions(id, s.id),
           researchService.getEvents(id, s.id),
         ]);
+        if(s.id==='W8'){
+          const record=await researchService.getSessionRecord(id,s.id);
+          let decisions=[];
+          try{const parsed=JSON.parse(record?.text_fields?.l08_ai_suggestion_reviews_json||'[]');if(Array.isArray(parsed))decisions=parsed;}catch{}
+          for(const d of decisions){
+            if(!d||!d.message_id)continue;
+            adviceRows.push({participant_id:id,condition:participant.condition,session_id:s.id,assistant_message_id:String(d.message_id),suggestion_part_index:Number(d.part_index),suggestion_excerpt:String(d.excerpt||''),student_decision:String(d.decision||''),record_saved_at:record?.saved_at||'',source:'student_choice'});
+          }
+        }
         for (const m of messages) {
           const imageNames = [];
           const imageZipPaths = [];
@@ -726,6 +736,7 @@ router.get('/export/chat-package.zip', requireAdmin, async (req, res) => {
     }
     const headers = ['participant_id','grade','condition','course_session_id','session_title','message_index','interaction_id','role','content','content_type','message_has_image','image_file_names','image_zip_paths','client_sent_at','server_received_at','ai_request_started_at','ai_response_received_at','ai_latency_ms','task_field_key','task_field_label','task_field_stage','task_context_json','created_at','conversation_id','chat_id','bot_id','model','ai_variant','prompt_version','agent_route','scaffold_triggered','scaffold_type','route_parse_status','route_protocol_version','request_capture_stage','preceding_assistant_message_id','preceding_ai_scaffold_type','preceding_ai_route'];
     archive.append(csvText(headers, rows), { name: 'chat_messages.csv' });
+    archive.append(csvText(['participant_id','condition','session_id','assistant_message_id','suggestion_part_index','suggestion_excerpt','student_decision','record_saved_at','source'], adviceRows), { name: 'ai_suggestion_decisions.csv' });
     const revisionHeaders = ['participant_id','grade','condition','session_id','session_title','revision_index','field_key','field_label','field_stage','field_revision_no','previous_text','text','created_at','save_reason','last_ai_message_id','last_ai_message_at','seconds_since_last_ai_reply'];
     archive.append(csvText(revisionHeaders, revisionRows), { name: 'task_revisions.csv' });
     const eventHeaders = ['participant_id','grade','condition','session_id','session_title','event_index','type','at','interaction_id','task_field_key','task_field_label','task_field_stage','duration_ms','max_chars','edit_count','current_chars','reason','message_count','dwell_ms','ai_latency_ms','potential_unsent_help_event','agent_route','scaffold_triggered','scaffold_type','route_parse_status','data_json'];
