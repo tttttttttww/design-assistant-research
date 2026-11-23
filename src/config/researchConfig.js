@@ -198,13 +198,13 @@ for(const [sid,topic,question,options,correct] of [
 // 第6—10节每课仅在开始前学习一种求助策略；当堂聊天回顾放在课末完成。
 // 旧记录的 orientation_key 不改变，旧版资料仍然可读取。
 for (const [sid,topic,question,options,correct] of [
- ['W8','先检查，再判断困难','设计图画完了，怎样知道还有没有问题？',['说自己的设计绝对没问题','查看固定位置、佩戴要求和材料，再向AI提出需要确认的事项','让AI直接替自己设计一套'],1],
- ['W9','说清制作中的现象','固定部位容易松动，怎样求助更有用？',['只说做不出来','说明连接位置、材料和尝试过的办法','让AI直接写好总结'],1],
- ['W10','利用测试证据追问','AI说结构稳定，但实际画线时会松，应该怎么办？',['保留测试结果并向AI描述具体情况继续分析','相信AI不再检查','把问题删掉'],0],
+ ['W8','根据设计进度判断需要哪些帮助','设计图完成了，但还不知道佩戴时是否会晃动。如果准备请AI协助，哪种做法更能帮你继续验证？',['发设计图请AI推荐最常见的加固方法，再选择一种直接用在原型上。','描述佩戴部位、拟用材料和担心的晃动位置，请AI建议先检查什么，再动手验证。','发设计图请AI比较两种固定材料的优缺点，按它认为更牢的一种制作。'],1],
+ ['W9','说清制作中的现象','固定部位反复松开，你准备向AI求助。下面哪一种请求最能帮助定位原因？',['上传原型照片，请AI推荐固定强度更高的材料，并按推荐结果先换材料。','说清连接位置和已经使用的材料，请AI给一套完整的重新制作步骤。','说明松开的位置、发生时的动作和已试过的方法，请AI帮忙列出可逐项检查的原因。'],2],
+ ['W10','根据测试证据继续排查','AI之前判断夹笔结构稳定，但实际试画时画笔会滑动。如果再次求助，哪种方式最有助于判断问题原因？',['上传原型照片，让AI推荐更牢固的材料，先替换材料，再观察是否改善。','说明滑动出现的位置、试画现象和已尝试的固定办法，请AI提出可检验的原因与排查顺序。','提供现有设计图，让AI比较几种固定结构，先采用它最看好的一种进行第二版制作。'],1],
  ['W14','比较方法后自己决定','两种固定结构都能做时，怎样利用AI？',['请求比较风险、材料和效果，结合测试自己选择','让AI替我任选一个','只选最美观的'],0],
  ['W15','核查结论是否有依据','AI说你的作品完全解决问题，但你没验证过，应该：',['直接写进总结','标注尚未验证，并明确下一步检查方法','编造一个效果数据'],1]
 ]) INTERVENTION_ORIENTATION[sid]={
- supported:{key:'lesson-help-v2-'+sid,title:'今天的求助方法',intro:topic+'。看一看情境，选择你认为合理的做法，再开始今天的任务。',strategy_micro_lesson:true,reflection_activity:false,allow_imperfect_quiz:true,cards:[{title:topic,body:['先根据真实作品确认问题，描述已尝试的做法；收到建议后，仍需要自己判断与验证。']}],checks:[{id:'q1',question,options,correct}],button:'开始今天的任务'},
+ supported:{key:'lesson-help-v2-'+sid,title:'今天的求助方法',intro:topic+'。看一看情境，选择你认为更合适的做法，并写一句理由，再开始今天的任务。',strategy_micro_lesson:true,practice_reason_required:['W8','W9','W10'].includes(sid),reflection_activity:false,allow_imperfect_quiz:true,cards:[{title:topic,body:['先根据真实作品确认问题，描述已尝试的做法；收到建议后，仍需要自己判断与验证。']}],checks:[{id:'q1',question,options,correct}],button:'开始今天的任务'},
  control:{key:'lesson-ready-v2-'+sid,title:'今天的任务',intro:'先查看已保存的成果和今天的要求，再完成检查。',cards:[{title:'记录真实情况',body:['做过的如实记录，没做过或没测试的不要填写为已完成。']}],acknowledgements:['我知道要根据实际进度记录。'],button:'开始今天的任务'}
 };
 // W11—W12全体普通AI，无干预前置活动。
@@ -2027,6 +2027,31 @@ for(const session of SESSIONS.filter(x=>Number(x.actual_lesson)>=6&&Number(x.act
   }
 }
 
+
+// v12.4.8: the LIVE W8–W10 practice is reconstructed from legacy W10/W14/W15 above.
+// Patch the final configs, NOT only the earlier legacy sources, so real students see the revision.
+const V1248_REAL_PRACTICE = {
+  W8:{
+    question:'AI之前说夹笔结构稳定，但试画时画笔滑动。再次求助时，哪种做法最有助于判断原因？',
+    options:['上传原型照片，让AI推荐更牢固的材料，先换材料后再观察有没有改善。','告诉AI滑动的位置、试画现象和已经尝试的固定方法，请它提出可验证的原因和排查顺序。','提供设计图，请AI比较几种固定结构，先采用它推荐最多的一种制作第二版。'],correct:1
+  },
+  W9:{
+    question:'两种固定办法都做过初步尝试，稳定性与佩戴舒适度各有差异。怎样借助AI帮助自己决定？',
+    options:['把两种办法的实际测试现象告诉AI，让它列出各自适用条件和风险，再结合需要和实测结果取舍。','把两种原型照片发给AI，请它推荐一套普遍更稳的结构，按推荐方案再制作一版。','请AI按通常材料强度给两种方法排序，再选择排名更高的一种做最终方案。'],correct:0
+  },
+  W10:{
+    question:'AI认为你的装置“佩戴很稳”，但你只进行过一次短时间试用。怎样利用这条建议整理成果？',
+    options:['保留AI对稳固性的总体评价，同时注明这是根据一次短时间试用得到的判断。','把这一轮试用条件与真实观察写清，请AI帮忙找出仍需验证的方面，只对已确认的表现下结论。','请AI根据同类装置的常见表现预测长期效果，把预测内容写进作品说明并注明是推测。'],correct:1
+  }
+};
+for(const [sessionId, practice] of Object.entries(V1248_REAL_PRACTICE)){
+  const o=INTERVENTION_ORIENTATION[sessionId]?.supported;
+  if(!o)continue;
+  o.checks=[{id:'q1',...practice}];
+  o.practice_reason_required=true;
+  o.intro='观察情境，选择你认为最合适的做法，并用一句话说明理由，再进入任务。';
+}
+
 // 2026-11-16 / 第7节：按学生真实进度自由迭代图纸与实体原型。
 // 只拓展当前 W7；W6 和历史 Blob 键、双智能体/求助训练规则保持不变。
 const FLEXIBLE_LESSON7=SESSIONS.find(s=>s.id==='W7');
@@ -2094,63 +2119,68 @@ if(FLEXIBLE_LESSON7){
   FLEXIBLE_LESSON7.ai_public_context.stage='第7节：回看已有图纸，自选修改并保留版本；继续制作并迭代实体原型，结合真实证据对AI建议作出判断。';
 }
 
-// 2026-11-23 candidate lesson 8: prototype exhibition and anonymous peer review.
-// This only changes the NEW W8 classroom configuration. Old source and Blob keys are retained.
+// W8 lesson-8 flexible classroom flow: save real drawings + prototype versions first,
+// then submit current version, write five-step story and publish, then peer review.
+// Old record keys / Blob namespaces are NEVER deleted or remapped.
 const EXHIBIT_LESSON8=SESSIONS.find(s=>s.id==='W8');
 if(EXHIBIT_LESSON8){
-  EXHIBIT_LESSON8.title='第8节：原型完成、五步简介与班级互评';
-  EXHIBIT_LESSON8.subtitle='先完成并发布真实原型，再查看全班作品、开展互评，最后判断建议是否适用。';
+  EXHIBIT_LESSON8.title='第8节：作品完善、五步设计过程与班级互评';
+  EXHIBIT_LESSON8.subtitle='先上传图纸和作品图；需要修改就继续迭代，满意后再填写五步设计过程并发布，最后互评。';
   EXHIBIT_LESSON8.date='11/23';
-  EXHIBIT_LESSON8.student_label='第8节课 · 原型展示与互评';
+  EXHIBIT_LESSON8.student_label='第8节课 · 作品迭代与互评';
   EXHIBIT_LESSON8.brief=[
-    '补全辅助绘画装置原型；若尚未完成，可以先保存进度，不能把未完成作品写成已完成。',
-    '简短填写共情、定义、构思、原型、测试五个环节的实际做法和一句收获；未测试就如实说明。',
-    '上传作品整体照片，点击“发布到班级作品墙”后，才能浏览同学发布的编号、作品与简介。',
-    '为其他同学的作品写具体优点、需要核实的问题与可行建议。至少与AI进行一轮真实问题的问答，最终是否采纳由自己判断。'
+    '上传当前真实图纸和作品图。需要修改就点“继续迭代”保存下一版，未完成可以保存进度，下次接着做。',
+    '当前版本可以提交后，简短填写共情、定义、构思、原型、测试五个设计过程，再点击“上传并发布到作品墙”。',
+    '发布后查看同学作品，写具体优点、疑问和建议，最后提交本课。',
   ];
-  EXHIBIT_LESSON8.brief.push('两组均填写相同的简短修改与AI建议处理记录：可以如实选择“未参考AI”“尚未修改”；不能把勾选采纳当成实际改动。');
   EXHIBIT_LESSON8.requirements=[
-    '同伴只看到编号、发布作品照片与五步简介，不显示姓名、组别、聊天记录或私人测试资料。',
-    '本节至少完成一轮真实AI问答；不设置多轮配额，不要求AI替学生编写评语。',
-    '至少评价两份不同同学的作品；可发布作品不足两份时按实际可评价数量进行。',
-    '未完成或尚未测试的情况可如实记录；不能虚构用户反馈或测试结论。'
+    'A、B两组都能在作品完善、五步设计过程和互评时随时与AI对话；保留原有两种不同求助支持。',
+    '每次迭代都保存真实新版图纸和作品图；没有修改时不必强制迭代。',
+    '两组同样填写简短修改及AI建议处理记录；不要把采纳勾选当成已实际修改。',
+    '只有主动发布后的作品、五步简介供同学匿名查看，不展示组别、聊天内容和未完成草稿。',
+    '至少评价两位同学的作品（不足两份时按实际可用数量）。最终提交累计至少3轮成功AI问答。'
   ];
-  // Historic fields are kept in the schema but not surfaced in the new two-step UI.
+  // Keep legacy keys for read-only historical records; remove them from today's visible UI.
   for(const f of EXHIBIT_LESSON8.fields){if(f.stage==='task1'||f.stage==='task2'){f.stage='legacy';f.required=false;}}
   EXHIBIT_LESSON8.fields.push(
-    field('l08_dt_empathize','共情｜我了解了谁的什么需要？',{stage:'task1',required:true,placeholder:'例如：使用者握笔较困难，希望更容易固定铅笔。只写实际了解的情况。'}),
-    field('l08_dt_define','定义｜我想解决的核心问题是什么？',{stage:'task1',required:true,placeholder:'一句话说清目标和重要约束。'}),
-    field('l08_dt_ideate','构思｜我考虑过哪些办法？为什么选这个？',{stage:'task1',required:true,placeholder:'写1—2个真实想法和你的选择理由。'}),
-    field('l08_dt_prototype','原型｜我真正制作了什么？',{stage:'task1',required:true,placeholder:'写装置关键结构、材料和目前完成程度。'}),
-    field('l08_dt_test','测试｜我发现了什么？尚未测什么？',{stage:'task1',required:true,placeholder:'已测试写观察事实；未测试就写尚未测试。'}),
-    field('l08_dt_reflection','体会｜这次设计最重要的收获是什么？',{stage:'task1',required:true,placeholder:'一句自己的真实体会即可。'}),
-    field('l08_peer_decision','互评后｜我听到了什么建议，准备如何处理？',{stage:'task2',required:true,placeholder:'写具体建议和自己的决定；没有同学发表建议时，请说明原因和下一步。'}),
-    // Both A and B use the SAME minimal evidence form. Never infer adoption from a checkbox.
-    field('l08_shared_change','作品修改记录｜本节实际修改了什么？',{stage:'task2',required:false,placeholder:'例如：固定带加宽；如果暂未修改，请写“尚未修改”。'}),
-    field('l08_shared_change_reason','作品修改记录｜为什么修改（或暂不修改）？',{stage:'task2',required:false,placeholder:'依据实际制作、佩戴、同伴意见或测试观察填写；没有证据请说明。'}),
-    field('l08_shared_ai_reference','作品修改记录｜本次是否参考AI建议？',{stage:'task2',type:'select',required:false,choices:['参考过AI建议','没有参考AI建议','本节尚未收到有效AI建议','尚未决定']}),
-    field('l08_shared_ai_decision','作品修改记录｜如何处理AI建议？',{stage:'task2',type:'select',required:false,choices:['采纳','修改后采纳','未采纳','尚未决定','未参考AI建议']}),
+    field('l08_dt_empathize','共情｜使用者需要',{stage:'task2',required:true,placeholder:'实际了解到的需要，简短写一句。'}),
+    field('l08_dt_define','定义｜要解决的问题',{stage:'task2',required:true,placeholder:'想解决什么问题？'}),
+    field('l08_dt_ideate','构思｜我的想法',{stage:'task2',required:true,placeholder:'想过哪些做法，选了什么？'}),
+    field('l08_dt_prototype','原型｜实际做出了什么',{stage:'task2',required:true,placeholder:'当前作品的结构、材料或完成程度。'}),
+    field('l08_dt_test','测试｜实际发现',{stage:'task2',required:true,placeholder:'试过什么？有何发现？还没测试就如实写。'}),
+    field('l08_dt_reflection','我的一句收获（选填）',{stage:'task2',required:false,placeholder:'如有收获可以简单补充。'}),
+    field('l08_peer_decision','收到同学建议后，我准备怎么做？',{stage:'task3',required:true,placeholder:'选一条具体意见，说说你的决定；如果暂无意见请说明。'}),
+    field('l08_shared_change','本节修改了什么？',{stage:'task3',required:false,placeholder:'没有修改可写“尚未修改”。'}),
+    field('l08_shared_change_reason','为什么这样改或暂不修改？',{stage:'task3',required:false,placeholder:'根据实际制作、同伴意见或测试填写。'}),
+    field('l08_shared_ai_reference','是否参考AI建议？',{stage:'task3',type:'select',required:false,choices:['参考过AI建议','没有参考AI建议','本节尚未收到有效AI建议','尚未决定']}),
+    field('l08_shared_ai_decision','怎样处理AI建议？',{stage:'task3',type:'select',required:false,choices:['采纳','修改后采纳','未采纳','尚未决定','未参考AI建议']}),
   );
-  EXHIBIT_LESSON8.artifacts.push(artifact('l08_showcase_photo','班级作品展示照片（拍清真实整体原型）',{
-    required:false,helper:'发布前上传一张真正的原型整体照片；新照片按原方式追加保存，不覆盖历史。',version_questionnaire:false,version_book:false
-  }));
-  EXHIBIT_LESSON8.task_flow={key:'lesson8-peer-gallery-v1',steps:[
-    {key:'task1',label:'完成原型、五步简介并发布',task_phase:'lesson8_exhibit',min_ai_exchanges:0,
-      required_fields:['l08_dt_empathize','l08_dt_define','l08_dt_ideate','l08_dt_prototype','l08_dt_test','l08_dt_reflection'],
-      required_artifacts:['l08_showcase_photo'],artifact_keys:['l08_showcase_photo']},
-    {key:'task2',label:'班级作品互评、AI讨论与判断',task_phase:'lesson8_peer',min_ai_exchanges:0,
-      required_fields:['l08_peer_decision'],required_artifacts:[],artifact_keys:[]}
+  EXHIBIT_LESSON8.artifacts.push(
+    artifact('l08_design_versions','图纸',{required:false,helper:'先上传当前真实图纸；每次修改后可上传新版，旧图不会覆盖。',version_book:true,book_item_label:'图纸'}),
+    artifact('l08_showcase_photo','作品图',{required:false,helper:'上传当前真实作品照片；迭代后保存新照片，最新完整版本用于作品墙展示。',version_book:true,book_item_label:'作品'}),
+  );
+  // The historical W8 showcase artifact could already be present; avoid duplicate schema definitions.
+  const existingShowcase=EXHIBIT_LESSON8.artifacts.filter(a=>a.key==='l08_showcase_photo');
+  if(existingShowcase.length>1){
+    const original=existingShowcase[0];
+    original.label='作品图';original.helper='上传当前真实作品照片；迭代后保存新版，最新版本供作品墙展示。';
+    original.version_book=true;original.version_questionnaire=false;original.book_item_label='作品';
+    EXHIBIT_LESSON8.artifacts=EXHIBIT_LESSON8.artifacts.filter(a=>a.key!=='l08_showcase_photo'||a===original);
+  }
+  EXHIBIT_LESSON8.task_flow={key:'lesson8-peer-gallery-v1',min_ai_exchanges_total:3,steps:[
+    {key:'task1',label:'上传图纸和作品图，按需迭代',task_phase:'lesson8_exhibit',min_ai_exchanges:0,
+      required_fields:[],required_artifacts:['l08_design_versions','l08_showcase_photo'],artifact_keys:['l08_design_versions','l08_showcase_photo']},
+    {key:'task2',label:'填写五步设计过程并发布',task_phase:'lesson8_story',min_ai_exchanges:0,
+      required_fields:['l08_dt_empathize','l08_dt_define','l08_dt_ideate','l08_dt_prototype','l08_dt_test'],required_artifacts:[],artifact_keys:[]},
+    {key:'task3',label:'评价同学作品并完成本课',task_phase:'lesson8_peer',min_ai_exchanges:0,min_ai_exchanges_total:3,
+      required_fields:['l08_peer_decision'],required_artifacts:[],artifact_keys:[]},
   ]};
-  // Other old artifact keys remain readable as historical/individual evidence,
-  // but are deliberately not required in the new peer-exhibition phase.
-  for(const a of EXHIBIT_LESSON8.artifacts){if(a.key!=='l08_showcase_photo')a.required=false;}
-  // Earlier paired-artifact checks are irrelevant to this new single-photo exhibition snapshot.
-  // W7 remains the appropriate location for paired prototype iteration originals.
-  EXHIBIT_LESSON8.paired_artifacts=[];
+  for(const a of EXHIBIT_LESSON8.artifacts){a.required=false;}
+  EXHIBIT_LESSON8.paired_artifacts=[]; // W8 uses its own drawing+work pair check, NOT the worn-photo check.
   EXHIBIT_LESSON8.ai_use_required_once=true;
-  EXHIBIT_LESSON8.ai_instruction='本节需至少完成一轮真实AI问答，可问实际制作困难、同伴建议不清楚、设计方案比较或测试证据冲突；不要求凑固定轮数，不让AI代写评论，建议是否采纳由自己判断。';
-  EXHIBIT_LESSON8.ai_public_context.stage='第8节：完成原型、五步设计过程简述、匿名班级互评，再依据真实意见和材料条件判断修改，不得编造测试。';
-  EXHIBIT_LESSON8.prompt_context='第8节：学生上传原型照片和五步简介后进入班级互评；互评对所有学生条件一致；AI按原两种响应条件继续使用。新功能真实启用日期应记录，不回写既往实施史。';
+  EXHIBIT_LESSON8.ai_instruction='第8节从上传图纸与作品图、迭代、五步简介到同伴互评均可随时与AI交流；最终提交累计不少于3轮完整问答。A组正常AI，B组维持原有求助支架；不得替学生编造测试记录或同伴意见。';
+  EXHIBIT_LESSON8.ai_public_context.stage='第8节：先上传当前图纸及原型作品图，按需迭代；再简述设计思维五步并发布到作品墙；最后同伴互评。任何阶段均可求助AI。';
+  EXHIBIT_LESSON8.prompt_context='第8节按真实进度上传图纸及作品版本，完成后填写五步简介并发布供互评；允许未完成学生先保存；A/B不同求助支持保持原有协议，三轮完成门槛只适用于最终提交。';
 }
 
 export function getSessionConfig(id) { return SESSIONS.find(s => s.id === id) || null; }

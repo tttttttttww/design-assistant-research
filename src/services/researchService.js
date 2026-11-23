@@ -363,6 +363,7 @@ class ResearchService {
       reflection_reply_review: String(answers.reflection_reply_review || ''),
       revised_question: String(answers.revised_question || ''),
       reflection_reason: String(answers.reflection_reason || ''),
+      practice_reason: String(answers.practice_reason || ''),
     };
     return {
       mode,
@@ -375,6 +376,7 @@ class ResearchService {
       button: config.button,
       reflection_activity: Boolean(config.reflection_activity),
       strategy_micro_lesson: Boolean(config.strategy_micro_lesson),
+      practice_reason_required: Boolean(config.practice_reason_required),
       previous_session_id: config.previous_session_id || '',
       neutral_label_1: config.neutral_label_1 || '',
       neutral_label_2: config.neutral_label_2 || '',
@@ -488,6 +490,11 @@ class ResearchService {
           throw Object.assign(new Error('请先完成全部求助小练习。'), { status: 400 });
         }
         clean[item.id] = v;
+      }
+      if (config.practice_reason_required) {
+        const practiceReason = String(answers.practice_reason||'').trim().slice(0,240);
+        if(practiceReason.length<8) throw Object.assign(new Error('请填写至少8个字的选择理由。'), {status:400});
+        clean.practice_reason=practiceReason;
       }
       const wrong = (config.checks || []).find(item => clean[item.id] !== Number(item.correct));
       if (wrong && !config.allow_imperfect_quiz) throw Object.assign(new Error('还有一题需要再想一想，请重新选择后再试一次。'), { status: 422 });
@@ -962,6 +969,17 @@ class ResearchService {
         throw Object.assign(new Error(`请先完成：${field?.label || key}`), { status: 400 });
       }
     }
+    // W8: each saved iteration comprises a drawing photo and a work photo.
+    // Incomplete versions remain drafts and do not unlock the five-step story.
+    if(sid==='W8' && step.key==='task1'){
+      const versions=await this.getArtifactVersions(id,sid,record);
+      const drawing=(versions.l08_design_versions||[]).filter(v=>v.kind!=='correction'&&v.kind!=='progress');
+      const work=(versions.l08_showcase_photo||[]).filter(v=>v.kind!=='correction'&&v.kind!=='progress');
+      const a=drawing.map(v=>Number(v.version_no||0)).sort((x,y)=>x-y);
+      const b=work.map(v=>Number(v.version_no||0)).sort((x,y)=>x-y);
+      if(!drawing.length||!work.length)throw Object.assign(new Error('请先上传当前图纸和作品图；没做完可以先保存进度。'),{status:400});
+      if(JSON.stringify(a)!==JSON.stringify(b))throw Object.assign(new Error('这次迭代还缺一张配套照片：每版需有图纸和作品图各一张，或者先保存进度稍后补齐。'),{status:400});
+    }
     // W7 requires the student to upload the previous lesson's actual drawing
     // into this lesson as the baseline. Other old images do not satisfy this gate.
     if(step.require_drawing_evidence){
@@ -1011,12 +1029,18 @@ class ResearchService {
     }
     // Class feedback is a shared task for both groups; if classmates have not yet
     // published, lack of peers must not block a student from ending the class.
-    if(sid==='W8' && step.key==='task2'){
+    if(sid==='W8' && step.key==='task3'){
       const available=[];
       for(const target of peerReviewCandidates(id)){
         if(target===id)continue;
         const otherState=await this.getTaskFlowState(target,'W8');
-        if(otherState?.completed_steps?.includes('task1'))available.push(target);
+        if(otherState?.completed_steps?.includes('task2'))available.push(target);
+        else if(otherState?.completed_steps?.includes('task1')){
+          // Older two-step W8 records published during task1, before the new version step.
+          const old=await this.getSessionRecord(target,'W8');
+          const keys=['l08_dt_empathize','l08_dt_define','l08_dt_ideate','l08_dt_prototype','l08_dt_test'];
+          if(old.artifacts?.l08_showcase_photo && !old.artifacts?.l08_design_versions && keys.every(k=>String(old.text_fields?.[k]||'').trim()))available.push(target);
+        }
       }
       const reviews=await reviewsByAuthor(id);
       const required=Math.min(2,available.length);

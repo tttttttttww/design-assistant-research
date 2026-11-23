@@ -142,6 +142,16 @@ router.post('/session/event', async (req, res) => {
 });
 
 // Lesson 8: class-only pseudonymous gallery. Only published artifacts are visible.
+// Compatibility: a student who published with the earlier two-step W8 flow should
+// keep their existing gallery visibility; newly saved drafts are never public.
+async function isLesson8Published(id,progress=null){
+  const p=progress||await researchService.getTaskFlowState(id,'W8');
+  if(p?.completed_steps?.includes('task2'))return true;
+  if(!p?.completed_steps?.includes('task1'))return false;
+  const record=await researchService.getSessionRecord(id,'W8');
+  const oldStory=['l08_dt_empathize','l08_dt_define','l08_dt_ideate','l08_dt_prototype','l08_dt_test'];
+  return Boolean(record.artifacts?.l08_showcase_photo && !record.artifacts?.l08_design_versions && oldStory.every(k=>String(record.text_fields?.[k]||'').trim()));
+}
 const peerGuard=async(req,res)=>{
   const id=pid(req);if(!guard(id,res))return null;
   const settings=await cohortGuard(req,id,res);if(!settings)return null;
@@ -149,8 +159,8 @@ const peerGuard=async(req,res)=>{
     res.status(409).json({error:'班级作品互评仅在第8节开放时可查看。'});return null;
   }
   const progress=await researchService.getTaskFlowState(id,'W8');
-  if(!progress?.completed_steps?.includes('task1')){
-    res.status(409).json({error:'先完成并发布自己的作品，再查看班级作品墙。'});return null;
+  if(!(await isLesson8Published(id,progress))){
+    res.status(409).json({error:'请先上传图纸和作品图、填写五步设计过程并发布，再进入互评。'});return null;
   }
   return id;
 };
@@ -158,7 +168,7 @@ async function peerGallery(id){
   const ids=peerReviewCandidates(id);
   const rows=await Promise.all(ids.map(async target=>{
     const progress=await researchService.getTaskFlowState(target,'W8');
-    if(!progress?.completed_steps?.includes('task1'))return null;
+    if(!(await isLesson8Published(target,progress)))return null;
     const r=await researchService.getSessionRecord(target,'W8');
     const photo=r.artifacts?.l08_showcase_photo;
     if(!photo?.file_name)return null;

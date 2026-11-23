@@ -533,3 +533,121 @@ details.admin-extra>section {margin:0!important;border:0!important;box-shadow:no
 .peer-review-form label{font-weight:600;font-size:.92rem}
 .peer-review-form textarea{width:100%;box-sizing:border-box;margin-top:5px;min-height:60px;font-weight:400}
 .peer-received{padding:9px 12px;border:1px solid #e0e7ec;border-radius:9px;margin-bottom:8px;overflow-wrap:anywhere}
+
+/* v12.4.8: authorized optional local tab recording; never affects experiment requirements */
+.screen-recording-tools{position:relative;z-index:35;font-size:13px}
+.screen-recording-tools summary{list-style:none;cursor:pointer;border:1px solid #c9d5d1;background:#fff;color:var(--green);padding:8px 12px;border-radius:12px;font-weight:750;white-space:nowrap}
+.screen-recording-tools summary::-webkit-details-marker{display:none}
+.screen-recording-tools.recording-active summary{background:#fee2e2;color:#991b1b;border-color:#fca5a5}
+.screen-recording-menu{position:absolute;top:calc(100% + 12px);right:0;width:min(355px,calc(100vw - 22px));padding:16px;background:white;border:1px solid var(--line);box-shadow:var(--shadow);border-radius:16px;line-height:1.6;z-index:36}
+.screen-recording-menu>p{margin:0 0 10px}
+.screen-recorder-consent{display:flex;align-items:flex-start;gap:8px;margin:8px 0 12px;font-weight:650}
+.screen-recorder-consent input{width:auto;margin:5px 0 0;flex:none}
+.screen-recording-menu .btn{font-size:13px;padding:8px 11px}
+.practice-reason{display:grid;gap:6px;margin-top:14px;font-weight:700}
+.practice-reason textarea{min-height:72px}
+@media(max-width:620px){.screen-recording-tools summary{padding:7px 8px;font-size:12px}.screen-recording-menu{right:-70px}.topbar{padding:0 9px}.topbar .row{gap:5px}.topbar #switchStudent{font-size:12px;padding:8px}}
+
+
+/* v12.4.9: learner-first UI; preserve original data field keys, routes, and task gates. */
+.student-simple-grid{gap:14px}
+.student-simple-grid .course-main{gap:12px}
+.student-simple-grid .ai-card{padding:17px}
+.student-simple-grid .ai-card h2{font-size:20px;margin:2px 0}
+.student-simple-grid .ai-card>.row .badge{font-size:11px;font-weight:650}
+.student-simple-grid .student-chat-intro{font-size:13px;margin:7px 0 10px}
+.student-simple-grid .ai-card #openAi{padding:10px 15px}
+.student-simple-grid .w8-flow-shell{padding:16px;gap:10px;box-shadow:none}
+.student-simple-grid .w8-step-tabs{margin:0 0 4px;gap:6px;padding:4px}
+.student-simple-grid .w8-step-tab{padding:10px 7px;min-height:42px;font-size:15px}
+.student-simple-grid .w8-step-panel{padding:18px;gap:12px;box-shadow:none;border-color:#e0e6e0}
+.student-simple-grid .w8-step-panel h2{font-size:21px}
+.student-simple-grid .w8-step-panel>p{font-size:14px;color:#5c6c65;line-height:1.5}
+.student-simple-grid .w8-step-panel .student-mini-heading{font-size:16px;margin:4px 0 0;color:#304b41}
+.student-simple-grid .w8-story-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
+.student-simple-grid .w8-story-grid label{font-size:14px;gap:5px}
+.student-simple-grid .w8-story-grid textarea{min-height:72px;max-height:160px;padding:10px 12px;font-size:14px}
+.student-simple-grid .w8-story-grid .req{font-size:11px}
+.student-simple-grid .student-minimal-panel .upload-card{padding:13px 16px}
+.student-simple-grid .student-minimal-panel .upload-card>p.small:last-child{display:none}
+.student-simple-grid .student-minimal-panel .upload-card>.small{font-size:12px}
+.student-simple-grid .student-minimal-panel .artifact-list{gap:8px}
+.student-simple-grid .student-counter{padding:10px 14px;margin:0;display:block;background:#f4faf5}
+.student-simple-grid .student-counter strong{font-size:15px;color:#254c3e}
+.student-simple-grid .student-counter b{font-size:19px}
+.student-simple-grid .student-peer-decision label{font-size:15px}
+.student-simple-grid .student-peer-decision textarea{min-height:78px}
+.student-simple-grid .w8-change-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
+.student-simple-grid .w8-change-grid label{font-size:14px;gap:5px}
+.student-simple-grid .w8-change-grid textarea{min-height:68px}
+.student-simple-grid .w8-change-grid select{padding:10px}
+.student-more{border:1px solid #dce6de;border-radius:12px;background:#fbfdfa;padding:0;box-shadow:none}
+.student-more>summary{display:list-item;list-style-position:inside;cursor:pointer;padding:11px 13px;color:#35584a;font-weight:700;font-size:14px}
+.student-more[open]>summary{border-bottom:1px solid #e5ebe5}
+.student-more-content{padding:9px 14px 13px;font-size:13px}
+.student-more-content ul{margin:5px 0;padding-left:20px}
+.student-more-content li{margin:4px 0}
+.student-simple-grid .support-reminder-card{margin-bottom:9px;background:#f7faf7;border-color:#dbe9df}
+.student-simple-grid .support-reminder-card>summary{padding:10px 14px}
+.student-simple-grid .student-review-wrap{padding:0;overflow:hidden}
+.student-simple-grid .student-review-wrap>.lesson-review{box-shadow:none;border:0;margin:0;border-radius:0;padding:12px 14px}
+.student-simple-grid .student-review-wrap .lesson-review h2{font-size:18px}
+.student-simple-grid .student-review-wrap .lesson-review .eyebrow{display:none}
+.student-simple-grid .student-review-wrap .lesson-review textarea{min-height:70px}
+.student-simple-grid .peer-gallery{margin-top:3px;padding-top:7px}
+.student-simple-grid .peer-gallery>h3{font-size:17px}
+.student-simple-grid .peer-gallery>p.small{margin:2px 0 7px;font-size:13px}
+.student-simple-grid .peer-grid{gap:11px}
+.student-simple-grid .peer-card{padding:11px}
+.student-simple-grid .peer-card img{height:155px}
+.student-simple-grid .peer-card .peer-story{margin:9px 0}
+.student-simple-grid .peer-card .peer-story>.peer-steps{padding:9px 12px}
+.student-simple-grid .peer-card .peer-story>.peer-steps p{font-size:13px}
+.student-simple-grid .peer-card .peer-review-form{gap:8px;margin-top:9px;padding-top:9px}
+.student-simple-grid .peer-card .peer-review-form textarea{min-height:58px}
+.student-simple-grid .peer-received-wrap{margin-top:12px}
+.student-simple-grid .peer-received-wrap .peer-received{margin:9px 12px;padding:9px;font-size:13px}
+.student-simple-grid .w8-save-row{padding-top:9px}
+.student-simple .orientation-shell{box-shadow:none;max-width:940px;padding:22px}
+.student-simple .orientation-shell h1{font-size:25px}
+.student-simple .orientation-checks{margin:10px 0;padding:15px}
+.student-simple .orientation-checks>.small{display:none}
+.student-simple .orientation-examples{margin:5px 0 3px}
+.student-simple .orientation-examples .orientation-grid{margin:9px;gap:9px}
+.student-simple .orientation-examples .orientation-card{padding:12px}
+.student-simple .orientation-actions{margin-top:8px}
+@media(max-width:790px){
+ .student-simple-grid .w8-story-grid,.student-simple-grid .w8-change-grid{grid-template-columns:1fr}
+ .student-simple-grid .w8-step-panel{padding:13px}
+ .student-simple-grid .w8-flow-shell{padding:10px}
+ .student-simple .orientation-shell{padding:15px}
+}
+
+.student-simple-grid .student-peer-toolbar{margin:8px 0 10px;gap:7px}
+.student-simple-grid .student-peer-toolbar .btn{padding:7px 10px;font-size:13px}
+.student-simple-grid .peer-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,265px),1fr))}
+
+/* v12.5.0 W8: fewer decisions at once, version photos -> story -> peer reviews. */
+.student-simple-grid .w8-three-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.student-simple-grid .w8-three-steps .w8-step-tab{font-size:13px;padding:11px 5px;white-space:normal}
+.student-simple-grid .w8-current-version{border:1px solid #d9e5dc;background:#f8fbf9;border-radius:14px;padding:14px;display:grid;gap:11px}
+.student-simple-grid .w8-photos-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.student-simple-grid .w8-photos-grid figure{margin:0;display:grid;gap:5px}
+.student-simple-grid .w8-photos-grid img{width:100%;height:170px;object-fit:contain;background:#fff;border:1px solid #e1e8e3;border-radius:10px}
+.student-simple-grid .w8-photos-grid figcaption{font-size:12px;color:#596c64}
+.student-simple-grid .w8-version-placeholder{min-height:120px;background:#f0f5f1;border-radius:10px;display:grid;place-items:center;color:#6b8074;font-size:13px}
+.student-simple-grid .w8-version-upload{background:#f7faf8;border:1px solid #dce9e1;border-radius:13px;padding:13px;display:grid;gap:10px}
+.student-simple-grid .w8-version-upload textarea{min-height:64px}
+.student-simple-grid .w8-upload-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.student-simple-grid .w8-upload-pair>div{border:1px solid #dce6e0;border-radius:12px;background:white;padding:12px;display:flex;flex-direction:column;gap:9px}
+.student-simple-grid .w8-upload-pair input[type=file]{max-width:100%;font-size:13px}
+.student-simple-grid .w8-actions{gap:10px;flex-wrap:wrap}
+.student-simple-grid .w8-version-history-row{border-top:1px solid #dae5de;padding:12px 0}
+.student-simple-grid .w8-version-history-row .w8-photos-grid{margin-top:7px}
+.student-simple-grid .w8-publish-preview{display:flex;align-items:center;gap:13px;border:1px solid #e0e9e3;padding:10px;border-radius:10px;font-size:13px}
+.student-simple-grid .w8-publish-preview img{height:88px;max-width:150px;object-fit:contain}
+@media(max-width:680px){
+ .student-simple-grid .w8-three-steps .w8-step-tab{font-size:12px;padding:9px 3px}
+ .student-simple-grid .w8-upload-pair{grid-template-columns:1fr}
+ .student-simple-grid .w8-photos-grid img{height:130px}
+}

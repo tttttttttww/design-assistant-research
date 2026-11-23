@@ -16,7 +16,7 @@ const gallery=async id=>{
  const cards=[];
  for(const target of peerReviewCandidates(id)){
   const state=await r.getTaskFlowState(target,'W8');
-  if(state?.completed_steps?.includes('task1'))cards.push(target);
+  if(state?.completed_steps?.includes('task2'))cards.push(target);
  }
  return cards;
 };
@@ -25,13 +25,16 @@ const texts={l08_dt_empathize:'观察使用者握笔困难',l08_dt_define:'改�
 const mockImage=(id)=>({file_name:`mock-${id}.png`,file_path:`uploads/${id}/W8/l08_showcase_photo/mock-${id}.png`,mime:'image/png',kind:'draft',change_note:'当前真实原型图片，用于测试',ai_usage_role:'not_used'});
 const expectFail=async(fn,pattern)=>{let err;try{await fn()}catch(e){err=e}assert.ok(err,'expected error');assert.match(err.message,pattern);};
 try{
-  assert.equal(getSessionConfig('W8').ai_use_required_once,true,'W8 requires one actual AI reply');
+  assert.equal(getSessionConfig('W8').ai_use_required_once,true,'W8 requires real AI replies');
+  assert.equal(getSessionConfig('W8').task_flow.min_ai_exchanges_total,3,'W8 requires three paired exchanges across the lesson');
+  assert.equal(getSessionConfig('W8').task_flow.steps[0].min_ai_exchanges,0,'W8 task 1 publish does not require AI');
+  assert.equal(getSessionConfig('W8').task_flow.steps[2].min_ai_exchanges_total,3,'W8 task 3 checks full-lesson count');
   const sharedKeys=['l08_shared_change','l08_shared_change_reason','l08_shared_ai_reference','l08_shared_ai_decision'];
   for(const key of sharedKeys){
     const f=getSessionConfig('W8').fields.find(x=>x.key===key);
-    assert.ok(f && f.stage==='task2' && f.required===false, `missing neutral shared evidence field ${key}`);
+    assert.ok(f && f.stage==='task3' && f.required===false, `missing neutral shared evidence field ${key}`);
   }
-  assert.equal(getSessionConfig('W8').task_flow.steps.length,2,'retains two-step lesson');
+  assert.equal(getSessionConfig('W8').task_flow.steps.length,3,'W8 has three task steps');
 
   assert.equal(getSessionConfig('W7').task_flow.steps[1].min_ai_exchanges_total,10,'W7 baseline unchanged');
   await r.saveSettings({active_session_id:'W8',session_open:true});
@@ -54,11 +57,19 @@ try{
   assert.ok(!(await r.getTaskFlowState('S00','W8')).completed_steps.includes('task1'),'no browsing before own publish');
   await expectFail(()=>r.submitTaskStep('S00','W8','task1',texts),/上传/);
   await r.addArtifact('S00','W8','l08_showcase_photo',mockImage('S00'));
+  await r.addArtifact('S00','W8','l08_design_versions',{...mockImage('S00'),artifact_key:'l08_design_versions'});
   await storage.putObject('uploads/S00/W8/l08_showcase_photo/mock-S00.png',Buffer.from('TEST'));
-  await r.submitTaskStep('S00','W8','task1',texts);
-  let view=await gallery('S00'); assert.deepEqual(view,['S00']);
+  await r.addArtifact('S00','W8','l08_design_versions',{...mockImage('S00'),artifact_key:'l08_design_versions',kind:'revision'});
+  await expectFail(()=>r.submitTaskStep('S00','W8','task1',{}),/配套照片/);
+  await r.addArtifact('S00','W8','l08_showcase_photo',{...mockImage('S00'),kind:'revision'});
+  await r.submitTaskStep('S00','W8','task1',{});
+  let view=await gallery('S00'); assert.deepEqual(view,[], 'draft versions are not public before five-step publication');
+  await r.submitTaskStep('S00','W8','task2',texts);
+  view=await gallery('S00'); assert.deepEqual(view,['S00']);
   await r.addArtifact('S99','W8','l08_showcase_photo',mockImage('S99'));
-  await r.submitTaskStep('S99','W8','task1',texts);
+  await r.addArtifact('S99','W8','l08_design_versions',{...mockImage('S99'),artifact_key:'l08_design_versions'});
+  await r.submitTaskStep('S99','W8','task1',{});
+  await r.submitTaskStep('S99','W8','task2',texts);
   view=await gallery('S00');assert.equal(view.length,2);
   await expectFail(()=>review('S00','S00',{strength:'很牢固',question:'是否可靠',suggestion:'请测连接'}),/不能评价自己/);
   await expectFail(()=>review('S00','S99',{strength:'好',question:'难',suggestion:'改'}),/至少4个字/);
@@ -67,15 +78,26 @@ try{
   assert.equal((await reviewsByAuthor('S00')).length,1);
   assert.equal((await reviewsForTarget('S99')).length,1);
   assert.equal((await reviewsForTarget('S99')).length,1);
-  await expectFail(()=>r.submitTaskStep('S00','W8','task2',{l08_peer_decision:'听到建议，计划先测滑动',lesson_no_history_reason:'今天尚未提问'}),/至少完成一轮AI问答/);
-  // Real conversation test: only a completed user/assistant pair qualifies, not an unsent draft.
-  const m=(role,index)=>({participant_id:'S00',session_id:'W8',role,interaction_id:'real-pair-1',message_id:`m-${index}`,message_index:index,content:role==='user'?'同学建议加固，我怎么验证会不会滑动？':'可以先画相同线条，记录笔的移动。',task_context:{task_phase:'lesson8_peer'},created_at:new Date().toISOString()});
-  await storage.putObject('participants/S00/sessions/W8/chat/messages/00001.json',JSON.stringify(m('user',1)));
-  await storage.putObject('participants/S00/sessions/W8/chat/messages/00002.json',JSON.stringify(m('assistant',2)));
-  await r.submitTaskStep('S00','W8','task2',{l08_peer_decision:'根据同学建议，我会先进行画笔滑动测试。',lesson_review_reference:'m-2',lesson_review_use:'AI给出可检验步骤，我准备自己实验。',lesson_review_next:'以后说明已经做过的操作和实际观察。'});
+  await expectFail(()=>r.submitTaskStep('S00','W8','task3',{l08_peer_decision:'听到建议，计划先测滑动',lesson_no_history_reason:'今天尚未提问'}),/还需要3轮/);
+  // Only successfully paired student+assistant messages count; chat phase is tracked.
+  const m=(role,index,phase)=>({participant_id:'S00',session_id:'W8',role,interaction_id:`real-pair-${Math.ceil(index/2)}`,message_id:`m-${index}`,message_index:index,content:role==='user'?'同学建议加固，我怎么验证会不会滑动？':'可以先画相同线条，记录笔的移动。',task_context:{task_phase:phase},created_at:new Date().toISOString()});
+  const saveMsg=async(index,role,phase)=>storage.putObject(`participants/S00/sessions/W8/chat/messages/${String(index).padStart(5,'0')}.json`,JSON.stringify(m(role,index,phase)));
+  // One exchange and an incomplete unanswered request: still only one valid round.
+  await saveMsg(1,'user','lesson8_peer');await saveMsg(2,'assistant','lesson8_peer');
+  await saveMsg(3,'user','lesson8_peer');
+  assert.equal((await r.getTaskFlowState('S00','W8')).total_ai_exchanges,1,'unanswered message not counted');
+  const finalFields={l08_peer_decision:'根据同学建议，我会先进行画笔滑动测试。',lesson_review_reference:'m-2',lesson_review_use:'AI给出可检验步骤，我准备自己实验。',lesson_review_next:'以后说明已经做过的操作和实际观察。'};
+  await expectFail(()=>r.submitTaskStep('S00','W8','task3',finalFields),/还需要2轮/);
+  await saveMsg(4,'assistant','lesson8_peer');
+  assert.equal((await r.getTaskFlowState('S00','W8')).total_ai_exchanges,2);
+  await expectFail(()=>r.submitTaskStep('S00','W8','task3',finalFields),/还需要1轮/);
+  await saveMsg(5,'user','lesson8_peer');await saveMsg(6,'assistant','lesson8_peer');
+  assert.equal((await r.getTaskFlowState('S00','W8')).total_ai_exchanges,3);
+  finalFields.lesson_review_reference='m-6';
+  await r.submitTaskStep('S00','W8','task3',finalFields);
   assert.ok((await r.getSessionRecord('S00','W8')).submitted_at,'peer review and AI conversation qualify for final submission');
-  assert.equal((await r.getTaskFlowState('S00','W8')).completed_steps.includes('task2'),true);
-  console.log('LESSON8 PEER GALLERY PASS: isolated data, publication gate, test cohort, anonymized gallery, no self-review, quality gate, review trace, one real AI exchange, final submit, read-only after completion.');
+  assert.equal((await r.getTaskFlowState('S00','W8')).completed_steps.includes('task3'),true);
+  console.log('LESSON8 FLEXIBLE VERSION + PEER GALLERY PASS: isolated data, publication gate, test cohort, anonymized gallery, no self-review, quality gate, review trace, three real AI exchanges, gated submission, read-only after completion.');
 }finally{
  await rm(dir,{recursive:true,force:true});
 }
